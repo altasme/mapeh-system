@@ -1,0 +1,124 @@
+{
+  "note": "Expected values computed independently with arithmetic, not by the app. Pins current behavior including AUDIT M3 (division MPS differs between Division Summary and Dashboard).",
+  "records": [
+    {
+      "sy": "2025-2026",
+      "term": "Term 1",
+      "district": "Asuncion",
+      "school": "",
+      "keyStage": "Key Stage 1",
+      "gradeLevel": "Grade 1",
+      "learningArea": "MAPEH - Music & Arts",
+      "baselineMps": 70.0,
+      "mps": 80.0,
+      "pct75": 60.0
+    },
+    {
+      "sy": "2025-2026",
+      "term": "Term 1",
+      "district": "Asuncion",
+      "school": "",
+      "keyStage": "Key Stage 1",
+      "gradeLevel": "Grade 2",
+      "learningArea": "MAPEH - PE & Health",
+      "baselineMps": 70.0,
+      "mps": 90.0,
+      "pct75": 75.0
+    },
+    {
+      "sy": "2025-2026",
+      "term": "Term 2",
+      "district": "Asuncion",
+      "school": "",
+      "keyStage": "Key Stage 2",
+      "gradeLevel": "Grade 4",
+      "learningArea": "MAPEH - Music & Arts",
+      "baselineMps": 80.0,
+      "mps": 85.0,
+      "pct75": 70.0
+    },
+    {
+      "sy": "2025-2026",
+      "term": "Term 1",
+      "district": "Carmen",
+      "school": "",
+      "keyStage": "Key Stage 3",
+      "gradeLevel": "Grade 8",
+      "learningArea": "SPA - Vocal Arts",
+      "baselineMps": 75.0,
+      "mps": 70.0,
+      "pct75": 40.0
+    },
+    {
+      "sy": "2025-2026",
+      "term": "Term 3",
+      "district": "Carmen",
+      "school": "",
+      "keyStage": "Key Stage 4",
+      "gradeLevel": "Grade 11",
+      "learningArea": "SPS - Basketball",
+      "baselineMps": 90.0,
+      "mps": 95.0,
+      "pct75": 90.0
+    }
+  ],
+  "expected": {
+    "divisionSummary": {
+      "districts": {
+        "Asuncion": {
+          "term": [
+            85.0,
+            85.0,
+            0
+          ],
+          "overall": 85.0
+        },
+        "Carmen": {
+          "term": [
+            70.0,
+            0,
+            95.0
+          ],
+          "overall": 82.5
+        }
+      },
+      "divisionMps": 83.75,
+      "divisionPL": "Approaching Proficiency"
+    },
+    "dashboard": {
+      "flatMps": 84.0,
+      "flatPL": "Approaching Proficiency",
+      "pct75": 67.0
+    },
+    "comparativeByKeyStage": {
+      "Key Stage 1": {
+        "mps": 85.0,
+        "baseline": 70.0,
+        "variance": 15.0
+      },
+      "Key Stage 2": {
+        "mps": 85.0,
+        "baseline": 80.0,
+        "variance": 5.0
+      },
+      "Key Stage 3": {
+        "mps": 70.0,
+        "baseline": 75.0,
+        "variance": -5.0
+      },
+      "Key Stage 4": {
+        "mps": 95.0,
+        "baseline": 90.0,
+        "variance": 5.0
+      }
+    },
+    "proficiencyCutoffs": {
+      "89.99": "Proficient",
+      "90": "Advanced",
+      "85": "Proficient",
+      "80": "Approaching Proficiency",
+      "75": "Developing",
+      "74.99": "Beginning"
+    }
+  }
+}
