@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-11T00:00:00Z",
+  "title": "Design System: MAPEH Division Assessment Consolidation System",
+  "extensions": {
+    "colorMeta": {
+      "ultramarine": { "role": "primary", "displayName": "DepEd Ultramarine", "canonical": "#0038A8", "tonalRamp": ["#00122d", "#001f5c", "#002f8f", "#0038A8", "#3a68c4", "#7d9bd9", "#c9d9fb", "#eaf0fc"] },
+      "navy": { "role": "primary", "displayName": "DepEd Navy", "canonical": "#002266", "tonalRamp": ["#000d29", "#001547", "#002266", "#0038A8", "#3a5fa6", "#8ea0cb", "#b9c6e6", "#e3e9f6"] },
+      "yellow": { "role": "secondary", "displayName": "DepEd Yellow (marker only)", "canonical": "#FCD116", "tonalRamp": ["#3d3200", "#6b5800", "#9c8100", "#d1ab00", "#FCD116", "#fde064", "#fdeea1", "#fef8dc"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#101b33", "tonalRamp": ["#101b33", "#3a4764", "#56627e", "#8592ad", "#bfc8da", "#dde3ee", "#eceff5", "#ffffff"] },
+      "desk": { "role": "neutral", "displayName": "Cool Desk", "canonical": "#eceff5", "tonalRamp": ["#8592ad", "#bfc8da", "#d3d9e6", "#dde3ee", "#e5e9f1", "#eceff5", "#f4f6fa", "#ffffff"] },
+      "level-advanced": { "role": "proficiency", "displayName": "Advanced", "canonical": "#17703f", "tonalRamp": ["#0a3a20", "#0f5230", "#17703f", "#3a8c5c", "#7db596", "#a8d0b9", "#c6e5d2", "#e8f5ed"] },
+      "level-proficient": { "role": "proficiency", "displayName": "Proficient", "canonical": "#1b56b0", "tonalRamp": ["#0c2b59", "#133f84", "#1b56b0", "#4a78c3", "#86a5d6", "#aec4e5", "#c9dbf4", "#e9f0fb"] },
+      "level-approaching": { "role": "proficiency", "displayName": "Approaching Proficiency", "canonical": "#765a00", "tonalRamp": ["#3b2d00", "#554200", "#765a00", "#9a7c1c", "#c2a85a", "#dcc886", "#f2e5ac", "#faf4d9"] },
+      "level-developing": { "role": "proficiency", "displayName": "Developing", "canonical": "#a14510", "tonalRamp": ["#52220a", "#74320c", "#a14510", "#c06a35", "#d99a70", "#e9bf9c", "#f6d9bd", "#fbeddf"] },
+      "level-beginning": { "role": "proficiency", "displayName": "Beginning", "canonical": "#a3221a", "tonalRamp": ["#531510", "#781b14", "#a3221a", "#bd4b44", "#d58680", "#e5aca7", "#f1cdc9", "#f9e8e6"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Login brand heading only." },
+      "headline": { "displayName": "Headline", "purpose": "View title on the desk." },
+      "figure": { "displayName": "Figure", "purpose": "KPI values, including the division MPS; tabular figures." },
+      "title": { "displayName": "Title", "purpose": "Section headings inside the sheet." },
+      "body": { "displayName": "Body", "purpose": "Running text at 14px; tables at 0.88rem." },
+      "table": { "displayName": "Table", "purpose": "Data and comparative table cells." },
+      "label": { "displayName": "Label", "purpose": "Filter labels, column heads, form labels, nav groups; sentence case." }
+    },
+    "shadows": [
+      { "name": "sheet-lift", "value": "0 1px 2px rgba(16,27,51,0.05), 0 12px 28px -18px rgba(16,27,51,0.22)", "purpose": "The only shadow on the page: lifts the sheet off the desk." },
+      { "name": "modal", "value": "0 20px 50px -20px rgba(16,27,51,0.5)", "purpose": "Re-authentication dialog above the scrim." },
+      { "name": "toast", "value": "0 4px 12px rgba(0,0,0,0.25)", "purpose": "Toast notifications (inherited from the base layer)." }
+    ],
+    "motion": [
+      { "name": "state-150", "value": "150ms ease", "purpose": "Background, border and color transitions on buttons, nav items, selects, inputs and tabs. Nothing else animates." }
+    ],
+    "breakpoints": [
+      { "name": "drawer", "value": "1024px" },
+      { "name": "phone", "value": "640px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action of a view, such as Print Report.",
+      "html": "<button class=\"ds-btn-primary\">Print Report</button>",
+      "css": ".ds-btn-primary { background: #0038A8; color: #fff; border: 1px solid transparent; border-radius: 6px; padding: 8px 14px; font-size: 0.86rem; font-weight: 600; font-family: 'Public Sans','Segoe UI',system-ui,sans-serif; cursor: pointer; transition: background-color 150ms ease; } .ds-btn-primary:hover { background: #002f8f; } .ds-btn-primary:focus-visible { outline: 2px solid #0038A8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Supporting actions such as Clear Filters and Logout.",
+      "html": "<button class=\"ds-btn-secondary\">Clear Filters</button>",
+      "css": ".ds-btn-secondary { background: #fff; color: #3a4764; border: 1px solid #bfc8da; border-radius: 6px; padding: 8px 14px; font-size: 0.86rem; font-weight: 600; font-family: 'Public Sans','Segoe UI',system-ui,sans-serif; cursor: pointer; transition: background-color 150ms ease, border-color 150ms ease; } .ds-btn-secondary:hover { background: #f1f4fa; } .ds-btn-secondary:focus-visible { outline: 2px solid #0038A8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Scope Select",
+      "kind": "input",
+      "refersTo": "select-field",
+      "description": "Filter strip select with a sentence-case label above it.",
+      "html": "<div class=\"ds-field\"><label>School Year</label><select class=\"ds-select\"><option>All School Years</option></select></div>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 5px; font-family: 'Public Sans','Segoe UI',system-ui,sans-serif; } .ds-field label { font-size: 0.76rem; font-weight: 600; color: #56627e; } .ds-select { height: 36px; padding: 0 10px; border: 1px solid #bfc8da; border-radius: 6px; font-size: 0.86rem; background: #fff; color: #101b33; transition: border-color 150ms ease; } .ds-select:hover { border-color: #93a1c0; } .ds-select:focus-visible { outline: 2px solid #0038A8; outline-offset: 1px; border-color: #0038A8; }"
+    },
+    {
+      "name": "Rail Navigation Item",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Sidebar item; the active one carries the yellow marker.",
+      "html": "<div class=\"ds-rail\"><div class=\"ds-nav\">Division Summary View</div><div class=\"ds-nav ds-active\">District Profile View</div></div>",
+      "css": ".ds-rail { background: #002266; padding: 12px 0; width: 260px; font-family: 'Public Sans','Segoe UI',system-ui,sans-serif; } .ds-nav { position: relative; margin: 1px 12px; padding: 9px 12px; border-radius: 6px; font-size: 0.875rem; color: #cdd7ef; cursor: pointer; transition: background-color 150ms ease, color 150ms ease; } .ds-nav:hover { background: rgba(255,255,255,0.08); color: #fff; } .ds-active { background: rgba(255,255,255,0.13); color: #fff; font-weight: 600; } .ds-active::before { content: ''; position: absolute; left: -12px; top: 8px; bottom: 8px; width: 4px; border-radius: 0 3px 3px 0; background: #FCD116; }"
+    },
+    {
+      "name": "Proficiency Level Key",
+      "kind": "chip",
+      "refersTo": "level-advanced",
+      "description": "A level is a small colored square plus the level word. Not a filled pill.",
+      "html": "<span class=\"ds-level ds-adv\">Advanced</span> <span class=\"ds-level ds-pro\">Proficient</span> <span class=\"ds-level ds-app\">Approaching Proficiency</span> <span class=\"ds-level ds-dev\">Developing</span> <span class=\"ds-level ds-beg\">Beginning</span>",
+      "css": ".ds-level { display: inline-flex; align-items: center; gap: 7px; font-size: 0.82rem; font-weight: 600; white-space: nowrap; margin-right: 12px; font-family: 'Public Sans','Segoe UI',system-ui,sans-serif; } .ds-level::before { content: ''; width: 9px; height: 9px; border-radius: 2px; background: currentColor; } .ds-adv { color: #17703f; } .ds-pro { color: #1b56b0; } .ds-app { color: #765a00; } .ds-dev { color: #a14510; } .ds-beg { color: #a3221a; }"
+    },
+    {
+      "name": "Proficiency Ruler",
+      "kind": "custom",
+      "refersTo": "level-advanced",
+      "description": "Signature component: 60 to 100 scale split at cutoffs 75/80/85/90 with a marker where the score sits (shown at 83.4).",
+      "html": "<div class=\"ds-ruler\"><span class=\"ds-t\" style=\"left:37.5%\" data-v=\"75\"></span><span class=\"ds-t\" style=\"left:50%\" data-v=\"80\"></span><span class=\"ds-t\" style=\"left:62.5%\" data-v=\"85\"></span><span class=\"ds-t\" style=\"left:75%\" data-v=\"90\"></span><span class=\"ds-m\" style=\"left:58.5%\"></span></div>",
+      "css": ".ds-ruler { position: relative; height: 6px; border-radius: 3px; margin: 12px 0 22px; background: linear-gradient(to right, #f1cdc9 0 37.5%, #f6d9bd 37.5% 50%, #f2e5ac 50% 62.5%, #c9dbf4 62.5% 75%, #c6e5d2 75% 100%); } .ds-m { position: absolute; top: -4px; width: 4px; height: 14px; margin-left: -2px; border-radius: 2px; background: #101b33; box-shadow: 0 0 0 2px #fff; } .ds-t { position: absolute; top: 9px; width: 1px; height: 4px; background: #bfc8da; } .ds-t::after { content: attr(data-v); position: absolute; top: 5px; left: 50%; transform: translateX(-50%); font-size: 0.66rem; color: #8592ad; font-family: 'Public Sans','Segoe UI',system-ui,sans-serif; }"
+    },
+    {
+      "name": "KPI Band",
+      "kind": "card",
+      "refersTo": "sheet",
+      "description": "Figures in one ruled strip with a 1px gap grid, not floating cards.",
+      "html": "<div class=\"ds-kpis\"><div class=\"ds-kpi\"><div class=\"ds-kt\">Division MPS</div><div class=\"ds-kv\">83.42%</div><div class=\"ds-ks\">Approaching Proficiency</div></div><div class=\"ds-kpi\"><div class=\"ds-kt\">Records</div><div class=\"ds-kv\">1,452</div><div class=\"ds-ks\">Across 11 districts</div></div></div>",
+      "css": ".ds-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1px; background: #dde3ee; border: 1px solid #dde3ee; border-radius: 8px; overflow: hidden; font-family: 'Public Sans','Segoe UI',system-ui,sans-serif; font-variant-numeric: tabular-nums; } .ds-kpi { background: #fff; padding: 18px 20px 16px; } .ds-kt { font-size: 0.8rem; font-weight: 600; color: #56627e; } .ds-kv { font-size: 2rem; font-weight: 650; letter-spacing: -0.02em; line-height: 1.1; margin-top: 8px; color: #101b33; } .ds-ks { margin-top: 10px; font-size: 0.8rem; color: #56627e; }"
+    },
+    {
+      "name": "Data Table Row",
+      "kind": "custom",
+      "refersTo": "sheet",
+      "description": "Hairline-ruled ledger: muted sentence-case heads, right-aligned tabular figures, level key beside the score.",
+      "html": "<table class=\"ds-table\"><thead><tr><th>District</th><th style=\"text-align:right\">Overall MPS</th></tr></thead><tbody><tr><td>Asuncion</td><td class=\"ds-num\">83.42%</td></tr><tr><td>Carmen</td><td class=\"ds-num\">76.10%</td></tr></tbody></table>",
+      "css": ".ds-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; color: #101b33; font-family: 'Public Sans','Segoe UI',system-ui,sans-serif; font-variant-numeric: tabular-nums; } .ds-table th { text-align: left; color: #56627e; font-size: 0.78rem; font-weight: 600; padding: 10px 14px; border-bottom: 1px solid #bfc8da; white-space: nowrap; } .ds-table td { padding: 10px 14px; border-bottom: 1px solid #dde3ee; } .ds-table tbody tr:last-child td { border-bottom: 0; } .ds-table tbody tr:hover { background: #f6f8fc; } .ds-num { text-align: right; }"
+    },
+    {
+      "name": "Test Environment Banner",
+      "kind": "custom",
+      "refersTo": "notice-banner",
+      "description": "Persistent non-printing notice that figures may include sample data.",
+      "html": "<div class=\"ds-banner\">Test environment: figures may include sample data.</div>",
+      "css": ".ds-banner { background: #fbf1c9; color: #5a4400; font-weight: 500; font-size: 0.8rem; padding: 7px 32px; border-bottom: 1px solid #ecdc9c; font-family: 'Public Sans','Segoe UI',system-ui,sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Report on the Desk",
+    "overview": "The screen shows each of the nine views as the official sheet it prints as. A cool, blue-tinted desk (#eceff5) holds one white sheet with a hairline border and a screen-only letterhead line that mirrors the printed header. What staff read is what the Division receives. Mode is Operate: a records tool for a public institution, where the figure, its proficiency level and its comparison come before any decoration.\n\nThe shell speaks DepEd: navy (#002266) rail and login panel, ultramarine (#0038A8) for actions and focus. Yellow (#FCD116) is a rare marker, used only on the active-nav tab and the short rule above the login heading. Everything else is quiet ink on white, separated by 1px hairlines rather than boxes. Color is reserved for meaning: the five proficiency bands.\n\nEverything in this system is screen-only. The original @media print block is frozen so the printed report layout does not change. The legacy base CSS that precedes the redesign layer exists only to serve print and as the fallback beneath the redesign.",
+    "keyCharacteristics": [
+      "Report-sheet-first: tinted desk, one white sheet, letterhead line, ruled sections inside it (no boxes in boxes).",
+      "One family (Public Sans, self-hosted variable font) with tabular figures everywhere; sentence-case labels.",
+      "Flat surfaces and 1px hairlines; the sheet alone gets a soft lift.",
+      "Color means proficiency level and nothing else; the ruler is the signature.",
+      "150ms state transitions only."
+    ],
+    "rules": [
+      { "name": "The Color Means Level Rule", "body": "The five level colors appear only in the level key (a 9px square plus the level word), the ruler bands and the login scale legend. Never use them for decoration, section identity or status chrome. The word always accompanies the color.", "section": "colors" },
+      { "name": "The Rare Yellow Rule", "body": "Yellow marks the one place you are (active nav) and the login rule. It is never a fill, button or highlight on the sheet.", "section": "colors" },
+      { "name": "The Sentence-Case Rule", "body": "Labels, column heads and nav groups are sentence case, not uppercase, with no letter-spacing.", "section": "typography" },
+      { "name": "The Tabular Figures Rule", "body": "Numbers are tabular and right-aligned in tables (.num); never mix in a second numeric face.", "section": "typography" },
+      { "name": "The Flat Sheet Rule", "body": "Nothing on the sheet casts a shadow. Rows, cards, KPIs and buttons separate with hairlines or tone.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do treat each view as the sheet: tinted desk, white sheet, letterhead line, hairline-separated sections.",
+      "Do show a level as the 9px square plus its word, and a score against the 60 to 100 ruler with cutoffs 75/80/85/90.",
+      "Do keep figures tabular and right-aligned; keep labels sentence case.",
+      "Do keep every redesign rule inside @media screen and leave the original @media print block untouched; mark any new screen-only element .screen-only so it is hidden in print.",
+      "Do keep transitions at 150ms ease on color, background and border only.",
+      "Do keep yellow to the active-nav marker and the login rule."
+    ],
+    "donts": [
+      "Don't use level colors for anything but proficiency level (key, ruler bands, login legend).",
+      "Don't reintroduce floating colored-top KPI cards, filled pill badges, per-section accent colors, or uppercase titles repeated per screen.",
+      "Don't box a section inside a bordered, shadowed card inside the sheet.",
+      "Don't add shadows on the sheet's contents, or animation beyond 150ms state transitions.",
+      "Don't change a label, number or calculation for presentation reasons, and don't alter the printed report layout.",
+      "Don't let the screen-only styling leak into print or inherit from the legacy base look."
+    ]
+  }
+}
