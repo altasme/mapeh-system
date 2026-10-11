@@ -9,7 +9,9 @@
 - Shared Supabase database design replacing per-browser storage: migrations, seeds, and a deterministic sample data set.
 - Supabase login replacing hardcoded accounts. District access is enforced in the database (RLS), not only in the page.
 - Code audit: docs/AUDIT.md (29 register entries: 15 fixed in code, 12 documented for the upgrade, 2 accepted risks; plus 9 findings added during the build).
-- Visual polish: responsive layout with phone drawer menu, loading / empty / error states, toasts, test-environment banner, re-authentication modal, keyboard-operable navigation.
+- Visual polish: responsive layout with phone drawer menu, loading / empty / error states, toasts, test-environment banner, re-authentication modal, keyboard-operable navigation. Redesigned on 2026-10-11 (see DESIGN.md).
+- Download CSV (Admin and Supervisor only, in the page header): downloads every record in the database as one CSV, sorted by school year, district, term and grade. Columns use the import template's names so the file can be re-imported, plus Proficiency Level, Sample Data, Record ID and Date Added. Notes, settings and users are not included.
+- Division signatories in Settings are laid out as three aligned rows (Prepared by, Checked by, Noted by), each with Name and Position.
 - Placeholders shipped on purpose: `public/config.js` and `public/_headers` contain `[PROJECT-REF]` and `[PUBLISHABLE_KEY]` until the Supabase project exists. The site shows "not configured yet" on the login screen until they are filled.
 - Verification: 118 automated checks against an in-memory stand-in (`node tools/qa/run_qa.mjs`), the RLS matrix on a local Postgres, and, against the LIVE project and the DEPLOYED site (real CSP, real CDN scripts with SRI): 27 of 27 access-rule checks as real signed-in users (`tools/verify-live.mjs`), 20 of 20 browser checks (`LIVE_URL=... node tools/qa/live_smoke.mjs`), 15 of 15 write-path checks with full restore (`tools/qa/live_writes.mjs`: manual entry, valid and invalid Excel imports, baseline edit, notes, settings), and all 13 accounts signing in. Not tested live: the 360px layout and print output (checked on the stand-in only) and a client walkthrough.
 
@@ -84,7 +86,7 @@ All flags are reserved and unwired.
 - Repo: https://github.com/altasme/mapeh-system
 
 ## 9. Known limitations
-- No record editing or single-record delete; no Excel data export.
+- No record editing or single-record delete; no Excel (.xlsx) data export. The CSV download covers assessment records only.
 - Import applies silent defaults; one bad row rejects the whole file; no duplicate detection.
 - Division MPS differs between Division Summary and Dashboard (different averaging, AUDIT M3).
 - Inline script handlers require 'unsafe-inline' in CSP (AUDIT R1, accepted).
