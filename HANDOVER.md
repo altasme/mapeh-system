@@ -1,7 +1,7 @@
 # HANDOVER: MAPEH Davao del Norte Assessment System · Test Deployment
 
 **Built by:** Altaventures Business Development Services
-**Handover date:** 2026-10-11 (build complete; deployment steps in section 2 still to be done)  ·  **Spec version built:** v1.2
+**Handover date:** 2026-10-11 (Supabase live; Cloudflare Pages deploy still to be done)  ·  **Spec version built:** v1.2
 **Test URL:** TBD (set when the Cloudflare Pages project is created)  ·  **Repo:** https://github.com/altasme/mapeh-system (private)
 
 ## 1. What was delivered
@@ -11,22 +11,22 @@
 - Code audit: docs/AUDIT.md (29 register entries: 15 fixed in code, 12 documented for the upgrade, 2 accepted risks; plus 9 findings added during the build).
 - Visual polish: responsive layout with phone drawer menu, loading / empty / error states, toasts, test-environment banner, re-authentication modal, keyboard-operable navigation.
 - Placeholders shipped on purpose: `public/config.js` and `public/_headers` contain `[PROJECT-REF]` and `[PUBLISHABLE_KEY]` until the Supabase project exists. The site shows "not configured yet" on the login screen until they are filled.
-- Verification: 118 automated checks (`node tools/qa/run_qa.mjs`) and the RLS matrix on a local Postgres. These ran against an in-memory stand-in for Supabase, not the real project. Section 2 lists the real-project checks still to do.
+- Verification: 118 automated checks against an in-memory stand-in (`node tools/qa/run_qa.mjs`), the RLS matrix on a local Postgres, and, against the LIVE Supabase project: 27 of 27 access-rule checks as real signed-in users (`tools/verify-live.mjs`), 20 of 20 browser checks of the real app with real CDN scripts and SRI (`tools/qa/live_smoke.mjs`), and all 13 accounts signing in.
 
 ## 2. Run & deploy
 No build step.
 
-**One-time Supabase setup (Altaventures account, region Singapore, ap-southeast-1)**
+**One-time Supabase setup: DONE on project `yesnxycbzwaaugqbwowd` (steps 1 to 5 below, run 2026-10-11). Kept for rebuilding.**
 1. Create the project. Authentication > Providers > Email: turn **off** "Allow new users to sign up" and "Confirm email".
-2. SQL editor, in order: `supabase/migrations/0001_schema.sql`, `0002_rls.sql`, `0003_audit.sql`, then `supabase/seed/districts.sql`, `settings.sql`.
+2. SQL editor: paste and run `supabase/setup_all.sql` (migrations 0001 to 0003 plus the districts and settings seeds in one file).
 3. Create the 13 accounts: from a terminal run
    `SUPABASE_URL=https://<ref>.supabase.co SUPABASE_SERVICE_ROLE_KEY=<service key> node tools/provision-accounts.mjs`
    (add `--dry-run` first to preview). It reads each password from `legacy/mapehDavNor.original.html`, never prints it, and also inserts the profiles rows. Keep the service-role key out of chat, files and git.
-4. SQL editor: `supabase/seed/demo_records.sql` (1,452 sample rows, all flagged).
-5. SQL editor: `supabase/tests/rls_matrix.sql`. Expect five `PASS` notices (it rolls back).
+4. Load the 1,452 flagged sample rows: `node tools/load-demo-records.mjs` (same env vars as step 3; `supabase/seed/demo_records.sql` is the equivalent SQL).
+5. Check the access rules: `supabase/tests/rls_matrix.sql` in the SQL editor (five `PASS` notices, rolls back) and `node tools/verify-live.mjs` over the public API.
 
 **Cloudflare Pages**
-6. Edit `public/config.js` (project URL, publishable key) and `public/_headers` (project ref in `connect-src`). Commit.
+6. `public/config.js` and `public/_headers` already hold the project URL, publishable key and ref (done).
 7. Create the Pages project from this repo: framework preset None, build command empty, output directory `public`. Deploys on every push to `main`.
 8. In Supabase Authentication > URL Configuration set Site URL to the Pages URL.
 9. **Real-project checks before handing over:** sign in as each of the 13 accounts; confirm a coordinator sees only their district; run one Excel import, one manual entry, one baseline edit; print one report; run `tools/verify-sri.sh`.
@@ -61,7 +61,7 @@ All flags are reserved and unwired.
 - Star 9: default `*.pages.dev` address; custom domain not set.
 
 ## 6. Data-integrity status
-- [ ] Demo rows present: 1,452 once `demo_records.sql` is loaded. Purge: `delete from public.assessment_records where is_demo;`
+- [x] Demo rows present: 1,452 (loaded). Purge: `delete from public.assessment_records where is_demo;`
 - [x] Test banner on (`environment: "test"`)
 - [ ] Coordinator names and signatories replaced with real values (not done: star 5)
 - [x] Real data: not applicable (prototype, star 4). Real data requires an upgrade plus SDO authorization
@@ -79,7 +79,7 @@ All flags are reserved and unwired.
 
 ## 8. Accounts & infrastructure (pointers, NOT secrets)
 - Cloudflare Pages: Altaventures account / project name TBD
-- Supabase: Altaventures dedicated account / project ref TBD / region ap-southeast-1 / plan TBD
+- Supabase: Altaventures dedicated account / project ref `yesnxycbzwaaugqbwowd` / region ap-southeast-1 (confirm in dashboard) / plan TBD
 - Inactivity pause behavior and backups: check the plan at creation. Free projects have historically paused after about a week of inactivity and have no automated backups. Record the chosen plan here, and take a manual export (Dashboard > Database > Backups, or `pg_dump`) before any client session if the plan has no backups.
 - Repo: https://github.com/altasme/mapeh-system
 
@@ -93,6 +93,6 @@ All flags are reserved and unwired.
 - The original passwords are still in use (AUDIT R2).
 
 ## 10. Recommended next steps
-- Before the client's first session: complete section 2 steps 1 to 9 and send the Test URL.
+- Before the client's first session: complete Cloudflare steps 7 to 9 in section 2 and send the Test URL. Rotate the Supabase database password, secret key and service-role key (they were shared in a chat transcript).
 - Ask the client to confirm: real coordinator names and signatories, whether Supervisor should keep Admin powers, how division MPS should be averaged, and the "8 IPED" wording.
 - When the client is ready for real data: change all passwords, move to a paid plan with backups, purge the sample rows, set `environment` to "production", and scope the upgrade items in section 4.
