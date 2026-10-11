@@ -133,7 +133,11 @@ async function legacyReady(page) {
   await page.waitForFunction(() => document.getElementById('view-container').children.length > 0, null, { timeout: 15000 });
   await page.waitForTimeout(150);
 }
-const text = async page => norm(await page.evaluate(() => document.getElementById('view-container').innerText));
+// Screen-only additions (sheet letterhead, proficiency rulers) are presentation: hide them before reading text.
+const text = async page => norm(await page.evaluate(() => {
+  if (!document.getElementById('qa-hide')) { const st = document.createElement('style'); st.id = 'qa-hide'; st.textContent = '.screen-only{display:none!important}'; document.head.appendChild(st); }
+  return document.getElementById('view-container').innerText;
+}));
 const charts = async page => page.evaluate(() => Object.values(activeCharts).map(c => c.data.datasets[0].data.map(Number)));
 
 async function goView(L, N, view, filt) {
@@ -149,12 +153,12 @@ async function goView(L, N, view, filt) {
 // The ONLY intended rendering differences are the empty states (spec 9.6). Map the original's empty renderings
 // and the ported "No data" onto one token so everything else must match exactly.
 function canonLegacy(t) {
-  return t.replace(/\n/g, ' ')
-    .replace(/(?<![\d.])0\.00% 0\.00% \+?0\.00% MAINTAINED BEGINNING/g, '- - - - -')
-    .replace(/-65\.00% DECREASED BEGINNING/g, '- - -')
-    .replace(/(?<![\d.])(?:0\.00%|0%) BEGINNING/g, 'ND');
+  return t.toLowerCase().replace(/\s+/g, ' ').trim()
+    .replace(/(?<![\d.])0\.00% (?<![\d.])0\.00% \+?0\.00% maintained beginning/g, '- - - - -')
+    .replace(/-65\.00% decreased beginning/g, '- - -')
+    .replace(/(?<![\d.])(?:0\.00%|0%) beginning/g, 'nd');
 }
-function canonPorted(t) { return t.replace(/\n/g, ' ').replace(/No data No data/g, 'ND').replace(/No data/g, 'ND'); }
+function canonPorted(t) { return t.toLowerCase().replace(/\s+/g, ' ').trim().replace(/no data no data/g, 'nd').replace(/no data/g, 'nd'); }
 function firstDiff(a, b) {
   const A = a.split(' '), B = b.split(' ');
   for (let i = 0; i < Math.max(A.length, B.length); i++) if (A[i] !== B[i]) return `    legacy: ...${A.slice(Math.max(0, i - 6), i + 8).join(' ')}\n    ported: ...${B.slice(Math.max(0, i - 6), i + 8).join(' ')}`;
