@@ -1,55 +1,63 @@
 # AUDIT: MAPEH Davao del Norte Assessment System
 
-Source audited: `legacy/mapehDavNor.original.html` (2,304 lines, unmodified).
-Spec: `CLAUDE.md` v1.2, Appendix B is the starting register.
-Status of this file: M0 verification complete. Dispositions marked FIX are applied in M2 to M4 and re-checked at M5.
+Source audited: `legacy/mapehDavNor.original.html` (2,304 lines, unmodified, kept as the regression baseline).
+Spec: `CLAUDE.md` v1.2. Appendix B was the starting register; every row was checked against the code.
+Line numbers refer to the legacy file. "Result" says what the build did and how it was checked.
 
-Verification method: each finding was checked against the code (line numbers refer to the legacy file).
+## Register
 
-## Verified findings
+| ID | Sev | Finding (verified in code) | Disposition | Result |
+|----|-----|----------------------------|-------------|--------|
+| C1 | Critical | `USER_ACCOUNTS` lines 488-503: 13 accounts with plaintext passwords including Admin. Matches Appendix D exactly | FIX | Removed. Supabase Auth. No password exists in `public/`. QA step 1 and the secret scan confirm |
+| C2 | Critical | Line 505 trusts `currentUser` from `sessionStorage`; anyone can edit it to Admin | FIX | Profile is read from `profiles` after sign-in; RLS enforces scope. QA 7: no user object in sessionStorage. RLS matrix passes (local Postgres) |
+| C3 | Critical | Lines 2254-2273: cleartext `prompt()` compared to the literal Admin password | FIX | Re-authentication modal (masked field, `signInWithPassword`). QA 5 |
+| C4 | Critical | Stored XSS: 206 `${}` interpolations, stored text rendered via `innerHTML` | FIX | `esc()` on every stored or imported string; policy comment above the renderers. QA 4 shows the payload running in the original and not in the port, including `</textarea>` in notes |
+| C5 | Critical | `seedDemoData()` lines 661-711 seeded 1,452 unflagged random records | FIX | Removed from runtime. `supabase/seed/demo_records.sql` is deterministic, every row `is_demo = true`, banner shown, SAMPLE DATA line on print |
+| H1 | High | SheetJS 0.18.5 known vulnerabilities | FIX | 0.20.3 from `cdn.sheetjs.com` (0.20.4 and later do not exist on that CDN at build time) |
+| H2 | High | IndexedDB writes had no error handling | FIX | Every write awaited, `error` checked, success toast only after confirmation. QA 6 (offline: no false success) |
+| H3 | High | Baseline edit silently rewrote every matching record | FIX | Count query then confirm "This will change the baseline on N records". QA 6 |
+| H4 | High | (migration) PostgREST 1,000-row cap | FIX | Paginated reads. QA 2: all 1,452 rows seen though the stand-in caps at 1,000 |
+| H5 | High | CDN scripts without SRI | FIX | Pinned versions with SRI; `tools/verify-sri.sh` re-checks them against the CDNs |
+| M1 | Med | Import silently defaults grade, subject, term, MPS 0, baseline 65 | DOC | Preserved (upgrade `importValidation`) |
+| M2 | Med | No duplicate detection | DOC | Preserved (upgrade `duplicateDetection`) |
+| M3 | Med | "Division MPS" computed two ways (mean of district means of term means vs flat mean). Zero-valued term means are treated as missing | DOC | Preserved. The regression fixture pins both numbers (83.75% vs 84.00%). Client to confirm (star 10) |
+| M4 | Med | Unweighted means, no learner counts | DOC | Preserved |
+| M5 | Med | Proficiency cutoffs 90/85/80/75 unconfirmed | DOC | Preserved and pinned by the fixture |
+| M6 | Med | Least-learned ranking groups exact text | DOC | Preserved |
+| M7 | Med | Mixed record grain (district vs school) | DOC | Preserved |
+| M8 | Med | Key Stage filter uses `keyStage`; comparative uses grade membership | DOC | Preserved |
+| M9 | Med | No edit, single delete, or data export | DOC | Not built (feature flags reserved, unwired) |
+| M10 | Med | Supervisor equals Admin | DOC | Preserved in RLS (`app_is_division_user`). Client to confirm (star 8) |
+| L1 | Low | Empty groups showed "0.00% Beginning" and "-65.00% Decreased" | FIX | Display only: "No data" or "-". Calculations untouched. QA 3 and 7 |
+| L2 | Low | Logout kept filter state | FIX | `signOut()` then reload |
+| L3 | Low | Dead `readAsBuffer` branch | FIX | Removed |
+| L4 | Low | Placeholder-looking default names print on reports | DOC | Seeded verbatim (star 5); banner stays on; Admin replaces them in Settings |
+| L5 | Low | School years start 2025-2026 | DOC | Preserved |
+| L6 | Low | Nav items not keyboard operable | FIX | `role=button`, `tabindex=0`, Enter and Space. QA 7 |
+| L7 | Low | Logos stored with no size cap | FIX | 500 KB cap with a message |
+| R1 | Accepted | CSP needs `'unsafe-inline'` for scripts (inline handlers kept) | Accepted | `esc()` is the real XSS control |
+| R2 | Accepted | Original passwords kept by client direction (v1.2). Anyone holding the original file can sign in as any account, including Admin | Accepted | Prototype only. Replace the passwords before any real data goes in |
 
-| ID | Sev | Verified | Evidence (legacy file) | Disposition |
-|----|-----|----------|------------------------|-------------|
-| C1 | Critical | Yes | `USER_ACCOUNTS` lines 488-503: 13 accounts with plaintext passwords, including Admin. Matches Appendix D exactly (names, roles, districts) | FIX: Supabase Auth |
-| C2 | Critical | Yes | Line 505 reads `currentUser` from `sessionStorage`; any user can edit it to role Admin, district ALL | FIX: profile from DB plus RLS |
-| C3 | Critical | Yes | Lines 2254-2259 and 2269-2273: `prompt()` shows the typed password in clear text and compares to the literal `"depedmapehDavNor"`, which is also the Admin login password | FIX: re-auth modal |
-| C4 | Critical | Yes | 206 `${` interpolations; stored and imported text (school, competency, notes, coordinator names, settings in `value="..."`) goes into `innerHTML` unescaped, e.g. lines 1061-1063 | FIX: `esc()` |
-| C5 | Critical | Yes | `seedDemoData()` lines 661-711, called from `initDB()` line 655. 11 districts x 3 terms x 4 grades x 11 subjects = 1,452 records, unflagged, SY 2025-2026. Uses `Math.random()`, so the sample is not reproducible | FIX: removed at runtime; replaced by a deterministic, flagged `demo_records.sql` |
-| H1 | High | Yes | Line 9: `xlsx@0.18.5` | FIX: upgrade |
-| H2 | High | Yes | `addRecord`, `bulkInsert`, `deleteRecordsBySY`, `clearDatabase` (lines 723-766) have no `onerror` handlers; `getAllRecords` has none either; a failed transaction never resolves | FIX: confirmed writes |
-| H3 | High | Yes | `updateBaselineMpsForStage` lines 768-800 rewrites `baselineMps` on all matching records with no confirmation | FIX: count plus confirm |
-| H4 | High | Yes (migration risk) | PostgREST caps responses at 1,000 rows; the demo set alone is 1,452 | FIX: pagination |
-| H5 | High | Yes | Lines 8-9: CDN scripts without SRI | FIX: pin plus SRI |
-| M1 | Med | Yes | Import defaults (lines 1779-1851): term "Term 1", key stage "Key Stage 1", grade "Grade 1", subject "MAPEH - Music & Arts", MPS 0, baseline 65, pct75 0, district "Unassigned" | DOC |
-| M2 | Med | Yes | No duplicate check in import | DOC |
-| M3 | Med | Yes | Division Summary (lines 1047-1072): mean of district means of term means, and zero is treated as "no data". Dashboard (line 1453): flat mean of all records. Different results for the same filter | DOC (client confirms, star 10) |
-| M4 | Med | Yes | No learner counts stored; all aggregates are unweighted means of record MPS | DOC |
-| M5 | Med | Yes | `getPL` lines 803-809 uses 90/85/80/75 cutoffs | DOC (confirm official scale) |
-| M6 | Med | Yes | Least-learned ranking groups by exact text | DOC |
-| M7 | Med | Yes | MAPEH rows are district-level (no school); special programs are school-level; averaged together | DOC |
-| M8 | Med | Yes | Global filter matches `r.keyStage` (line 837); comparative table matches by `ksObj.grades.includes(r.gradeLevel)` (line 791). A record with mismatched key stage and grade appears in one but not the other | DOC |
-| M9 | Med | Yes | Only the template download exists; no record edit, single delete, or data export | DOC |
-| M10 | Med | Yes | `canAccessSettings()` lines 508-510 treats Supervisor like Admin | DOC (star 8) |
-| L1 | Low | Yes | Empty group renders `0.00%` with "Beginning" (line 1067) and the comparative table uses a baseline of 65 for empty key stages (line ~1241) giving "-65.00% Decreased" | FIX: display only |
-| L2 | Low | Yes | `handleLogout` lines 541-547 does not reset `filters` | FIX: reload on sign-out |
-| L3 | Low | Yes | Line 1860 `reader.readAsBuffer ? ...` is dead code (method does not exist) | FIX |
-| L4 | Low | Yes | Placeholder-looking coordinator and signatory names, lines 611-634 | DOC plus banner (star 5) |
-| L5 | Low | Yes | Line 564: school years run 2025-2026 to 2034-2035 | DOC |
-| L6 | Low | To check in M4 | Nav items are not keyboard operable | FIX |
-| L7 | Low | Yes | Logos stored as base64 in settings (lines 2138-2161) with no size cap | FIX: 500 KB cap |
-| R1 | Accepted | n/a | CSP needs `'unsafe-inline'` for scripts (inline `onclick`) | Accepted |
-| R2 | Accepted | n/a | Original passwords kept by client direction (v1.2). Anyone holding the original file can sign in as any account including Admin | Accepted for prototype; new passwords before real data |
-
-## New findings from M0 (not in Appendix B)
+## Findings added during the build
 
 | ID | Sev | Finding | Disposition |
 |----|-----|---------|-------------|
-| N1 | Low | Division Summary subtitle (line 1089) says "2 MAPEH, 7 SPA, 30 SPS, 10 SPFL & 8 IPED". `IPED_OFFERS` has 9 entries, so `SUBJECTS.length` is 58 while the text adds to 57. Copy is wrong | DOC (copy fix is a one-word change; apply only if the client agrees, since it changes displayed text) |
-| N2 | Low | Zero MPS is treated as "no data" in Division Summary (`v > 0` filters, line 1053). A real term average of exactly 0 would be dropped. Unlikely in practice | DOC |
-| N3 | Low | Import district fallback "Unassigned" is invalid after migration (district is a foreign key) | FIX per spec 9.2: reject row with row number and value |
-| N4 | Info | `seedDemoData` creates the same school name for every grade of a district, so demo data is not a realistic school mix | DOC |
+| N1 | Low | Copy says "8 IPED" in the header, Division Summary and several views, but `IPED_OFFERS` has 9 entries, so `SUBJECTS.length` is 58 while the text adds up to 57 | DOC. Left as is because it changes displayed text. One-word fix if the client agrees |
+| N2 | Low | Zero MPS treated as "no data" in Division Summary (`v > 0`) | DOC |
+| N3 | Low | Import district fallback "Unassigned" cannot exist once districts are a foreign key | FIX per spec 9.2: the file is rejected with row numbers and values |
+| N4 | Info | The original `seedDemoData` used `Math.random()`, so sample data was never reproducible | FIX: fixed-seed generator `tools/gen_demo_records.py` |
+| N5 | Info | The original app had a render race: a slow async view could overwrite a newer one (seen when changing filters quickly) | FIX as a side effect: each view render is token-guarded |
+| N6 | Low | District coordinators are saved with 11 separate updates. RLS forbids a single upsert (no insert policy), so a failure partway can leave some rows saved | Mitigated: results are checked, the screen reloads what the database really holds, and the failed districts are named. Not silent. A single RPC function would make it atomic (upgrade) |
+| N7 | Info | supabase-js keeps the session token in the browser's localStorage. This is the library's normal behavior and is what keeps users signed in | Accepted. Output escaping (C4) is the control that protects it |
+| N8 | Info | The page `<title>` and a few settings captions said "local browser database". Two captions in Settings were reworded because the database is no longer local | Done |
+| N9 | Info | Phone layout: the "Special Programs Matrix" tag in the header is hidden under 640px so the user badge and filters fit on one screen | Done |
 
-## Decisions recorded
+## How this was checked
 
-- Formulas are not changed anywhere. The regression fixture (`fixtures/regression.json`) pins current behavior, including M3, so any port deviation shows up.
-- Passwords exist only in `legacy/`, which is outside `public/` and never deployed. This file does not reproduce them.
+Run `node tools/qa/run_qa.mjs` (needs Playwright and the cached CDN files). 118 checks pass:
+seed fidelity against the original, parity of 7 views under 5 filter combinations on the 1,452-row set,
+the hand-computed regression fixture, XSS, roles, destructive actions, write errors, 360px layout,
+print CSS identity and PDF text identity. The ported app runs against `tools/qa/stub-supabase.js`,
+an in-memory stand-in. That proves the application logic. It does not prove Supabase itself: the real RLS
+policies are tested by `supabase/tests/rls_matrix.sql` (passes on a local Postgres 16 with a minimal
+Supabase shim), and a final browser run against the real project is part of deployment (HANDOVER section 2).

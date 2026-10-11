@@ -1,0 +1,2696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DepEd SDO Division Assessment System (MAPEH, SPA, SPS, SPFL & IPED Subjects)</title>
+<!-- Chart.js, SheetJS (XLSX) and supabase-js: versions pinned, integrity-checked -->
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R" crossorigin="anonymous"></script>
+<style>
+:root {
+    --deped-blue: #0038A8;
+    --deped-dark: #002266;
+    --deped-yellow: #FCD116;
+    --bg-body: #F4F6F9;
+    --card-bg: #FFFFFF;
+    --text-dark: #1A202C;
+    --text-muted: #718096;
+    --border-color: #E2E8F0;
+    --success: #2F855A;
+    --warning: #DD6B20;
+    --danger: #E53E3E;
+    --sidebar-width: 260px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif; }
+body { background-color: var(--bg-body); color: var(--text-dark); display: flex; min-height: 100vh; }
+
+/* AUTHENTICATION LOGIN OVERLAY */
+#login-screen {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(135deg, var(--deped-dark) 0%, var(--deped-blue) 100%);
+    z-index: 10000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+.login-card {
+    background: white;
+    width: 100%;
+    max-width: 420px;
+    padding: 40px 30px;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    border-top: 6px solid var(--deped-yellow);
+    text-align: center;
+}
+.login-card h2 { color: var(--deped-dark); font-size: 1.25rem; margin-bottom: 4px; text-transform: uppercase; }
+.login-card p { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 24px; }
+.login-form { display: flex; flex-direction: column; gap: 16px; text-align: left; }
+.login-form label { font-size: 0.75rem; font-weight: bold; color: var(--text-dark); text-transform: uppercase; }
+.login-form input, .login-form select {
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.88rem;
+    width: 100%;
+}
+.login-form input:focus, .login-form select:focus { outline: 2px solid var(--deped-blue); }
+
+/* SIDEBAR NAVIGATION */
+#sidebar {
+    width: var(--sidebar-width);
+    background-color: var(--deped-dark);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0; bottom: 0; left: 0;
+    z-index: 100;
+}
+.sidebar-brand {
+    padding: 18px 15px;
+    background-color: var(--deped-blue);
+    text-align: center;
+    border-bottom: 3px solid var(--deped-yellow);
+}
+.sidebar-brand h2 { font-size: 0.95rem; color: var(--deped-yellow); text-transform: uppercase; margin-bottom: 4px; }
+.sidebar-brand p { font-size: 0.72rem; color: #E2E8F0; }
+.nav-list { list-style: none; padding: 15px 0; flex-grow: 1; overflow-y: auto; }
+.nav-item {
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.88rem;
+    color: #CBD5E0;
+    cursor: pointer;
+    transition: 0.2s;
+    border-left: 4px solid transparent;
+}
+.nav-item:hover, .nav-item.active {
+    background-color: rgba(255, 255, 255, 0.12);
+    color: #FFFFFF;
+    border-left-color: var(--deped-yellow);
+    font-weight: 600;
+}
+
+/* MAIN WRAPPER */
+#main-wrapper {
+    margin-left: var(--sidebar-width);
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+/* HEADER */
+header.top-header {
+    background-color: white;
+    border-bottom: 1px solid var(--border-color);
+    padding: 12px 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.header-info h1 { font-size: 1.05rem; color: var(--deped-dark); text-transform: uppercase; }
+.header-info p { font-size: 0.78rem; color: var(--text-muted); }
+.user-profile-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #F7FAFC;
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+}
+.user-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--deped-blue);
+    color: white;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+}
+
+/* GLOBAL FILTER BAR */
+.filter-bar {
+    background-color: white;
+    padding: 10px 25px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+}
+.filter-item { display: flex; flex-direction: column; gap: 2px; }
+.filter-item label { font-size: 0.68rem; font-weight: bold; color: var(--text-muted); text-transform: uppercase; }
+.filter-item select { padding: 5px 10px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.82rem; }
+
+/* BUTTONS */
+.btn {
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: 0.2s;
+}
+.btn:hover { opacity: 0.9; }
+.btn-primary { background-color: var(--deped-blue); color: white; }
+.btn-success { background-color: var(--success); color: white; }
+.btn-secondary { background-color: #718096; color: white; }
+.btn-danger { background-color: var(--danger); color: white; }
+.btn-sm { padding: 4px 8px; font-size: 0.75rem; }
+
+/* CONTENT CONTAINER */
+.content-area { padding: 20px 25px; flex-grow: 1; }
+
+/* KPI CARDS */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 20px; }
+.kpi-card { background-color: var(--card-bg); padding: 16px; border-radius: 6px; border-top: 4px solid var(--deped-blue); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.kpi-title { font-size: 0.72rem; color: var(--text-muted); font-weight: bold; text-transform: uppercase; }
+.kpi-value { font-size: 1.5rem; font-weight: bold; margin-top: 4px; color: var(--text-dark); }
+.kpi-sub { font-size: 0.75rem; margin-top: 4px; }
+
+/* BADGES */
+.badge { padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: bold; text-transform: uppercase; display: inline-block; }
+.badge-advanced { background-color: #C6F6D5; color: #22543D; }
+.badge-proficient { background-color: #EBF8FF; color: #2B6CB0; }
+.badge-approaching { background-color: #FEFCBF; color: #744210; }
+.badge-developing { background-color: #FEEBC8; color: #7B341E; }
+.badge-beginning, .badge-critical { background-color: #FED7D7; color: #742A2A; }
+.badge-warning { background-color: #FEEBC8; color: #7B341E; }
+
+/* TABLES */
+.card-box { background-color: var(--card-bg); border-radius: 6px; border: 1px solid var(--border-color); box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px; overflow: hidden; }
+.card-box-header { padding: 14px 20px; background-color: #FAFAD2; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+.card-box-header h3 { font-size: 0.95rem; color: var(--deped-dark); }
+table.data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left; }
+table.data-table th, table.data-table td { padding: 10px 14px; border-bottom: 1px solid var(--border-color); }
+table.data-table th { background-color: #F7FAFC; color: var(--text-muted); font-weight: bold; text-transform: uppercase; font-size: 0.72rem; }
+table.data-table tr:hover { background-color: #EDF2F7; }
+
+/* EXCEL-STYLE COMPARATIVE TABLE STYLING */
+.excel-table-container { overflow-x: auto; margin-bottom: 20px; border: 2px solid #000; }
+table.excel-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; font-family: 'Segoe UI', Arial, sans-serif; background: #fff; }
+table.excel-table th, table.excel-table td { border: 1px solid #000; padding: 8px 12px; text-align: center; }
+table.excel-table th { background-color: #D9E1F2; color: #000; font-weight: bold; text-transform: uppercase; font-size: 0.78rem; }
+table.excel-table td.text-left { text-align: left; }
+table.excel-table tr.mapeh-row { background-color: #EBF8FF; font-weight: bold; }
+
+/* EDITABLE INPUTS IN TABLE */
+.editable-baseline-input {
+    width: 85px; padding: 5px 8px; font-size: 0.88rem; font-weight: bold; text-align: center;
+    border: 1px solid var(--deped-blue); border-radius: 4px; background-color: #FFFFE0; color: #000; transition: all 0.2s;
+}
+.editable-baseline-input:focus { background-color: #FFFFFF; outline: 2px solid var(--deped-blue); }
+
+/* EDITABLE TEXT AREAS */
+.analysis-textarea { width: 100%; min-height: 90px; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.85rem; resize: vertical; }
+
+/* UPLOAD & DATA ENTRY UI */
+.upload-dropzone { border: 2px dashed var(--deped-blue); background-color: #EBF8FF; padding: 35px; text-align: center; border-radius: 8px; margin-bottom: 20px; cursor: pointer; transition: 0.2s; }
+.upload-dropzone:hover { background-color: #E2E8F0; }
+.upload-dropzone h3 { font-size: 1.1rem; color: var(--deped-dark); margin-bottom: 6px; }
+.upload-dropzone p { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 15px; }
+.tab-menu { display: flex; border-bottom: 2px solid var(--border-color); margin-bottom: 15px; }
+.tab-btn { padding: 10px 20px; border: none; background: none; font-weight: 600; cursor: pointer; color: var(--text-muted); border-bottom: 3px solid transparent; margin-bottom: 2px; }
+.tab-btn.active { color: var(--deped-blue); border-bottom-color: var(--deped-blue); }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 15px; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 0.75rem; font-weight: 600; color: var(--text-dark); }
+.form-group input, .form-group select { padding: 7px 10px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.85rem; }
+
+/* CHARTS */
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr)); gap: 20px; margin-bottom: 20px; }
+.chart-card { background: white; padding: 16px; border-radius: 6px; border: 1px solid var(--border-color); }
+.chart-card h4 { font-size: 0.88rem; color: var(--deped-dark); margin-bottom: 10px; text-transform: uppercase; }
+.chart-container { position: relative; height: 260px; width: 100%; }
+
+/* PRINT STYLES */
+@media print {
+    #sidebar, .filter-bar, .top-header, .btn, .no-print, .tab-menu, #login-screen { 
+        display: none !important; 
+    }
+    #main-wrapper { margin-left: 0 !important; }
+    
+    body { 
+        background-color: white !important; 
+        font-size: 11pt !important; 
+    }
+    .content-area { padding: 0 !important; }
+    .card-box, .chart-card { border: 1px solid #000 !important; box-shadow: none !important; }
+    .excel-table-container { border: 1px solid #000 !important; }
+    
+    table.excel-table th, table.excel-table td,
+    table.data-table th, table.data-table td { 
+        border: 1px solid #000 !important; 
+        font-size: 11pt !important;
+    }
+    table.data-table, table.excel-table { 
+        font-size: 11pt !important; 
+    }
+
+    .editable-baseline-input, .analysis-textarea { 
+        border: none !important; 
+        padding: 0 !important; 
+        background: transparent !important; 
+        text-align: center; 
+    }
+
+    /* PRINT HEADER */
+    .print-only-header {
+        display: flex !important;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        margin-bottom: 15px;
+        border-bottom: 2px solid #000;
+        padding-bottom: 8px;
+    }
+    .print-only-header img { max-height: 70px; margin-bottom: 4px; }
+    .print-header-l1 { font-family: 'Old English Text MT', 'Times New Roman', serif; font-size: 1.1rem; font-weight: bold; }
+    .print-header-l2 { font-family: 'Times New Roman', serif; font-size: 1.3rem; font-weight: bold; }
+    .print-header-l3 { font-size: 0.95rem; font-weight: bold; letter-spacing: 0.5px; }
+    .print-header-l4 { font-size: 0.85rem; font-weight: bold; letter-spacing: 0.5px; }
+
+    /* PRINT FOOTER */
+    .print-only-footer {
+        display: flex !important;
+        justify-content: space-between;
+        align-items: center;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        border-top: 2px solid #000;
+        padding-top: 6px;
+        background: #fff;
+        font-size: 0.72rem;
+    }
+    .print-footer-logos { display: flex; align-items: center; gap: 8px; }
+    .print-footer-logos img { max-height: 45px; width: auto; }
+    
+    .print-footer-info { 
+        line-height: 1.35; 
+        color: #000; 
+        text-align: left; 
+    }
+    .print-footer-info strong { font-weight: bold; }
+
+    .print-signatories {
+        display: flex !important;
+        justify-content: space-between;
+        margin-top: 40px;
+        margin-bottom: 60px;
+        page-break-inside: avoid;
+    }
+    .sig-box { text-align: center; width: 30%; }
+    .sig-line { border-bottom: 1px solid black; margin: 35px 0 5px 0; font-weight: bold; }
+}
+
+/* POLISH: focus, disabled, loading, toast, modal, banner, scroll wrappers */
+:focus-visible { outline: 2px solid var(--deped-blue); outline-offset: 2px; }
+.nav-item:focus-visible { outline-color: var(--deped-yellow); outline-offset: -2px; }
+.btn:disabled, .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+.table-scroll { overflow-x: auto; }
+.view-loading { padding: 40px; text-align: center; color: var(--text-muted); font-size: 0.9rem; }
+.no-data { color: var(--text-muted); font-style: italic; font-weight: normal; }
+.login-error { color: var(--danger); font-size: 0.8rem; min-height: 1.1em; text-align: left; }
+#env-banner { background: #FEFCBF; color: #744210; border-bottom: 1px solid #ECC94B; padding: 6px 25px; font-size: 0.78rem; font-weight: 600; }
+#env-banner[hidden] { display: none; }
+#toast-host { position: fixed; right: 16px; bottom: 16px; z-index: 11000; display: flex; flex-direction: column; gap: 8px; max-width: min(380px, calc(100vw - 32px)); }
+.toast { padding: 10px 14px; border-radius: 4px; color: #fff; font-size: 0.85rem; box-shadow: 0 4px 12px rgba(0,0,0,0.25); overflow-wrap: anywhere; }
+.toast-success { background: var(--success); }
+.toast-error { background: var(--danger); }
+.toast-info { background: var(--deped-blue); }
+#reauth-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10500; display: none; align-items: center; justify-content: center; padding: 20px; }
+.modal-card { background: #fff; width: 100%; max-width: 380px; padding: 24px; border-radius: 8px; border-top: 6px solid var(--danger); }
+.modal-card h3 { color: var(--deped-dark); margin-bottom: 8px; font-size: 1.05rem; }
+.modal-card p { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px; }
+.modal-card input { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.9rem; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+#nav-toggle, #nav-backdrop { display: none; }
+#print-sample-line { display: none; }
+.header-info h1 { overflow-wrap: anywhere; }
+.header-info { min-width: 0; }
+
+/* RESPONSIVE */
+@media (max-width: 1023px) {
+    #sidebar { transform: translateX(-100%); transition: transform 150ms; }
+    body.nav-open #sidebar { transform: none; }
+    body.nav-open #nav-backdrop { display: block; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 90; }
+    #main-wrapper { margin-left: 0; }
+    #nav-toggle { display: inline-flex; }
+    header.top-header { flex-wrap: wrap; gap: 10px; padding: 10px 16px; }
+    .filter-bar { padding: 10px 16px; }
+    .content-area { padding: 16px; }
+    #env-banner { padding: 6px 16px; }
+}
+@media (max-width: 640px) {
+    .filter-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+    .filter-item { min-width: 0; }
+    .filter-item select { width: 100%; }
+    .filter-item:nth-child(5) { grid-column: 1 / -1; }
+    .filter-bar > div[style*="margin-left"] { grid-column: 1 / -1; margin-left: 0 !important; }
+    .top-header > div[style*="display: flex"] { width: 100%; }
+    .user-profile-badge { flex: 1 1 auto; min-width: 0; }
+    .top-header .badge-proficient { display: none; }
+    .header-info h1 { font-size: 0.92rem; }
+}
+
+/* PRINT: rules for the new elements only (the original print block above is unchanged) */
+@media print {
+    #env-banner, #toast-host, #reauth-modal, #nav-toggle, #nav-backdrop { display: none !important; }
+    .table-scroll { overflow: visible !important; }
+    body.sample-in-view #print-sample-line { display: block !important; font-weight: bold; letter-spacing: 1px; margin-top: 4px; }
+}
+
+.print-only-header, .print-only-footer, .print-signatories { display: none; }
+</style>
+</head>
+<body>
+
+<!-- AUTHENTICATION LOGIN OVERLAY -->
+<div id="login-screen">
+    <div class="login-card">
+        <h2>SDO Davao del Norte</h2>
+        <p>Division Assessment Consolidation System</p>
+        <form class="login-form" onsubmit="handleLogin(event)" autocomplete="on">
+            <div>
+                <label>Username</label>
+                <input type="text" id="login-username" placeholder="Enter username" autocomplete="username" required>
+            </div>
+            <div>
+                <label>Password</label>
+                <input type="password" id="login-password" placeholder="Enter password" autocomplete="current-password" required>
+            </div>
+            <div class="login-error" id="login-error" role="alert"></div>
+            <button type="submit" class="btn btn-primary" style="justify-content: center; width: 100%; margin-top: 8px; padding: 10px;">
+                Log In
+            </button>
+        </form>
+    </div>
+</div>
+
+<div id="toast-host" aria-live="polite"></div>
+<div id="reauth-modal" role="dialog" aria-modal="true" aria-labelledby="reauth-title">
+    <div class="modal-card">
+        <h3 id="reauth-title">Confirm your password</h3>
+        <p id="reauth-text"></p>
+        <input type="password" id="reauth-password" placeholder="Your password" autocomplete="current-password">
+        <div class="login-error" id="reauth-error" role="alert" style="margin-top:6px;"></div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="reauth-cancel">Cancel</button>
+            <button type="button" class="btn btn-danger" id="reauth-ok">Confirm</button>
+        </div>
+    </div>
+</div>
+<div id="nav-backdrop" onclick="document.body.classList.remove('nav-open')"></div>
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+    <div class="sidebar-brand">
+        <h2>SDO Davao del Norte</h2>
+        <p>MAPEH, SPA, SPS, SPFL & IPED MATRIX</p>
+    </div>
+    <ul class="nav-list">
+        <li role="button" tabindex="0" class="nav-item active" onclick="switchView('division')">Division Summary View</li>
+        <li role="button" tabindex="0" class="nav-item" onclick="switchView('district-view')">District Profile View</li>
+        <li role="button" tabindex="0" class="nav-item" onclick="switchView('comparative')">Termly Comparative Analysis</li>
+        <li role="button" tabindex="0" class="nav-item" onclick="switchView('dashboard')">Performance Dashboard</li>
+        <li role="button" tabindex="0" class="nav-item" id="nav-data-input" onclick="switchView('data-input')">Fast Data Entry & Upload</li>
+        <li role="button" tabindex="0" class="nav-item" onclick="switchView('least-learned')">Least Learned Competencies</li>
+        <li role="button" tabindex="0" class="nav-item" onclick="switchView('grade-view')">Grade Level Breakdown</li>
+        <li role="button" tabindex="0" class="nav-item" onclick="switchView('reports')">Reports & Signatories</li>
+        <li role="button" tabindex="0" class="nav-item" id="nav-settings" onclick="switchView('settings')">Settings & Branding</li>
+    </ul>
+</div>
+
+<!-- MAIN WRAPPER -->
+<div id="main-wrapper">
+    <div id="env-banner" class="no-print" role="status" hidden>Test environment: figures may include sample data.</div>
+    <!-- HEADER -->
+    <header class="top-header">
+        <button type="button" id="nav-toggle" class="btn btn-secondary btn-sm no-print" aria-label="Open menu" onclick="document.body.classList.toggle('nav-open')">&#9776; Menu</button>
+        <div class="header-info">
+            <h1>MAPEH, SPA, SPS (30 SPORTS), SPFL (10 LANGUAGES) & IPED (8 SUBJECTS) CONSOLIDATION SYSTEM</h1>
+            <p>Republic of the Philippines | Region XI SDO Davao del Norte | <span id="header-sy-label">All School Years</span></p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="user-profile-badge">
+                <div class="user-avatar" id="u-avatar">A</div>
+                <div style="text-align: left; line-height: 1.2;">
+                    <strong style="font-size: 0.8rem; color: var(--deped-dark);" id="u-name">Guest User</strong><br>
+                    <span style="font-size: 0.68rem; color: var(--text-muted);" id="u-role">View Only</span>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="handleLogout()" style="margin-left: 6px;">Logout</button>
+            </div>
+            <span class="badge badge-proficient">Special Programs Matrix</span>
+        </div>
+    </header>
+
+    <!-- GLOBAL FILTERS -->
+    <div class="filter-bar">
+        <div class="filter-item">
+            <label>School Year</label>
+            <select id="flt-sy" onchange="applyFilters()">
+                <option value="ALL">All School Years</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>Term</label>
+            <select id="flt-term" onchange="applyFilters()">
+                <option value="ALL">All Terms</option>
+                <option value="Term 1">Term 1</option>
+                <option value="Term 2">Term 2</option>
+                <option value="Term 3">Term 3</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>District Filter</label>
+            <select id="flt-district" onchange="applyFilters()">
+                <option value="ALL">All Districts</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>Key Stage</label>
+            <select id="flt-keystage" onchange="applyFilters()">
+                <option value="ALL">All Key Stages</option>
+                <option value="Key Stage 1">Key Stage 1 (Grades 1-3)</option>
+                <option value="Key Stage 2">Key Stage 2 (Grades 4-6)</option>
+                <option value="Key Stage 3">Key Stage 3 (Grades 7-10)</option>
+                <option value="Key Stage 4">Key Stage 4 (Grades 11-12)</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>Learning Area / Program Track</label>
+            <select id="flt-subject" onchange="applyFilters()">
+                <!-- Dynamically populated -->
+            </select>
+        </div>
+        <div style="margin-left: auto; display: flex; gap: 8px;">
+            <button class="btn btn-secondary" onclick="resetFilters()">Clear Filters</button>
+            <button class="btn btn-primary" onclick="window.print()">Print Report</button>
+        </div>
+    </div>
+
+    <!-- PRINT HEADER -->
+    <div class="print-only-header">
+        <img id="print-h-logo" src="" alt="Header Logo" style="display:none;" />
+        <div class="print-header-l1" id="print-h-l1">Republic of the Philippines</div>
+        <div class="print-header-l2" id="print-h-l2">Department of Education</div>
+        <div class="print-header-l3" id="print-h-l3">REGION XI</div>
+        <div class="print-header-l4" id="print-h-l4">SCHOOLS DIVISION OF DAVAO DEL NORTE</div>
+        <h2 style="text-decoration: underline; margin-top:10px;" id="print-title">MAPEH & SPECIAL PROGRAMS PROFICIENCY CONSOLIDATION REPORT</h2>
+        <p id="print-sy-label">All School Years</p>
+        <p id="print-sample-line">SAMPLE DATA</p>
+    </div>
+
+    <!-- CONTENT VIEW -->
+    <div class="content-area" id="view-container">
+        <!-- Dynamic Content -->
+    </div>
+
+    <!-- PRINT SIGNATORIES -->
+    <div class="print-signatories">
+        <div class="sig-box">
+            <p>Prepared by:</p>
+            <div class="sig-line" id="sig-p-name">JUAN DELA CRUZ</div>
+            <p id="sig-p-pos">District Coordinator</p>
+        </div>
+        <div class="sig-box">
+            <p>Checked by:</p>
+            <div class="sig-line" id="sig-c-name">MARIA SANTOS</div>
+            <p id="sig-c-pos">Education Program Supervisor</p>
+        </div>
+        <div class="sig-box">
+            <p>Noted by:</p>
+            <div class="sig-line" id="sig-n-name">DR. ALBERTO R. REYES</div>
+            <p id="sig-n-pos">Schools Division Superintendent</p>
+        </div>
+    </div>
+
+    <!-- PRINT FOOTER -->
+    <div class="print-only-footer">
+        <div class="print-footer-logos">
+            <img id="print-f-logo1" src="" style="display:none;" />
+            <img id="print-f-logo2" src="" style="display:none;" />
+            <img id="print-f-logo3" src="" style="display:none;" />
+        </div>
+        <div class="print-footer-info">
+            <div>Address: <strong id="print-f-addr">Mankilam, Tagum City, Davao del Norte</strong></div>
+            <div>Telephone Number: <strong id="print-f-phone">(084) 823 5170</strong></div>
+            <div>Email Address: <strong id="print-f-email">depeddavnor.sdo@deped.gov.ph</strong></div>
+            <div>Website: <strong id="print-f-web">www.depeddavnor.ph</strong> | Facebook: <strong id="print-f-fb">DepEd Davao del Norte</strong></div>
+        </div>
+    </div>
+</div>
+
+<script>
+/* 0. SUPABASE CLIENT (lazy), SHARED HELPERS */
+const APP_CFG = window.APP_CONFIG || {};
+let _sb = null;
+function sb() {
+    if (!_sb) {
+        _sb = window.supabase.createClient(APP_CFG.supabaseUrl, APP_CFG.supabasePublishableKey, {
+            auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+        });
+    }
+    return _sb;
+}
+function isConfigured() {
+    return !!(APP_CFG.supabaseUrl && APP_CFG.supabasePublishableKey) &&
+        !/\[[A-Z_-]+\]/.test(APP_CFG.supabaseUrl + APP_CFG.supabasePublishableKey);
+}
+
+// HTML escape for every stored or imported string placed into innerHTML or an attribute.
+function esc(s) {
+    return String(s === undefined || s === null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function toast(message, type = "success") {
+    const host = document.getElementById("toast-host");
+    if (!host) return;
+    const el = document.createElement("div");
+    el.className = `toast toast-${type}`;
+    el.setAttribute("role", type === "error" ? "alert" : "status");
+    el.textContent = message;
+    host.appendChild(el);
+    setTimeout(() => el.remove(), type === "error" ? 9000 : 4000);
+}
+
+// One place that turns Postgres / network errors into plain English.
+function friendlyError(err) {
+    if (!err) return "Something went wrong. Your changes were not saved.";
+    if (err.userMessage) return err.userMessage;
+    const msg = String(err.message || "");
+    const code = String(err.code || "");
+    if (/failed to fetch|networkerror|load failed|fetch failed/i.test(msg) || err.name === "AuthRetryableFetchError") {
+        return "Could not reach the server. Your changes were not saved.";
+    }
+    if (code === "42501" || /row-level security|permission denied/i.test(msg)) {
+        return "You do not have access to that district's data.";
+    }
+    if (code === "PGRST301" || /jwt expired|jwt/i.test(msg)) {
+        return "Your session expired. Please log in again.";
+    }
+    if (code === "23514") {
+        if (/_mps_check/.test(msg) && !/baseline/.test(msg)) return "MPS must be between 0 and 100.";
+        if (/baseline_mps_check/.test(msg)) return "Baseline MPS must be between 0 and 100.";
+        if (/pct75_check/.test(msg)) return "% of learners scoring 75% or above must be between 0 and 100.";
+        if (/_sy_check/.test(msg)) return "School year must look like 2025-2026.";
+        if (/_term_check/.test(msg)) return "Term must be Term 1, Term 2 or Term 3.";
+        return "A value is outside the allowed range.";
+    }
+    if (code === "23503") return "Unknown district.";
+    if (code === "23502") return "A required value is missing or is not a valid number.";
+    if (code === "22P02" || code === "22003") return "A number is missing or is not valid.";
+    return msg || "Something went wrong. Your changes were not saved.";
+}
+
+function setBusy(btn, busy) {
+    if (btn) btn.disabled = !!busy;
+}
+
+/* UNSAVED CHANGES GUARD */
+let formDirty = false;
+function markDirty() { formDirty = true; }
+function confirmDiscard() {
+    if (!formDirty) return true;
+    if (confirm("You have unsaved changes. Leave without saving?")) { formDirty = false; return true; }
+    return false;
+}
+window.addEventListener("beforeunload", (e) => {
+    if (formDirty) { e.preventDefault(); e.returnValue = ""; }
+});
+
+/* RE-AUTHENTICATION MODAL (replaces the cleartext prompt) */
+function requireReauth(promptText) {
+    return new Promise(resolve => {
+        const overlay = document.getElementById("reauth-modal");
+        const input = document.getElementById("reauth-password");
+        const err = document.getElementById("reauth-error");
+        const ok = document.getElementById("reauth-ok");
+        const cancel = document.getElementById("reauth-cancel");
+        document.getElementById("reauth-text").textContent = promptText;
+        input.value = ""; err.textContent = "";
+        overlay.style.display = "flex";
+        input.focus();
+        const done = (v) => {
+            overlay.style.display = "none";
+            ok.onclick = cancel.onclick = input.onkeydown = null;
+            input.value = "";
+            resolve(v);
+        };
+        const submit = async () => {
+            if (!input.value) { err.textContent = "Enter your password."; return; }
+            ok.disabled = true;
+            const { error } = await sb().auth.signInWithPassword({ email: currentUser.email, password: input.value });
+            ok.disabled = false;
+            if (error) { err.textContent = error.status === 400 ? "Incorrect password." : friendlyError(error); return; }
+            done(true);
+        };
+        ok.onclick = submit;
+        cancel.onclick = () => done(false);
+        input.onkeydown = (ev) => {
+            if (ev.key === "Enter") { ev.preventDefault(); submit(); }
+            else if (ev.key === "Escape") done(false);
+        };
+    });
+}
+
+/* 1. AUTHENTICATION (Supabase Auth; accounts live in the database) */
+const ROLE_LABELS = { admin: "Admin", supervisor: "Supervisor", district_coordinator: "District Coordinator" };
+let currentUser = null;
+
+// Only Admin and Supervisor can access Settings & Branding
+function canAccessSettings() {
+    return currentUser && (currentUser.role === "Admin" || currentUser.role === "Supervisor");
+}
+
+// All logged in users can add/edit data for their scope
+function canEditData() {
+    return currentUser !== null;
+}
+
+function usernameToEmail(u) {
+    const name = u.trim().toLowerCase();
+    return name.includes("@") ? name : `${name}@${APP_CFG.authEmailDomain}`;
+}
+
+async function loadProfile() {
+    const { data: { session } } = await sb().auth.getSession();
+    if (!session) throw new Error("No session");
+    const { data, error } = await sb().from("profiles")
+        .select("username, display_name, role, districts(name)")
+        .eq("id", session.user.id).maybeSingle();
+    if (error) throw error;
+    if (!data) { const e = new Error("NO_PROFILE"); e.userMessage = "This account has no profile. Please contact the administrator."; throw e; }
+    currentUser = {
+        name: data.display_name,
+        role: ROLE_LABELS[data.role] || data.role,
+        username: data.username,
+        district: data.districts ? data.districts.name : "ALL",
+        email: session.user.email
+    };
+}
+
+function showLoginError(message) {
+    const el = document.getElementById("login-error");
+    if (el) el.textContent = message;
+    document.getElementById("login-screen").style.display = "flex";
+}
+
+async function enterApp() {
+    try {
+        await loadProfile();
+        await initDB();
+    } catch (err) {
+        if (err && err.message === "NO_PROFILE") await sb().auth.signOut().catch(() => {});
+        currentUser = null;
+        showLoginError(friendlyError(err));
+        throw err;
+    }
+    document.getElementById("login-screen").style.display = "none";
+    document.getElementById("login-error").textContent = "";
+    if (currentUser.district !== "ALL") filters.district = currentUser.district;
+    applyUserPermissionsUI();
+    applyPrintBrandingUI();
+    updateEnvBanner();
+    switchView("division");
+}
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const btn = e.submitter || e.target.querySelector('button[type="submit"]');
+    const uInput = document.getElementById("login-username").value.trim();
+    const pInput = document.getElementById("login-password").value.trim();
+    document.getElementById("login-error").textContent = "";
+    if (!isConfigured()) { showLoginError("This site is not configured yet: the Supabase settings in config.js are missing."); return; }
+    setBusy(btn, true);
+    try {
+        const { error } = await sb().auth.signInWithPassword({ email: usernameToEmail(uInput), password: pInput });
+        if (error) {
+            showLoginError(error.status === 400 ? "Invalid Username or Password! Please try again." : friendlyError(error));
+            return;
+        }
+        await enterApp();
+    } catch (err) {
+        /* enterApp already displayed the message */
+    } finally {
+        setBusy(btn, false);
+    }
+}
+
+async function handleLogout() {
+    if (!confirmDiscard()) return;
+    await sb().auth.signOut().catch(() => {});
+    location.reload();
+}
+
+function applyUserPermissionsUI() {
+    if (!currentUser) return;
+    document.getElementById("u-name").textContent = currentUser.name;
+    document.getElementById("u-role").textContent = currentUser.district !== "ALL" ? `${currentUser.role} (${currentUser.district})` : currentUser.role;
+    document.getElementById("u-avatar").textContent = currentUser.name.charAt(0).toUpperCase();
+
+    const navSettings = document.getElementById("nav-settings");
+    if (navSettings) {
+        navSettings.style.display = canAccessSettings() ? "flex" : "none";
+    }
+
+    populateDistrictFilter();
+}
+
+/* 2. APP STATE & CONSTANTS */
+const SCHOOL_YEARS = Array.from({ length: 10 }, (_, i) => `${2025 + i}-${2026 + i}`);
+let DEFAULT_DISTRICTS = [
+    "Asuncion", "B.E. Dujali", "Carmen", "Kapalong East", "Kapalong West",
+    "New Corella", "San Isidro", "Sto. Tomas East", "Sto. Tomas West", "Talaingod", "Langilan"
+];
+
+/* 30 COMMON & OFFICIAL DEPED SPECIAL PROGRAM IN SPORTS (SPS) DISCIPLINE OFFERS */
+const SPS_OFFERS = [
+    "SPS - Athletics (Track & Field)", "SPS - Archery", "SPS - Arnis", "SPS - Badminton", "SPS - Baseball",
+    "SPS - Basketball", "SPS - Beach Volleyball", "SPS - Billiards", "SPS - Boxing", "SPS - Chess",
+    "SPS - Dance Sport", "SPS - Esports", "SPS - Fencing", "SPS - Football (Soccer)", "SPS - Futsal",
+    "SPS - Gymnastics", "SPS - Judo", "SPS - Karate-do", "SPS - Lawn Tennis", "SPS - Pencak Silat",
+    "SPS - Sepak Takraw", "SPS - Softball", "SPS - Swimming", "SPS - Table Tennis", "SPS - Taekwondo",
+    "SPS - Volleyball", "SPS - Weightlifting", "SPS - Wrestling", "SPS - Wushu", "SPS - Sports Conditioning & Movement Sciences"
+];
+
+/* 10 COMMON SPECIAL PROGRAM IN FOREIGN LANGUAGE (SPFL) DISCIPLINE OFFERS */
+const SPFL_OFFERS = [
+    "SPFL - Spanish", "SPFL - Japanese (Nihongo)", "SPFL - French", "SPFL - German", "SPFL - Chinese (Mandarin)",
+    "SPFL - Korean", "SPFL - Arabic", "SPFL - Russian", "SPFL - Italian", "SPFL - Bahasa (Melayu/Indonesia)"
+];
+
+/* 8 LEARNING SUBJECT BREAKDOWN UNDER IPED (INDIGENOUS PEOPLES EDUCATION) */
+const IPED_OFFERS = [
+    "IPED - English", "IPED - Mathematics", "IPED - Science", "IPED - Filipino",
+    "IPED - TLE (Technology & Livelihood Education)", "IPED - Araling Panlipunan (AP)",
+    "IPED - GMRC / EsP / Values Education", "IPED - MAPEH (Music & Arts)", "IPED - MAPEH (PE & Health)"
+];
+
+/* ALL TRACKED SUBJECTS AND SPECIALIZATIONS */
+const SUBJECTS = [
+    "MAPEH - Music & Arts", "MAPEH - PE & Health", "SPA - Vocal Arts", "SPA - Instrumental Arts",
+    "SPA - Dance Arts", "SPA - Theater Arts", "SPA - Visual Arts", "SPA - Media Arts", "SPA - Creative Writing",
+    ...SPS_OFFERS, ...SPFL_OFFERS, ...IPED_OFFERS
+];
+
+const KEY_STAGES = [
+    { code: "Key Stage 1", name: "GRADE 1 TO 3", grades: ["Grade 1", "Grade 2", "Grade 3"] },
+    { code: "Key Stage 2", name: "GRADE 4 TO 6", grades: ["Grade 4", "Grade 5", "Grade 6"] },
+    { code: "Key Stage 3", name: "GRADE 7 TO 10", grades: ["Grade 7", "Grade 8", "Grade 9", "Grade 10"] },
+    { code: "Key Stage 4", name: "GRADE 11 TO 12", grades: ["Grade 11", "Grade 12"] }
+];
+const ALL_GRADES = [
+    "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6",
+    "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"
+];
+
+let districtCoordinators = {
+    "Asuncion": { name: "Dr. Juan Dela Cruz", position: "Public Schools District Supervisor" },
+    "B.E. Dujali": { name: "Maria Clara Santos", position: "District Assessment Coordinator" },
+    "Carmen": { name: "Pedro Penduko", position: "Principal In-Charge" },
+    "Kapalong East": { name: "Ana Rosa Reyes", position: "Public Schools District Supervisor" },
+    "Kapalong West": { name: "Roberto Garcia", position: "District Assessment Coordinator" },
+    "New Corella": { name: "Elena Torralba", position: "Public Schools District Supervisor" },
+    "San Isidro": { name: "Gabriel Fernandez", position: "Principal In-Charge" },
+    "Sto. Tomas East": { name: "Corazon Aquino-Dela Cruz", position: "Public Schools District Supervisor" },
+    "Sto. Tomas West": { name: "Ramon Magsaysay Jr.", position: "District Assessment Coordinator" },
+    "Talaingod": { name: "Bayanihan Datu", position: "Principal In-Charge" },
+    "Langilan": { name: "Luzviminda Salcedo", position: "Public Schools District Supervisor" }
+};
+
+let settings = {
+    sy: "",
+    sigPrepName: "JUAN DELA CRUZ", sigPrepPos: "District Coordinator",
+    sigCheckName: "MARIA SANTOS", sigCheckPos: "Education Program Supervisor",
+    sigNoteName: "DR. ALBERTO R. REYES", sigNotePos: "Schools Division Superintendent",
+    headerLogo: "", headerL1: "Republic of the Philippines", headerL2: "Department of Education", headerL3: "REGION XI", headerL4: "SCHOOLS DIVISION OF DAVAO DEL NORTE",
+    footerLogo1: "", footerLogo2: "", footerLogo3: "",
+    footerAddress: "Mankilam, Tagum City, Davao del Norte", footerPhone: "(084) 823 5170",
+    footerEmail: "depeddavnor.sdo@deped.gov.ph", footerWebsite: "www.depeddavnor.ph", footerFacebook: "DepEd Davao del Norte"
+};
+
+let currentView = "division";
+let filters = { sy: "ALL", term: "ALL", district: "ALL", keystage: "ALL", subject: "ALL" };
+let activeCharts = {};
+
+/* 3. DB HELPERS (Supabase). Names and return shapes match the old IndexedDB helpers. */
+let districtIdByName = {};
+let districtNameById = {};
+let _anyDemoLoaded = false;
+const PAGE_SIZE = 1000; // PostgREST returns at most 1000 rows per request, so reads are paginated
+
+function fromRow(row) {
+    return {
+        id: row.id,
+        sy: row.sy,
+        term: row.term,
+        district: districtNameById[row.district_id] || "Unassigned",
+        school: row.school,
+        keyStage: row.key_stage,
+        gradeLevel: row.grade_level,
+        learningArea: row.learning_area,
+        baselineMps: Number(row.baseline_mps),
+        mps: Number(row.mps),
+        pct75: Number(row.pct75),
+        proficiencyLevel: row.proficiency_level,
+        leastLearned: Array.isArray(row.least_learned) ? row.least_learned : [],
+        isDemo: !!row.is_demo
+    };
+}
+
+function toRow(r) {
+    const districtId = districtIdByName[r.district];
+    if (districtId === undefined) {
+        const e = new Error("Unknown district");
+        e.userMessage = `Unknown district "${r.district}".`;
+        throw e;
+    }
+    return {
+        sy: String(r.sy === undefined || r.sy === null ? "" : r.sy),
+        term: String(r.term),
+        district_id: districtId,
+        school: String(r.school === undefined || r.school === null ? "" : r.school),
+        key_stage: String(r.keyStage),
+        grade_level: String(r.gradeLevel),
+        learning_area: String(r.learningArea),
+        baseline_mps: r.baselineMps,
+        mps: r.mps,
+        pct75: r.pct75,
+        proficiency_level: r.proficiencyLevel,
+        least_learned: r.leastLearned || [],
+        is_demo: false
+    };
+}
+
+async function initDB() {
+    const [dRes, sRes] = await Promise.all([
+        sb().from("districts").select("id, name, coordinator_name, coordinator_position, sort_order").order("sort_order"),
+        sb().from("app_settings").select("data").eq("id", 1).maybeSingle()
+    ]);
+    if (dRes.error) throw dRes.error;
+    if (sRes.error) throw sRes.error;
+    if (!dRes.data || !dRes.data.length) {
+        const e = new Error("No districts");
+        e.userMessage = "The district list is empty. The database seed has not been applied.";
+        throw e;
+    }
+    districtIdByName = {}; districtNameById = {}; districtCoordinators = {};
+    DEFAULT_DISTRICTS = dRes.data.map(d => {
+        districtIdByName[d.name] = d.id;
+        districtNameById[d.id] = d.name;
+        districtCoordinators[d.name] = { name: d.coordinator_name, position: d.coordinator_position };
+        return d.name;
+    });
+    if (sRes.data && sRes.data.data) Object.assign(settings, sRes.data.data);
+}
+
+async function getAllRecords() {
+    const out = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+        const { data, error } = await sb().from("assessment_records").select("*")
+            .order("id").range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+        data.forEach(row => out.push(fromRow(row)));
+        if (data.length < PAGE_SIZE) break;
+    }
+    _anyDemoLoaded = out.some(r => r.isDemo);
+    return out;
+}
+
+async function addRecord(record) {
+    const { data, error } = await sb().from("assessment_records").insert(toRow(record)).select("id");
+    if (error) throw error;
+    return data[0].id;
+}
+
+// A single insert statement: all rows are saved or none are.
+async function bulkInsert(records) {
+    if (!records.length) return 0;
+    const { error, count } = await sb().from("assessment_records").insert(records.map(toRow), { count: "exact" });
+    if (error) throw error;
+    return count === null || count === undefined ? records.length : count;
+}
+
+async function deleteRecordsBySY(syToDelete) {
+    const { error, count } = await sb().from("assessment_records").delete({ count: "exact" }).eq("sy", syToDelete);
+    if (error) throw error;
+    return count || 0;
+}
+
+async function clearDatabase() {
+    const { error, count } = await sb().from("assessment_records").delete({ count: "exact" }).gt("id", 0);
+    if (error) throw error;
+    return count || 0;
+}
+
+function applyBaselineFilters(q, ksObj, effectiveDistrict) {
+    if (filters.sy !== "ALL") q = q.eq("sy", filters.sy);
+    if (effectiveDistrict !== "ALL") q = q.eq("district_id", districtIdByName[effectiveDistrict]);
+    if (filters.subject !== "ALL") q = q.eq("learning_area", filters.subject);
+    if (filters.term !== "ALL") q = q.eq("term", filters.term);
+    return q.in("grade_level", ksObj.grades);
+}
+
+async function updateBaselineMpsForStage(ksCode, val) {
+    if (!canEditData()) {
+        toast("Access Denied: Log in required to edit baseline figures.", "error");
+        switchView('comparative');
+        return;
+    }
+    const newBaseline = parseFloat(val);
+    if (isNaN(newBaseline)) return;
+    const ksObj = KEY_STAGES.find(k => k.code === ksCode);
+    if (!ksObj) return;
+    if (newBaseline < 0 || newBaseline > 100) {
+        toast("Baseline MPS must be between 0 and 100.", "error");
+        formDirty = false; switchView('comparative');
+        return;
+    }
+
+    const userDist = currentUser ? currentUser.district : "ALL";
+    const effectiveDistrict = userDist !== "ALL" ? userDist : filters.district;
+
+    try {
+        const { count, error: cErr } = await applyBaselineFilters(
+            sb().from("assessment_records").select("id", { count: "exact", head: true }), ksObj, effectiveDistrict);
+        if (cErr) throw cErr;
+        if (!count) {
+            toast("No records match the current filters, so nothing was changed.", "info");
+            formDirty = false; switchView('comparative');
+            return;
+        }
+        if (!confirm(`This will change the baseline on ${count} record(s) to ${newBaseline.toFixed(2)}%. Continue?`)) {
+            formDirty = false; switchView('comparative');
+            return;
+        }
+        const { count: updated, error } = await applyBaselineFilters(
+            sb().from("assessment_records").update({ baseline_mps: newBaseline }, { count: "exact" }), ksObj, effectiveDistrict);
+        if (error) throw error;
+        toast(`Baseline updated on ${updated} record(s).`);
+    } catch (err) {
+        toast(friendlyError(err), "error");
+    }
+    formDirty = false;
+    switchView('comparative');
+}
+
+/* 4. LOGIC & COMPUTATIONS */
+function getPL(mps) {
+    if (mps >= 90) return "Advanced";
+    if (mps >= 85) return "Proficient";
+    if (mps >= 80) return "Approaching Proficiency";
+    if (mps >= 75) return "Developing";
+    return "Beginning";
+}
+
+function getBadgeClass(pl) {
+    switch(pl) {
+        case "Advanced": return "badge-advanced";
+        case "Proficient": return "badge-proficient";
+        case "Approaching Proficiency": return "badge-approaching";
+        case "Developing": return "badge-developing";
+        default: return "badge-beginning";
+    }
+}
+
+function destroyCharts() {
+    Object.keys(activeCharts).forEach(key => {
+        if (activeCharts[key]) activeCharts[key].destroy();
+    });
+    activeCharts = {};
+}
+
+async function getFilteredData() {
+    const data = await getAllRecords();
+    const userDist = currentUser ? currentUser.district : "ALL";
+    const effectiveDistrict = userDist !== "ALL" ? userDist : filters.district;
+
+    const filtered = data.filter(r => {
+        if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
+        if (filters.term !== "ALL" && r.term !== filters.term) return false;
+        if (effectiveDistrict !== "ALL" && r.district !== effectiveDistrict) return false;
+        if (filters.keystage !== "ALL" && r.keyStage !== filters.keystage) return false;
+        if (filters.subject !== "ALL" && r.learningArea !== filters.subject) return false;
+        return true;
+    });
+    markSample(filtered);
+    return filtered;
+}
+
+function extractCompetencyItems(records) {
+    const list = [];
+    records.forEach(r => {
+        if (Array.isArray(r.leastLearned) && r.leastLearned.length > 0) {
+            r.leastLearned.forEach((c, idx) => {
+                let code = `LC-${idx + 1}`;
+                let desc = "";
+                if (typeof c === 'string') {
+                    desc = c;
+                } else if (c && typeof c === 'object') {
+                    code = c.code || code;
+                    desc = c.desc || c.description || c.competency || "";
+                }
+                if (desc && desc.trim() !== "") {
+                    list.push({
+                        sy: r.sy || "ALL",
+                        district: r.district || "Unassigned",
+                        school: r.school || "",
+                        keyStage: r.keyStage || "",
+                        gradeLevel: r.gradeLevel || "",
+                        learningArea: r.learningArea || "",
+                        term: r.term || "",
+                        code: code,
+                        desc: desc.trim()
+                    });
+                }
+            });
+        } else if (typeof r.leastLearned === 'string' && r.leastLearned.trim() !== '') {
+            const items = r.leastLearned.split(/\n|;|\|(?!\|)/).map(s => s.trim()).filter(Boolean);
+            items.forEach((itemStr, idx) => {
+                list.push({
+                    sy: r.sy || "ALL",
+                    district: r.district || "Unassigned",
+                    school: r.school || "",
+                    keyStage: r.keyStage || "",
+                    gradeLevel: r.gradeLevel || "",
+                    learningArea: r.learningArea || "",
+                    term: r.term || "",
+                    code: `LC-${idx + 1}`,
+                    desc: itemStr
+                });
+            });
+        }
+    });
+    return list;
+}
+
+function buildSubjectOptionsHTML(includeAllOption = true) {
+    const spsOptionsHTML = SPS_OFFERS.map(s => `<option value="${s}">${s}</option>`).join('');
+    const spflOptionsHTML = SPFL_OFFERS.map(s => `<option value="${s}">${s}</option>`).join('');
+    const ipedOptionsHTML = IPED_OFFERS.map(s => `<option value="${s}">${s}</option>`).join('');
+
+    return `${includeAllOption ? '<option value="ALL">All Learning Areas / Specializations</option>' : ''}
+    <optgroup label="MAPEH Learning Components">
+        <option value="MAPEH - Music & Arts">MAPEH - Music & Arts</option>
+        <option value="MAPEH - PE & Health">MAPEH - PE & Health</option>
+    </optgroup>
+    <optgroup label="SPA Disciplines (Special Program in the Arts)">
+        <option value="SPA - Vocal Arts">SPA - Vocal Arts</option>
+        <option value="SPA - Instrumental Arts">SPA - Instrumental Arts</option>
+        <option value="SPA - Dance Arts">SPA - Dance Arts</option>
+        <option value="SPA - Theater Arts">SPA - Theater Arts</option>
+        <option value="SPA - Visual Arts">SPA - Visual Arts</option>
+        <option value="SPA - Media Arts">SPA - Media Arts</option>
+        <option value="SPA - Creative Writing">SPA - Creative Writing</option>
+    </optgroup>
+    <optgroup label="SPS Disciplines (30 Sports Tracks)">
+        ${spsOptionsHTML}
+    </optgroup>
+    <optgroup label="SPFL Language Offers (10 Foreign Languages)">
+        ${spflOptionsHTML}
+    </optgroup>
+    <optgroup label="IPED Learning Subjects (8 Indigenous Peoples Education Subjects)">
+        ${ipedOptionsHTML}
+    </optgroup>`;
+}
+
+function toggleSchoolField(subjectValue) {
+    const schoolGroup = document.getElementById("m-school-group");
+    const schoolInput = document.getElementById("m-school");
+    if (!schoolGroup) return;
+
+    const isSpecialProgram = subjectValue.startsWith("SPA") || subjectValue.startsWith("SPS") || 
+                             subjectValue.startsWith("SPFL") || subjectValue.startsWith("IPED");
+
+    if (isSpecialProgram) {
+        schoolGroup.style.display = "flex";
+        schoolInput.required = true;
+    } else {
+        schoolGroup.style.display = "none";
+        schoolInput.required = false;
+        schoolInput.value = "";
+    }
+}
+
+/* 5. ROUTING & VIEWS */
+function updateEnvBanner() {
+    const banner = document.getElementById("env-banner");
+    if (!banner) return;
+    banner.hidden = !(APP_CFG.environment === "test" || _anyDemoLoaded);
+}
+
+// Flags the printed report with a SAMPLE DATA line when demo rows are in the current view.
+function markSample(recs) {
+    const has = Array.isArray(recs) ? recs.some(r => r.isDemo) : _anyDemoLoaded;
+    document.body.classList.toggle("sample-in-view", has);
+    updateEnvBanner();
+}
+
+function setupNav() {
+    document.querySelectorAll('.nav-item').forEach(el => {
+        el.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); el.click(); }
+        });
+    });
+}
+
+function restoreFilterControls() {
+    document.getElementById("flt-sy").value = filters.sy;
+    document.getElementById("flt-term").value = filters.term;
+    document.getElementById("flt-district").value = filters.district;
+    document.getElementById("flt-keystage").value = filters.keystage;
+    document.getElementById("flt-subject").value = filters.subject;
+}
+
+let renderToken = 0;
+function switchView(view) {
+    if (!confirmDiscard()) return;
+    destroyCharts();
+    currentView = view;
+    document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+    const activeNav = Array.from(document.querySelectorAll('.nav-item')).find(e => e.getAttribute('onclick')?.includes(view));
+    if (activeNav) activeNav.classList.add('active');
+    document.body.classList.remove('nav-open');
+
+    const root = document.getElementById("view-container");
+    const token = ++renderToken;
+    root.innerHTML = '<div class="view-loading" role="status">Loading...</div>';
+    const slot = document.createElement("div");
+    root.appendChild(slot);
+    markSample();
+
+    const renderers = {
+        "division": renderDivisionSummaryView, "district-view": renderDistrictProfileView,
+        "comparative": renderComparativeView, "dashboard": renderDashboard,
+        "data-input": renderDataInputView, "least-learned": renderLeastLearnedView,
+        "grade-view": renderGradeConsolidation, "reports": renderReportsView,
+        "settings": renderSettingsView
+    };
+    const fn = renderers[view];
+    Promise.resolve().then(() => fn ? fn(slot) : null).then(() => {
+        if (token !== renderToken) return;
+        const loading = root.querySelector(".view-loading");
+        if (loading) loading.remove();
+    }).catch(err => {
+        if (token !== renderToken) return; // a newer view replaced this one
+        root.innerHTML = `<div class="card-box" style="padding: 40px; text-align: center;">
+            <h3 style="color: var(--danger); margin-bottom: 10px;">Could not load this view</h3>
+            <p style="color: var(--text-muted);">${esc(friendlyError(err))}</p>
+            <button class="btn btn-primary" style="margin-top:14px;" onclick="switchView(currentView)">Try again</button>
+        </div>`;
+    });
+
+    updateSignatoriesUI();
+}
+
+function populateSchoolYearFilters() {
+    const sel = document.getElementById("flt-sy");
+    sel.innerHTML = '<option value="ALL">All School Years</option>';
+    SCHOOL_YEARS.forEach(sy => {
+        const opt = document.createElement("option");
+        opt.value = sy; opt.textContent = `SY ${sy}`;
+        sel.appendChild(opt);
+    });
+}
+
+function populateDistrictFilter() {
+    const sel = document.getElementById("flt-district");
+    if (!sel) return;
+
+    const userDist = currentUser ? currentUser.district : "ALL";
+
+    if (userDist !== "ALL") {
+        sel.innerHTML = `<option value="${esc(userDist)}">${esc(userDist)}</option>`;
+        sel.value = userDist;
+        sel.disabled = true;
+        filters.district = userDist;
+    } else {
+        sel.disabled = false;
+        let html = '<option value="ALL">All Districts</option>';
+        DEFAULT_DISTRICTS.forEach(d => {
+            html += `<option value="${esc(d)}" ${filters.district === d ? 'selected' : ''}>${esc(d)}</option>`;
+        });
+        sel.innerHTML = html;
+    }
+}
+
+function populateSubjectFilter() {
+    const sel = document.getElementById("flt-subject");
+    sel.innerHTML = buildSubjectOptionsHTML(true);
+}
+
+function applyFilters() {
+    if (!confirmDiscard()) { restoreFilterControls(); return; }
+    filters.sy = document.getElementById("flt-sy").value;
+    filters.term = document.getElementById("flt-term").value;
+    
+    const userDist = currentUser ? currentUser.district : "ALL";
+    filters.district = userDist !== "ALL" ? userDist : document.getElementById("flt-district").value;
+    
+    filters.keystage = document.getElementById("flt-keystage").value;
+    filters.subject = document.getElementById("flt-subject").value;
+
+    const syLabelText = filters.sy === "ALL" ? "All School Years" : `SY ${filters.sy}`;
+    document.getElementById("header-sy-label").textContent = syLabelText;
+    document.getElementById("print-sy-label").textContent = syLabelText;
+
+    switchView(currentView);
+}
+
+function resetFilters() {
+    document.getElementById("flt-sy").value = "ALL";
+    document.getElementById("flt-term").value = "ALL";
+    
+    const userDist = currentUser ? currentUser.district : "ALL";
+    if (userDist === "ALL") {
+        document.getElementById("flt-district").value = "ALL";
+    }
+    
+    document.getElementById("flt-keystage").value = "ALL";
+    document.getElementById("flt-subject").value = "ALL";
+    applyFilters();
+}
+
+/* 6. VIEW RENDERERS
+   ESCAPING POLICY (AUDIT C4): every stored, imported or typed string that reaches innerHTML or an attribute goes
+   through esc(). The only interpolations left unescaped are, by category:
+   (a) numbers formatted with toFixed() or counts; (b) values from the constants block (SUBJECTS, ALL_GRADES,
+   SCHOOL_YEARS, KEY_STAGES, *_OFFERS), which are developer-controlled; (c) fragments already escaped where they
+   were built (schoolDisplay, displayLoc, row and card HTML); (d) static markup and badge strings; (e) textContent
+   sinks such as toast() and the print header, which do not parse HTML. */
+async function renderDivisionSummaryView(container) {
+    const data = await getFilteredData();
+    const userDist = currentUser ? currentUser.district : "ALL";
+    const districtsToDisplay = userDist !== "ALL" ? [userDist] : DEFAULT_DISTRICTS;
+
+    const distTermMatrix = {};
+    districtsToDisplay.forEach(d => {
+        distTermMatrix[d] = { "Term 1": { sumMPS: 0, count: 0 }, "Term 2": { sumMPS: 0, count: 0 }, "Term 3": { sumMPS: 0, count: 0 } };
+    });
+
+    data.forEach(r => {
+        if (distTermMatrix[r.district] && distTermMatrix[r.district][r.term]) {
+            distTermMatrix[r.district][r.term].sumMPS += r.mps;
+            distTermMatrix[r.district][r.term].count++;
+        }
+    });
+
+    let overallDivisionMPS = 0, totalEntriesCount = 0;
+    const matrixRows = districtsToDisplay.map((d, index) => {
+        const item = distTermMatrix[d];
+        const t1 = item["Term 1"].count ? (item["Term 1"].sumMPS / item["Term 1"].count) : 0;
+        const t2 = item["Term 2"].count ? (item["Term 2"].sumMPS / item["Term 2"].count) : 0;
+        const t3 = item["Term 3"].count ? (item["Term 3"].sumMPS / item["Term 3"].count) : 0;
+        const validTerms = [t1, t2, t3].filter(v => v > 0);
+        const districtOverallMPS = validTerms.length ? (validTerms.reduce((a,b)=>a+b,0) / validTerms.length) : 0;
+
+        if (districtOverallMPS > 0) { overallDivisionMPS += districtOverallMPS; totalEntriesCount++; }
+        const pl = getPL(districtOverallMPS);
+        const coordInfo = districtCoordinators[d] || { name: "Unassigned", position: "District Coordinator" };
+
+        return `<tr>
+            <td><strong>${index + 1}</strong></td>
+            <td><strong>${esc(d)}</strong></td>
+            <td><small><strong>${esc(coordInfo.name)}</strong><br><span style="color:var(--text-muted);">${esc(coordInfo.position)}</span></small></td>
+            <td>${t1 ? t1.toFixed(2) + '%' : '-'}</td>
+            <td>${t2 ? t2.toFixed(2) + '%' : '-'}</td>
+            <td>${t3 ? t3.toFixed(2) + '%' : '-'}</td>
+            <td>${districtOverallMPS ? `<strong>${districtOverallMPS.toFixed(2)}%</strong>` : '<span class="no-data">No data</span>'}</td>
+            <td>${districtOverallMPS ? `<span class="badge ${getBadgeClass(pl)}">${pl}</span>` : '<span class="no-data">No data</span>'}</td>
+        </tr>`;
+    }).join('');
+
+    const divisionAvg = totalEntriesCount ? (overallDivisionMPS / totalEntriesCount).toFixed(2) : "0.00";
+
+    container.innerHTML = `
+    <div class="kpi-grid">
+        <div class="kpi-card" style="border-top-color: var(--deped-blue);">
+            <div class="kpi-title">${userDist !== "ALL" ? `${esc(userDist)} District` : 'Division'} Mean Percentage Score (MPS)</div>
+            <div class="kpi-value">${totalEntriesCount ? divisionAvg + '%' : '<span class="no-data">No data</span>'}</div>
+            <div class="kpi-sub">${totalEntriesCount ? `<span class="badge ${getBadgeClass(getPL(parseFloat(divisionAvg)))}">${getPL(parseFloat(divisionAvg))}</span>` : ''}</div>
+        </div>
+        <div class="kpi-card" style="border-top-color: var(--success);">
+            <div class="kpi-title">Active Districts</div>
+            <div class="kpi-value">${districtsToDisplay.length}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">${userDist !== "ALL" ? 'Assigned Scope' : 'Fully Consolidated'}</div>
+        </div>
+        <div class="kpi-card" style="border-top-color: var(--warning);">
+            <div class="kpi-title">Tracked Specializations</div>
+            <div class="kpi-value">${SUBJECTS.length}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">2 MAPEH, 7 SPA, 30 SPS, 10 SPFL & 8 IPED Subjects</div>
+        </div>
+    </div>
+    <div class="card-box">
+        <div class="card-box-header">
+            <h3>${userDist !== "ALL" ? `${esc(userDist)} District` : 'Division District'} vs Term Performance Matrix</h3>
+        </div>
+        <div class="table-scroll"><table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>District Name</th>
+                    <th>District Coordinator & Position</th>
+                    <th>Term 1 MPS</th>
+                    <th>Term 2 MPS</th>
+                    <th>Term 3 MPS</th>
+                    <th>Consolidated District MPS</th>
+                    <th>Proficiency Level</th>
+                </tr>
+            </thead>
+            <tbody>${matrixRows}</tbody>
+        </table></div>
+    </div>`;
+}
+
+async function renderDistrictProfileView(container) {
+    const userDist = currentUser ? currentUser.district : "ALL";
+    let selectedDistrict = userDist !== "ALL" ? userDist : (filters.district !== "ALL" ? filters.district : DEFAULT_DISTRICTS[0]);
+    
+    const allRecords = await getAllRecords();
+    const distRecords = allRecords.filter(r => {
+        if (r.district !== selectedDistrict) return false;
+        if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
+        if (filters.term !== "ALL" && r.term !== filters.term) return false;
+        if (filters.keystage !== "ALL" && r.keyStage !== filters.keystage) return false;
+        if (filters.subject !== "ALL" && r.learningArea !== filters.subject) return false;
+        return true;
+    });
+
+    markSample(distRecords);
+    const coordInfo = districtCoordinators[selectedDistrict] || { name: "Unassigned", position: "District Supervisor" };
+    const avgMPS = distRecords.length ? (distRecords.reduce((a,c) => a + c.mps, 0) / distRecords.length).toFixed(2) : "0.00";
+    const avgPct75 = distRecords.length ? (distRecords.reduce((a,c) => a + c.pct75, 0) / distRecords.length).toFixed(2) : "0.00";
+    const distPL = getPL(parseFloat(avgMPS));
+
+    const districtOptions = (userDist !== "ALL" ? [userDist] : DEFAULT_DISTRICTS)
+        .map(d => `<option value="${esc(d)}" ${d === selectedDistrict ? 'selected' : ''}>${esc(d)}</option>`).join('');
+
+    const activeSubjectsInDistrict = SUBJECTS.filter(s => distRecords.some(r => r.learningArea === s));
+    const subjectsToDisplay = activeSubjectsInDistrict.length > 0 ? activeSubjectsInDistrict : SUBJECTS.slice(0, 15);
+
+    const subjMatrixRows = subjectsToDisplay.map(s => {
+        const sRecs = distRecords.filter(r => r.learningArea === s);
+        const t1 = sRecs.filter(r => r.term === "Term 1");
+        const t2 = sRecs.filter(r => r.term === "Term 2");
+        const t3 = sRecs.filter(r => r.term === "Term 3");
+        const mps1 = t1.length ? (t1.reduce((a,c)=>a+c.mps,0)/t1.length).toFixed(2) + '%' : '-';
+        const mps2 = t2.length ? (t2.reduce((a,c)=>a+c.mps,0)/t2.length).toFixed(2) + '%' : '-';
+        const mps3 = t3.length ? (t3.reduce((a,c)=>a+c.mps,0)/t3.length).toFixed(2) + '%' : '-';
+        const sAvg = sRecs.length ? (sRecs.reduce((a,c)=>a+c.mps,0)/sRecs.length).toFixed(2) : "0.00";
+
+        const uniqueSchools = Array.from(new Set(sRecs.map(r => r.school).filter(sch => sch && sch.trim() !== "")));
+        const schoolDisplay = uniqueSchools.length ? uniqueSchools.map(esc).join(", ") : "<em style='color:var(--text-muted);'>All District Schools</em>";
+
+        return `<tr>
+            <td><strong>${esc(s)}</strong></td>
+            <td><small style="color:var(--deped-blue); font-weight:600;">${schoolDisplay}</small></td>
+            <td>${mps1}</td>
+            <td>${mps2}</td>
+            <td>${mps3}</td>
+            <td>${sRecs.length ? `<strong>${sAvg}%</strong>` : '<span class="no-data">No data</span>'}</td>
+            <td>${sRecs.length ? `<span class="badge ${getBadgeClass(getPL(parseFloat(sAvg)))}">${getPL(parseFloat(sAvg))}</span>` : '<span class="no-data">No data</span>'}</td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+    <div style="background: white; padding: 12px 20px; border-radius: 6px; border: 1px solid var(--border-color); margin-bottom: 20px; display: flex; justify-content: space-between; align-items:center;">
+        <div style="display: flex; align-items:center; gap:12px;">
+            <label style="font-weight: bold; font-size:0.9rem; color:var(--deped-dark);">District Profile View:</label>
+            <select ${userDist !== "ALL" ? 'disabled' : ''} onchange="changeDistrictView(this.value)" style="padding: 6px 12px; border-radius: 4px; border:1px solid var(--border-color); font-weight:bold; color:var(--deped-blue);">
+                ${districtOptions}
+            </select>
+        </div>
+        <div>
+            <span style="font-size:0.85rem; color:var(--text-muted);">Assigned Coordinator:</span>
+            <strong style="color:var(--deped-dark); font-size:0.95rem; margin-left: 6px;">${esc(coordInfo.name)}</strong> (${esc(coordInfo.position)})
+        </div>
+    </div>
+    <div class="kpi-grid">
+        <div class="kpi-card" style="border-top-color: var(--deped-blue);">
+            <div class="kpi-title">${esc(selectedDistrict)} District Average MPS</div>
+            <div class="kpi-value">${distRecords.length ? avgMPS + '%' : '<span class="no-data">No data</span>'}</div>
+            <div class="kpi-sub">${distRecords.length ? `<span class="badge ${getBadgeClass(distPL)}">${distPL}</span>` : ''}</div>
+        </div>
+        <div class="kpi-card" style="border-top-color: var(--success);">
+            <div class="kpi-title">% Learners Achieving ≥75% Proficiency</div>
+            <div class="kpi-value">${distRecords.length ? avgPct75 + '%' : '<span class="no-data">No data</span>'}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">Standard Target: 75.0%</div>
+        </div>
+        <div class="kpi-card" style="border-top-color: var(--warning);">
+            <div class="kpi-title">District Leadership</div>
+            <div class="kpi-value" style="font-size:1.0rem; line-height:1.4;">${esc(coordInfo.name)}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">${esc(coordInfo.position)}</div>
+        </div>
+    </div>
+    <div class="card-box">
+        <div class="card-box-header">
+            <h3>${esc(selectedDistrict)} District Performance Matrix by Specialization Area</h3>
+        </div>
+        <div class="table-scroll"><table class="data-table">
+            <thead>
+                <tr>
+                    <th>Program / Specialization Area</th>
+                    <th>Implementing School</th>
+                    <th>Term 1 MPS</th>
+                    <th>Term 2 MPS</th>
+                    <th>Term 3 MPS</th>
+                    <th>District Subject MPS</th>
+                    <th>Proficiency Level</th>
+                </tr>
+            </thead>
+            <tbody>${subjMatrixRows}</tbody>
+        </table></div>
+    </div>`;
+}
+
+function changeDistrictView(dist) {
+    if (!confirmDiscard()) return;
+    document.getElementById("flt-district").value = dist;
+    filters.district = dist;
+    switchView("district-view");
+}
+
+async function renderComparativeView(container) {
+    const records = await getAllRecords();
+    const userDist = currentUser ? currentUser.district : "ALL";
+    const currentScope = userDist !== "ALL" ? userDist : filters.district;
+    
+    const currentSubject = filters.subject;
+    const scopeLabel = currentScope === "ALL" ? "Entire Division (11 Districts Consolidated)" : `${currentScope} District`;
+    const subjectLabel = currentSubject === "ALL" ? "MAPEH, SPA, SPS, SPFL & IPED Tracks Consolidated" : currentSubject;
+
+    const activeRecords = records.filter(r => {
+        if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
+        if (currentScope !== "ALL" && r.district !== currentScope) return false;
+        if (currentSubject !== "ALL" && r.learningArea !== currentSubject) return false;
+        if (filters.term !== "ALL" && r.term !== filters.term) return false;
+        return true;
+    });
+
+    markSample(activeRecords);
+    const isUserEditable = canEditData();
+
+    const stageRows = KEY_STAGES.map(ks => {
+        const ksRecs = activeRecords.filter(r => ks.grades.includes(r.gradeLevel));
+        const baselineMps = ksRecs.length ? (ksRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / ksRecs.length) : 65.0;
+        const currentMps = ksRecs.length ? (ksRecs.reduce((a, c) => a + c.mps, 0) / ksRecs.length) : 0;
+        const variance = currentMps - baselineMps;
+
+        let statusBadge = '<span class="badge badge-proficient">Maintained</span>';
+        if (variance > 0) statusBadge = '<span class="badge badge-advanced">Increased</span>';
+        else if (variance < 0) statusBadge = '<span class="badge badge-critical">Decreased</span>';
+
+        return `<tr>
+            <td><strong>${ks.code}</strong></td>
+            <td class="text-left"><strong>${ks.name}</strong></td>
+            <td>${esc(subjectLabel)}</td>
+            <td>
+                <input type="number" step="0.01" class="editable-baseline-input" ${!isUserEditable ? 'disabled style="background:#edf2f7; cursor:not-allowed;"' : ''} value="${baselineMps ? baselineMps.toFixed(2) : '65.00'}" title="Click to edit Baseline MPS" onchange="updateBaselineMpsForStage('${ks.code}', this.value)" /> %
+            </td>
+            <td>${currentMps ? currentMps.toFixed(2) + '%' : '-'}</td>
+            <td>${ksRecs.length ? `<strong>${variance > 0 ? '+' : ''}${variance.toFixed(2)}%</strong>` : '-'}</td>
+            <td>${ksRecs.length ? statusBadge : '-'}</td>
+            <td>${ksRecs.length ? `<span class="badge ${getBadgeClass(getPL(currentMps))}">${getPL(currentMps)}</span>` : '-'}</td>
+        </tr>`;
+    }).join('');
+
+    /* CONSOLIDATED TOTALS */
+    const mapehRecs = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && (r.learningArea === "MAPEH - Music & Arts" || r.learningArea === "MAPEH - PE & Health"));
+    const mapehBaseline = mapehRecs.length ? (mapehRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / mapehRecs.length) : 0;
+    const mapehCurrent = mapehRecs.length ? (mapehRecs.reduce((a, c) => a + c.mps, 0) / mapehRecs.length) : 0;
+    const mapehVariance = mapehCurrent - mapehBaseline;
+    let mapehStatusBadge = mapehVariance > 0 ? '<span class="badge badge-advanced">Increased</span>' : mapehVariance < 0 ? '<span class="badge badge-critical">Decreased</span>' : '<span class="badge badge-proficient">Maintained</span>';
+
+    const mapehSummaryRow = (currentSubject === "ALL" || currentSubject.startsWith("MAPEH")) ? `
+    <tr class="mapeh-row">
+        <td colspan="3" class="text-left" style="color: var(--deped-blue);">CONSOLIDATED MAPEH TOTAL (Music & Arts + PE & Health)</td>
+        <td>${mapehRecs.length ? mapehBaseline.toFixed(2) + '%' : '-'}</td>
+        <td>${mapehRecs.length ? mapehCurrent.toFixed(2) + '%' : '-'}</td>
+        <td>${mapehRecs.length ? `${mapehVariance > 0 ? '+' : ''}${mapehVariance.toFixed(2)}%` : '-'}</td>
+        <td>${mapehRecs.length ? mapehStatusBadge : '-'}</td>
+        <td>${mapehRecs.length ? `<span class="badge ${getBadgeClass(getPL(mapehCurrent))}">${getPL(mapehCurrent)}</span>` : '-'}</td>
+    </tr>` : '';
+
+    const spaRecs = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && r.learningArea.startsWith("SPA"));
+    const spaBaseline = spaRecs.length ? (spaRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / spaRecs.length) : 0;
+    const spaCurrent = spaRecs.length ? (spaRecs.reduce((a, c) => a + c.mps, 0) / spaRecs.length) : 0;
+    const spaVariance = spaCurrent - spaBaseline;
+    let spaStatusBadge = spaVariance > 0 ? '<span class="badge badge-advanced">Increased</span>' : spaVariance < 0 ? '<span class="badge badge-critical">Decreased</span>' : '<span class="badge badge-proficient">Maintained</span>';
+
+    const spaSummaryRow = (currentSubject === "ALL" || currentSubject.startsWith("SPA")) ? `
+    <tr class="mapeh-row">
+        <td colspan="3" class="text-left" style="color: var(--deped-blue);">CONSOLIDATED SPA TOTAL (All SPA Disciplines)</td>
+        <td>${spaRecs.length ? spaBaseline.toFixed(2) + '%' : '-'}</td>
+        <td>${spaRecs.length ? spaCurrent.toFixed(2) + '%' : '-'}</td>
+        <td>${spaRecs.length ? `${spaVariance > 0 ? '+' : ''}${spaVariance.toFixed(2)}%` : '-'}</td>
+        <td>${spaRecs.length ? spaStatusBadge : '-'}</td>
+        <td>${spaRecs.length ? `<span class="badge ${getBadgeClass(getPL(spaCurrent))}">${getPL(spaCurrent)}</span>` : '-'}</td>
+    </tr>` : '';
+
+    const spsRecs = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && r.learningArea.startsWith("SPS"));
+    const spsBaseline = spsRecs.length ? (spsRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / spsRecs.length) : 0;
+    const spsCurrent = spsRecs.length ? (spsRecs.reduce((a, c) => a + c.mps, 0) / spsRecs.length) : 0;
+    const spsVariance = spsCurrent - spsBaseline;
+    let spsStatusBadge = spsVariance > 0 ? '<span class="badge badge-advanced">Increased</span>' : spsVariance < 0 ? '<span class="badge badge-critical">Decreased</span>' : '<span class="badge badge-proficient">Maintained</span>';
+
+    const spsSummaryRow = (currentSubject === "ALL" || currentSubject.startsWith("SPS")) ? `
+    <tr class="mapeh-row">
+        <td colspan="3" class="text-left" style="color: var(--deped-blue);">CONSOLIDATED SPS TOTAL (All SPS Offers)</td>
+        <td>${spsRecs.length ? spsBaseline.toFixed(2) + '%' : '-'}</td>
+        <td>${spsRecs.length ? spsCurrent.toFixed(2) + '%' : '-'}</td>
+        <td>${spsRecs.length ? `${spsVariance > 0 ? '+' : ''}${spsVariance.toFixed(2)}%` : '-'}</td>
+        <td>${spsRecs.length ? spsStatusBadge : '-'}</td>
+        <td>${spsRecs.length ? `<span class="badge ${getBadgeClass(getPL(spsCurrent))}">${getPL(spsCurrent)}</span>` : '-'}</td>
+    </tr>` : '';
+
+    const spflRecs = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && r.learningArea.startsWith("SPFL"));
+    const spflBaseline = spflRecs.length ? (spflRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / spflRecs.length) : 0;
+    const spflCurrent = spflRecs.length ? (spflRecs.reduce((a, c) => a + c.mps, 0) / spflRecs.length) : 0;
+    const spflVariance = spflCurrent - spflBaseline;
+    let spflStatusBadge = spflVariance > 0 ? '<span class="badge badge-advanced">Increased</span>' : spflVariance < 0 ? '<span class="badge badge-critical">Decreased</span>' : '<span class="badge badge-proficient">Maintained</span>';
+
+    const spflSummaryRow = (currentSubject === "ALL" || currentSubject.startsWith("SPFL")) ? `
+    <tr class="mapeh-row">
+        <td colspan="3" class="text-left" style="color: var(--deped-blue);">CONSOLIDATED SPFL TOTAL (All SPFL Offers)</td>
+        <td>${spflRecs.length ? spflBaseline.toFixed(2) + '%' : '-'}</td>
+        <td>${spflRecs.length ? spflCurrent.toFixed(2) + '%' : '-'}</td>
+        <td>${spflRecs.length ? `${spflVariance > 0 ? '+' : ''}${spflVariance.toFixed(2)}%` : '-'}</td>
+        <td>${spflRecs.length ? spflStatusBadge : '-'}</td>
+        <td>${spflRecs.length ? `<span class="badge ${getBadgeClass(getPL(spflCurrent))}">${getPL(spflCurrent)}</span>` : '-'}</td>
+    </tr>` : '';
+
+    const ipedRecs = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && r.learningArea.startsWith("IPED"));
+    const ipedBaseline = ipedRecs.length ? (ipedRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / ipedRecs.length) : 0;
+    const ipedCurrent = ipedRecs.length ? (ipedRecs.reduce((a, c) => a + c.mps, 0) / ipedRecs.length) : 0;
+    const ipedVariance = ipedCurrent - ipedBaseline;
+    let ipedStatusBadge = ipedVariance > 0 ? '<span class="badge badge-advanced">Increased</span>' : ipedVariance < 0 ? '<span class="badge badge-critical">Decreased</span>' : '<span class="badge badge-proficient">Maintained</span>';
+
+    const ipedSummaryRow = (currentSubject === "ALL" || currentSubject.startsWith("IPED")) ? `
+    <tr class="mapeh-row">
+        <td colspan="3" class="text-left" style="color: var(--deped-blue);">CONSOLIDATED IPED TOTAL (All IPED Subjects)</td>
+        <td>${ipedRecs.length ? ipedBaseline.toFixed(2) + '%' : '-'}</td>
+        <td>${ipedRecs.length ? ipedCurrent.toFixed(2) + '%' : '-'}</td>
+        <td>${ipedRecs.length ? `${ipedVariance > 0 ? '+' : ''}${ipedVariance.toFixed(2)}%` : '-'}</td>
+        <td>${ipedRecs.length ? ipedStatusBadge : '-'}</td>
+        <td>${ipedRecs.length ? `<span class="badge ${getBadgeClass(getPL(ipedCurrent))}">${getPL(ipedCurrent)}</span>` : '-'}</td>
+    </tr>` : '';
+
+    const notesMap = await loadComparativeNotes();
+    const savedNotes = notesMap[currentScope] || { analysis: "", interventions: "" };
+
+    let compiledDistrictsHTML = "";
+    if (currentScope === "ALL") {
+        const compiledDistrictCards = DEFAULT_DISTRICTS.map((d, idx) => {
+            const dNotes = notesMap[d] || { analysis: "", interventions: "" };
+            const coord = districtCoordinators[d] || { name: "Unassigned", position: "District Supervisor" };
+            return `<div style="background: #F8FAFC; border: 1px solid var(--border-color); padding: 14px; border-radius: 6px; margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items:center; margin-bottom:8px;">
+                    <h5 style="color:var(--deped-blue); font-size:0.92rem; font-weight:bold;">${idx + 1}. ${esc(d.toUpperCase())} DISTRICT</h5>
+                    <span style="font-size:0.75rem; color:var(--text-muted);">Coordinator: ${esc(coord.name)} (${esc(coord.position)})</span>
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.83rem;">
+                    <div style="background: #FFFFFF; padding: 10px; border-radius: 4px; border:1px solid #E2E8F0;">
+                        <strong style="color:var(--deped-dark);">Qualitative Analysis & Key Findings:</strong>
+                        <p style="margin-top:6px; color:#2D3748; white-space: pre-wrap; line-height:1.4;">${dNotes.analysis ? esc(dNotes.analysis) : '<em style="color:#A0AEC0;">No qualitative analysis recorded for this district yet.</em>'}</p>
+                    </div>
+                    <div style="background: #FFFFFF; padding: 10px; border-radius: 4px; border: 1px solid #E2E8F0;">
+                        <strong style="color:var(--deped-dark);">Targeted Interventions & Policy Recommendations:</strong>
+                        <p style="margin-top:6px; color:#2D3748; white-space: pre-wrap; line-height:1.4;">${dNotes.interventions ? esc(dNotes.interventions) : '<em style="color:#A0AEC0;">No targeted interventions recorded for this district yet.</em>'}</p>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+
+        compiledDistrictsHTML = `<div style="margin-top: 25px; border-top:2px dashed var(--border-color); padding-top:20px;">
+            <h4 style="font-size:0.95rem; color: var(--deped-dark); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
+                CONSOLIDATED DISTRICT QUALITATIVE ANALYSES & TARGETED INTERVENTIONS (ALL 11 DISTRICTS)
+            </h4>
+            ${compiledDistrictCards}
+        </div>`;
+    }
+
+    container.innerHTML = `
+    <div style="background: white; padding: 15px; border-radius:6px; border: 1px solid var(--border-color); margin-bottom:20px; display: flex; justify-content: space-between; align-items:center;" class="no-print">
+        <div>
+            <h3 style="color:var(--deped-blue); margin-bottom:4px;">Termly Assessment Comparative Analysis Module</h3>
+            <p style="font-size:0.85rem; color:var(--text-muted);">Comparing Previous SY Baseline MPS vs. Assessment Terms for MAPEH, 7 SPA Tracks, 30 SPS Sports, 10 SPFL Languages & 8 IPED Subjects.</p>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            ${isUserEditable ? `<button class="btn btn-success" onclick="saveComparativeNotes(event)">Save Qualitative Notes</button>` : `<span style="font-size:0.8rem; color:var(--text-muted); font-style:italic;">Login required to edit notes</span>`}
+        </div>
+    </div>
+    <div class="card-box" style="padding:20px;">
+        <div style="text-align:center; margin-bottom:15px;">
+            <h3 style="text-transform:uppercase; color:var(--deped-dark);">TERMLY COMPARATIVE ASSESSMENT REPORT SHEET</h3>
+            <p style="font-size:0.88rem; font-weight: bold; color:var(--deped-blue);">
+                SY: ${filters.sy === 'ALL' ? 'ALL YEARS' : esc(filters.sy)} | SCOPE: ${esc(scopeLabel.toUpperCase())} | SUBJECT: ${esc(subjectLabel.toUpperCase())}
+            </p>
+        </div>
+        <div class="excel-table-container">
+            <table class="excel-table">
+                <thead>
+                    <tr>
+                        <th>DepEd Key Stage</th>
+                        <th>Grade Level Range</th>
+                        <th>Program / Specialization</th>
+                        <th>SY BASELINE MPS (%)<br><small style="font-weight:normal; text-transform:none;">(Editable)</small></th>
+                        <th>Current Term MPS (%)</th>
+                        <th>Variance (%)</th>
+                        <th>Performance Status</th>
+                        <th>Proficiency Rating</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${stageRows}
+                    ${mapehSummaryRow}
+                    ${spaSummaryRow}
+                    ${spsSummaryRow}
+                    ${spflSummaryRow}
+                    ${ipedSummaryRow}
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top: 20px; display:grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+                <h4 style="font-size:0.88rem; color:var(--deped-blue); margin-bottom:8px;">
+                    ${currentScope === 'ALL' ? 'Division Synthesis: Qualitative Analysis & Key Findings:' : 'I. Qualitative Analysis & Key Findings:'}
+                </h4>
+                <textarea id="comp-analysis-input" class="analysis-textarea" oninput="markDirty()" ${!isUserEditable ? 'disabled style="background:#edf2f7;"' : ''} placeholder="Type localized assessment analysis and findings here...">${esc(savedNotes.analysis)}</textarea>
+            </div>
+            <div>
+                <h4 style="font-size:0.88rem; color:var(--deped-blue); margin-bottom:8px;">
+                    ${currentScope === 'ALL' ? 'Division Synthesis: Targeted Interventions & Recommendations:' : 'II. Targeted Interventions & Policy Recommendations:'}
+                </h4>
+                <textarea id="comp-interventions-input" class="analysis-textarea" oninput="markDirty()" ${!isUserEditable ? 'disabled style="background:#edf2f7;"' : ''} placeholder="Type planned interventions and policy actions here...">${esc(savedNotes.interventions)}</textarea>
+            </div>
+        </div>
+        ${compiledDistrictsHTML}
+    </div>`;
+}
+
+// Notes are keyed exactly as before: school year, district scope, subject, term ("ALL" allowed in each).
+function comparativeScope() {
+    const userDist = currentUser ? currentUser.district : "ALL";
+    return userDist !== "ALL" ? userDist : filters.district;
+}
+
+async function loadComparativeNotes() {
+    const scope = comparativeScope();
+    let q = sb().from("comparative_notes").select("district_scope, analysis, interventions")
+        .eq("sy", filters.sy).eq("subject", filters.subject).eq("term", filters.term);
+    if (scope !== "ALL") q = q.eq("district_scope", scope);
+    const { data, error } = await q;
+    if (error) throw error;
+    const map = {};
+    data.forEach(n => { map[n.district_scope] = { analysis: n.analysis, interventions: n.interventions }; });
+    return map;
+}
+
+async function saveComparativeNotes(ev) {
+    if (!canEditData()) {
+        toast("Access Denied: Please log in to save qualitative notes.", "error");
+        return;
+    }
+    const btn = ev && ev.currentTarget;
+    const row = {
+        sy: filters.sy, district_scope: comparativeScope(), subject: filters.subject, term: filters.term,
+        analysis: document.getElementById("comp-analysis-input").value,
+        interventions: document.getElementById("comp-interventions-input").value
+    };
+    setBusy(btn, true);
+    try {
+        const { data, error } = await sb().from("comparative_notes")
+            .upsert(row, { onConflict: "sy,district_scope,subject,term" }).select("id");
+        if (error) throw error;
+        if (!data || data.length !== 1) { const e = new Error("denied"); e.code = "42501"; throw e; }
+        formDirty = false;
+        toast("Analysis and Interventions saved successfully!");
+    } catch (err) {
+        toast(friendlyError(err), "error");
+    } finally {
+        setBusy(btn, false);
+    }
+}
+
+async function renderDashboard(container) {
+    const data = await getFilteredData();
+    const userDist = currentUser ? currentUser.district : "ALL";
+
+    const avgMPS = data.length ? parseFloat((data.reduce((a, c) => a + c.mps, 0) / data.length).toFixed(2)) : 0;
+    const avgPct75 = data.length ? parseFloat((data.reduce((a, c) => a + c.pct75, 0) / data.length).toFixed(2)) : 0;
+    const overallPL = getPL(avgMPS);
+
+    const mapehData = data.filter(r => r.learningArea === "MAPEH - Music & Arts" || r.learningArea === "MAPEH - PE & Health");
+    const mapehAvgMPS = mapehData.length ? (mapehData.reduce((a, c) => a + c.mps, 0) / mapehData.length).toFixed(2) : "0.00";
+    const mapehPL = getPL(parseFloat(mapehAvgMPS));
+
+    const spaData = data.filter(r => r.learningArea.startsWith("SPA"));
+    const spaAvgMPS = spaData.length ? (spaData.reduce((a, c) => a + c.mps, 0) / spaData.length).toFixed(2) : "0.00";
+    const spaPL = getPL(parseFloat(spaAvgMPS));
+
+    const spsData = data.filter(r => r.learningArea.startsWith("SPS"));
+    const spsAvgMPS = spsData.length ? (spsData.reduce((a, c) => a + c.mps, 0) / spsData.length).toFixed(2) : "0.00";
+    const spsPL = getPL(parseFloat(spsAvgMPS));
+
+    const spflData = data.filter(r => r.learningArea.startsWith("SPFL"));
+    const spflAvgMPS = spflData.length ? (spflData.reduce((a, c) => a + c.mps, 0) / spflData.length).toFixed(2) : "0.00";
+    const spflPL = getPL(parseFloat(spflAvgMPS));
+
+    const ipedData = data.filter(r => r.learningArea.startsWith("IPED"));
+    const ipedAvgMPS = ipedData.length ? (ipedData.reduce((a, c) => a + c.mps, 0) / ipedData.length).toFixed(2) : "0.00";
+    const ipedPL = getPL(parseFloat(ipedAvgMPS));
+
+    container.innerHTML = `
+    <div class="kpi-grid">
+        <div class="kpi-card" style="border-top-color: var(--deped-blue);">
+            <div class="kpi-title">${userDist !== "ALL" ? `${esc(userDist)} District` : 'Division'} Mean Percentage Score</div>
+            <div class="kpi-value">${data.length ? avgMPS + '%' : '<span class="no-data">No data</span>'}</div>
+            <div class="kpi-sub">${data.length ? `<span class="badge ${getBadgeClass(overallPL)}">${overallPL}</span>` : ''}</div>
+        </div>
+        <div class="kpi-card" style="border-top-color: #0038A8;">
+            <div class="kpi-title">MAPEH Consolidated Total MPS</div>
+            <div class="kpi-value">${mapehData.length ? mapehAvgMPS + '%' : '<span class="no-data">No data</span>'}</div>
+            <div class="kpi-sub">${mapehData.length ? `<span class="badge ${getBadgeClass(mapehPL)}">${mapehPL}</span>` : ''} (Music & Arts + PE)</div>
+        </div>
+        <div class="kpi-card" style="border-top-color: #800080;">
+            <div class="kpi-title">SPA Consolidated Total MPS</div>
+            <div class="kpi-value">${spaData.length ? spaAvgMPS + '%' : '<span class="no-data">No data</span>'}</div>
+            <div class="kpi-sub">${spaData.length ? `<span class="badge ${getBadgeClass(spaPL)}">${spaPL}</span>` : ''} (Arts Program)</div>
+        </div>
+        <div class="kpi-card" style="border-top-color: #DD6B20;">
+            <div class="kpi-title">SPS Consolidated Total MPS</div>
+            <div class="kpi-value">${spsData.length ? spsAvgMPS + '%' : '<span class="no-data">No data</span>'}</div>
+            <div class="kpi-sub">${spsData.length ? `<span class="badge ${getBadgeClass(spsPL)}">${spsPL}</span>` : ''} (30 Sports Offers)</div>
+        </div>
+        <div class="kpi-card" style="border-top-color: #319795;">
+            <div class="kpi-title">SPFL Consolidated Total MPS</div>
+            <div class="kpi-value">${spflData.length ? spflAvgMPS + '%' : '<span class="no-data">No data</span>'}</div>
+            <div class="kpi-sub">${spflData.length ? `<span class="badge ${getBadgeClass(spflPL)}">${spflPL}</span>` : ''} (10 Languages)</div>
+        </div>
+        <div class="kpi-card" style="border-top-color: #D69E2E;">
+            <div class="kpi-title">IPED Consolidated Total MPS</div>
+            <div class="kpi-value">${ipedData.length ? ipedAvgMPS + '%' : '<span class="no-data">No data</span>'}</div>
+            <div class="kpi-sub">${ipedData.length ? `<span class="badge ${getBadgeClass(ipedPL)}">${ipedPL}</span>` : ''} (8 IPED Subjects)</div>
+        </div>
+        <div class="kpi-card" style="border-top-color: var(--success);">
+            <div class="kpi-title">% Learners Achieving ≥ 75%</div>
+            <div class="kpi-value">${data.length ? avgPct75 + '%' : '<span class="no-data">No data</span>'}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">Target Standard: 75.0%</div>
+        </div>
+        <div class="kpi-card" style="border-top-color: #718096;">
+            <div class="kpi-title">Total District Records</div>
+            <div class="kpi-value">${data.length}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">Consolidated Entries</div>
+        </div>
+    </div>
+    <div class="chart-grid">
+        <div class="chart-card">
+            <h4>District Performance Comparison (MPS %)</h4>
+            <div class="chart-container"><canvas id="c-dist-mps"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h4>Program Track Consolidated Comparison (MPS %)</h4>
+            <div class="chart-container"><canvas id="c-subj-mps"></canvas></div>
+        </div>
+    </div>`;
+
+    const distMap = {};
+    data.forEach(r => {
+        if (!distMap[r.district]) distMap[r.district] = { sum: 0, count: 0 };
+        distMap[r.district].sum += r.mps;
+        distMap[r.district].count++;
+    });
+
+    const dLabels = Object.keys(distMap);
+    const dVals = dLabels.map(d => (distMap[d].sum / distMap[d].count).toFixed(2));
+
+    activeCharts['distMps'] = new Chart(document.getElementById('c-dist-mps'), {
+        type: 'bar',
+        data: { labels: dLabels, datasets: [{ label: 'District MPS (%)', data: dVals, backgroundColor: '#0038A8' }] },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { max: 100, min: 0 } } }
+    });
+
+    const trackLabels = ["MAPEH Total", "SPA Total", "SPS Total", "SPFL Total", "IPED Total"];
+    const trackVals = [parseFloat(mapehAvgMPS), parseFloat(spaAvgMPS), parseFloat(spsAvgMPS), parseFloat(spflAvgMPS), parseFloat(ipedAvgMPS)];
+    const trackColors = ['#0038A8', '#800080', '#DD6B20', '#319795', '#D69E2E'];
+
+    activeCharts['subMps'] = new Chart(document.getElementById('c-subj-mps'), {
+        type: 'bar',
+        data: { labels: trackLabels, datasets: [{ label: 'Consolidated Track MPS (%)', data: trackVals, backgroundColor: trackColors }] },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { max: 100, min: 0 } } }
+    });
+}
+
+function downloadExcelTemplate() {
+    const userDist = currentUser && currentUser.district !== "ALL" ? currentUser.district : "Asuncion";
+    const templateData = [
+        {
+            "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} Central Elementary School`,
+            "Key Stage": "Key Stage 1", "Grade Level": "Grade 1", "Learning Area": "MAPEH - Music & Arts",
+            "SY Baseline MPS": 65.00, "Mean Percentage Score (MPS%)": 78.50, "% Learners Scoring >= 75%": 82.00,
+            "Least Learned Competency 1 Code": "LC-1",
+            "Least Learned Competency 1 Description": "Demonstrates pitch awareness and rhythmic movement patterns.",
+            "Least Learned Competency 2 Code": "LC-2",
+            "Least Learned Competency 2 Description": "Identifies primary colors, lines, and shapes in visual artworks.",
+            "Least Learned Competency 3 Code": "LC-3",
+            "Least Learned Competency 3 Description": "Applies basic artistic composition and musical elements in performance."
+        },
+        {
+            "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} IPED Central Elementary School`,
+            "Key Stage": "Key Stage 1", "Grade Level": "Grade 3", "Learning Area": "IPED - English",
+            "SY Baseline MPS": 66.00, "Mean Percentage Score (MPS%)": 80.20, "% Learners Scoring >= 75%": 83.50,
+            "Least Learned Competency 1 Code": "LC-1",
+            "Least Learned Competency 1 Description": "Applies contextualized reading comprehension and vocabulary.",
+            "Least Learned Competency 2 Code": "LC-2",
+            "Least Learned Competency 2 Description": "Demonstrates oral communication integrating indigenous narrative contexts.",
+            "Least Learned Competency 3 Code": "LC-3",
+            "Least Learned Competency 3 Description": "Constructs simple and compound sentences with proper syntax."
+        }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "MAPEH SPA SPS SPFL IPED");
+    XLSX.writeFile(wb, `DepEd_MAPEH_SPA_SPS_SPFL_IPED_Template_${userDist}.xlsx`);
+}
+
+function renderDataInputView(container) {
+    if (!canEditData()) {
+        container.innerHTML = `
+        <div class="card-box" style="padding: 40px; text-align: center;">
+            <h3 style="color: var(--danger); margin-bottom: 10px;">Access Restricted</h3>
+            <p style="color: var(--text-muted);">Please log in to access Fast Data Entry & Upload features.</p>
+        </div>`;
+        return;
+    }
+
+    const userDist = currentUser ? currentUser.district : "ALL";
+    const gradeOptionsHTML = ALL_GRADES.map(g => `<option value="${g}">${g}</option>`).join('');
+    const syOptionsHTML = SCHOOL_YEARS.map(sy => `<option value="${sy}">${sy}</option>`).join('');
+    const manualSubjectOptionsHTML = buildSubjectOptionsHTML(false);
+
+    container.innerHTML = `
+    <div class="tab-menu">
+        <button class="tab-btn active" onclick="switchInputTab('excel')">Method 1: Upload District Excel File</button>
+        <button class="tab-btn" onclick="switchInputTab('manual')">Method 2: Fast Manual Entry</button>
+    </div>
+    <div id="tab-excel-container">
+        <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; background: white; padding: 12px 18px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div>
+                <strong style="color: var(--deped-dark); font-size: 0.9rem;">Excel Data Import Workflow ${userDist !== "ALL" ? `(${esc(userDist)} District Scope)` : ''}</strong>
+                <p style="font-size: 0.78rem; color: var(--text-muted);">Download the pre-formatted Excel template for MAPEH, 7 SPA Disciplines, 30 SPS Sports Tracks, 10 SPFL Foreign Languages, and 8 IPED Subjects, fill in district data, and upload it below.</p>
+            </div>
+            <button class="btn btn-success" type="button" onclick="downloadExcelTemplate()">
+                Download Excel Template (.XLSX)
+            </button>
+        </div>
+        <div class="upload-dropzone" onclick="document.getElementById('excel-file').click()">
+            <input type="file" id="excel-file" accept=".xlsx, .xls, .csv" style="display:none;" onchange="handleExcelImport(event)">
+            <h3>Drag & Drop District Excel File Here or Click to Browse</h3>
+            <p>Upload district spreadsheets containing School Year, Baseline MPS (%), Current MPS (%), and at least 3 least learned competencies per grade level.</p>
+            <button class="btn btn-primary" type="button">Select District Excel File</button>
+        </div>
+    </div>
+    <div id="tab-manual-container" style="display:none;">
+        <div class="card-box" style="padding: 20px;">
+            <form onsubmit="handleManualSave(event)" oninput="markDirty()">
+                <h4 style="color:var(--deped-blue); margin-bottom:12px;">1. District & School Year Context</h4>
+                <div class="form-grid">
+                    <div class="form-group"><label>School Year</label><select id="m-sy">${syOptionsHTML}</select></div>
+                    <div class="form-group"><label>Term</label><select id="m-term"><option value="Term 1">Term 1</option><option value="Term 2">Term 2</option><option value="Term 3">Term 3</option></select></div>
+                    <div class="form-group"><label>District</label><select id="m-district"></select></div>
+                    <div class="form-group"><label>Key Stage</label><select id="m-keystage" onchange="syncGradeWithKeyStage(this.value)"><option value="Key Stage 1">Key Stage 1 (Grades 1-3)</option><option value="Key Stage 2">Key Stage 2 (Grades 4-6)</option><option value="Key Stage 3">Key Stage 3 (Grades 7-10)</option><option value="Key Stage 4">Key Stage 4 (Grades 11-12)</option></select></div>
+                    <div class="form-group"><label>Grade Level (Grade 1 to 12)</label><select id="m-grade">${gradeOptionsHTML}</select></div>
+                    <div class="form-group">
+                        <label>Learning Area / Program Track</label>
+                        <select id="m-subject" onchange="toggleSchoolField(this.value)">
+                            ${manualSubjectOptionsHTML}
+                        </select>
+                    </div>
+                    <div class="form-group" id="m-school-group" style="display:none; grid-column: span 2;">
+                        <label style="color:var(--deped-blue);">Implementing School</label>
+                        <input type="text" id="m-school" placeholder="e.g., Central Elementary School">
+                    </div>
+                </div>
+                <h4 style="color:var(--deped-blue); margin-top:15px; margin-bottom: 12px;">2. Assessment Metrics</h4>
+                <div class="form-grid">
+                    <div class="form-group"><label>SY BASELINE MPS (%) (Previous SY)</label><input type="number" step="0.01" id="m-baseline" placeholder="65.00" value="65.00" required></div>
+                    <div class="form-group"><label>Current Term MPS (%)</label><input type="number" step="0.01" id="m-mps" placeholder="78.50" required></div>
+                    <div class="form-group"><label>% Learners Achieving ≥75%</label><input type="number" step="0.01" id="m-pct75" placeholder="82.00" required></div>
+                </div>
+                <h4 style="color:var(--deped-blue); margin-top:15px; margin-bottom: 12px;">3. Least Learned Competencies (At Least 3)</h4>
+                <div style="background: #F8FAFC; padding: 15px; border-radius: 6px; border:1px solid var(--border-color); margin-bottom: 10px; display: flex; flex-direction: column; gap: 12px;">
+                    <div class="form-group">
+                        <label>Competency 1 Description / Title</label>
+                        <input type="text" id="m-lc1-desc" placeholder="e.g., Applies contextualized reading comprehension...">
+                    </div>
+                    <div class="form-group">
+                        <label>Competency 2 Description / Title</label>
+                        <input type="text" id="m-lc2-desc" placeholder="e.g., Demonstrates conversational fluency in specific context...">
+                    </div>
+                    <div class="form-group">
+                        <label>Competency 3 Description / Title</label>
+                        <input type="text" id="m-lc3-desc" placeholder="e.g., Executes tactical offensive plays and strategy...">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success" style="margin-top: 10px;">Save District Record</button>
+            </form>
+        </div>
+    </div>`;
+
+    const distSel = document.getElementById("m-district");
+    if (distSel) {
+        distSel.innerHTML = "";
+        if (userDist !== "ALL") {
+            distSel.innerHTML = `<option value="${esc(userDist)}">${esc(userDist)}</option>`;
+            distSel.value = userDist;
+            distSel.disabled = true;
+        } else {
+            distSel.disabled = false;
+            DEFAULT_DISTRICTS.forEach(d => {
+                const opt = document.createElement("option");
+                opt.value = d; opt.textContent = d;
+                distSel.appendChild(opt);
+            });
+        }
+    }
+
+    const currentSubj = document.getElementById("m-subject").value;
+    toggleSchoolField(currentSubj);
+}
+
+function syncGradeWithKeyStage(ksCode) {
+    const gradeSel = document.getElementById("m-grade");
+    if (!gradeSel) return;
+    const ksObj = KEY_STAGES.find(k => k.code === ksCode);
+    if (ksObj && ksObj.grades.length) {
+        gradeSel.value = ksObj.grades[0];
+    }
+}
+
+function switchInputTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    if (tab === 'excel') {
+        document.querySelectorAll('.tab-btn')[0].classList.add('active');
+        document.getElementById('tab-excel-container').style.display = 'block';
+        document.getElementById('tab-manual-container').style.display = 'none';
+    } else {
+        document.querySelectorAll('.tab-btn')[1].classList.add('active');
+        document.getElementById('tab-excel-container').style.display = 'none';
+        document.getElementById('tab-manual-container').style.display = 'block';
+        const currentSubj = document.getElementById("m-subject").value;
+        toggleSchoolField(currentSubj);
+    }
+}
+
+async function handleManualSave(e) {
+    e.preventDefault();
+    if (!canEditData()) {
+        toast("Access Denied: Please log in first.", "error");
+        return;
+    }
+    const btn = e.submitter || e.target.querySelector('button[type="submit"]');
+    const userDist = currentUser ? currentUser.district : "ALL";
+    const selectedDistrict = userDist !== "ALL" ? userDist : document.getElementById('m-district').value;
+
+    const baselineMps = parseFloat(document.getElementById('m-baseline').value) || 65.0;
+    const mps = parseFloat(document.getElementById('m-mps').value);
+    const lc1Desc = document.getElementById('m-lc1-desc').value.trim();
+    const lc2Desc = document.getElementById('m-lc2-desc').value.trim();
+    const lc3Desc = document.getElementById('m-lc3-desc').value.trim();
+
+    const leastLearned = [];
+    if (lc1Desc) leastLearned.push({ code: 'LC-1', desc: lc1Desc });
+    if (lc2Desc) leastLearned.push({ code: 'LC-2', desc: lc2Desc });
+    if (lc3Desc) leastLearned.push({ code: 'LC-3', desc: lc3Desc });
+
+    const record = {
+        sy: document.getElementById('m-sy').value || "",
+        term: document.getElementById('m-term').value,
+        district: selectedDistrict,
+        school: document.getElementById('m-school') ? document.getElementById('m-school').value.trim() : "",
+        keyStage: document.getElementById('m-keystage').value,
+        gradeLevel: document.getElementById('m-grade').value,
+        learningArea: document.getElementById('m-subject').value,
+        baselineMps: baselineMps,
+        mps: mps,
+        proficiencyLevel: getPL(mps),
+        pct75: parseFloat(document.getElementById('m-pct75').value),
+        leastLearned: leastLearned
+    };
+
+    setBusy(btn, true);
+    try {
+        await addRecord(record);
+        formDirty = false;
+        toast(`District record for ${record.district} saved successfully!`);
+        switchView("division");
+    } catch (err) {
+        toast(friendlyError(err), "error");
+    } finally {
+        setBusy(btn, false);
+    }
+}
+
+function handleExcelImport(e) {
+    if (!canEditData()) {
+        toast("Access Denied: Please log in first.", "error");
+        return;
+    }
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const userDist = currentUser ? currentUser.district : "ALL";
+
+    const reader = new FileReader();
+    reader.onload = async function(evt) {
+        let rows;
+        try {
+            const data = new Uint8Array(evt.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+        } catch (err) {
+            toast("That file could not be read as a spreadsheet. Nothing was saved.", "error");
+            e.target.value = "";
+            return;
+        }
+        const recordsToInsert = [];
+
+        rows.forEach(r => {
+            const mps = parseFloat(r["Mean Percentage Score (MPS%)"] || r["Mean Percentage Score"] || r["MPS%"] || r["MPS"] || 0);
+            const baselineMps = parseFloat(r["SY Baseline MPS"] || r["Baseline MPS"] || r["Previous SY MPS"] || 65.0);
+            const rowDistrict = userDist !== "ALL" ? userDist : (r["District"] || r["District Name"] || "Unassigned");
+            const lcList = [];
+
+            // 1. Check numbered columns LC1 to LC10
+            for (let i = 1; i <= 10; i++) {
+                const desc = r[`Least Learned Competency ${i} Description`] || 
+                             r[`Least Learned Competency ${i}`] || 
+                             r[`Least Learned ${i}`] || 
+                             r[`Competency ${i}`] || 
+                             r[`LC${i}`] || 
+                             r[`LC ${i}`] ||
+                             r[`Least Learned Competency Description ${i}`];
+                const code = r[`Least Learned Competency ${i} Code`] || 
+                             r[`Competency ${i} Code`] || 
+                             r[`LC${i} Code`] || 
+                             `LC-${i}`;
+                if (desc && String(desc).trim() !== '') {
+                    lcList.push({
+                        code: String(code).trim(),
+                        desc: String(desc).trim()
+                    });
+                }
+            }
+
+            // 2. Fallback check generic single/multi-line column headers
+            if (lcList.length === 0) {
+                const genericVal = r["Least Learned Competencies"] || 
+                                   r["Least Learned Competency"] || 
+                                   r["Least Learned"] || 
+                                   r["Competency Description"] || 
+                                   r["Competency"] || 
+                                   r["Least Learned Competency Description"];
+                if (genericVal && String(genericVal).trim() !== '') {
+                    const lines = String(genericVal).split(/\n|;|\|(?!\|)/).map(s => s.trim()).filter(Boolean);
+                    lines.forEach((lineStr, idx) => {
+                        lcList.push({
+                            code: `LC-${idx + 1}`,
+                            desc: lineStr
+                        });
+                    });
+                }
+            }
+
+            // 3. Fallback scan all row object keys containing least or competency
+            if (lcList.length === 0) {
+                Object.keys(r).forEach((k) => {
+                    const lk = k.toLowerCase();
+                    if ((lk.includes('least') || lk.includes('competenc')) && !lk.includes('code') && !lk.includes('area')) {
+                        const val = String(r[k] || '').trim();
+                        if (val) {
+                            lcList.push({
+                                code: `LC-${lcList.length + 1}`,
+                                desc: val
+                            });
+                        }
+                    }
+                });
+            }
+
+            recordsToInsert.push({
+                sy: String(r["School Year"] || r["SY"] || ""),
+                term: r["Term"] || "Term 1",
+                district: rowDistrict,
+                school: r["School Name"] || r["Implementing School"] || r["School"] || "",
+                keyStage: r["Key Stage"] || "Key Stage 1",
+                gradeLevel: r["Grade Level"] || "Grade 1",
+                learningArea: r["Learning Area"] || "MAPEH - Music & Arts",
+                baselineMps: baselineMps,
+                proficiencyLevel: getPL(mps),
+                mps: mps,
+                pct75: parseFloat(r["% Learners Scoring >= 75%"] || r["% Learners Scoring >=75%"] || 0),
+                leastLearned: lcList
+            });
+        });
+
+        // Districts are a fixed list now: reject unknown names before anything is sent (spreadsheet row 1 is the header).
+        const badRows = [];
+        recordsToInsert.forEach((rec, i) => {
+            if (districtIdByName[rec.district] === undefined) badRows.push(`row ${i + 2}: "${rec.district}"`);
+        });
+        if (badRows.length) {
+            toast(`Nothing was saved. Unknown district in ${badRows.length} row(s): ${badRows.slice(0, 5).join("; ")}${badRows.length > 5 ? "; ..." : ""}`, "error");
+            e.target.value = "";
+            return;
+        }
+        try {
+            const saved = await bulkInsert(recordsToInsert);
+            toast(`Successfully imported ${saved} district assessment records!`);
+            e.target.value = "";
+            switchView("division");
+        } catch (err) {
+            toast(`Nothing was saved. ${friendlyError(err)}`, "error");
+            e.target.value = "";
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+async function renderLeastLearnedView(container) {
+    const records = await getFilteredData();
+    const compItems = extractCompetencyItems(records);
+    const aggregatedMap = {};
+
+    compItems.forEach(item => {
+        const normDesc = (item.desc || "").trim();
+        const key = `${item.gradeLevel}|||${item.learningArea}|||${normDesc}`;
+
+        if (!aggregatedMap[key]) {
+            aggregatedMap[key] = {
+                gradeLevel: item.gradeLevel,
+                learningArea: item.learningArea,
+                desc: item.desc,
+                districts: new Set(),
+                schools: new Set(),
+                terms: new Set(),
+                sys: new Set(),
+                rawCount: 0
+            };
+        }
+        if (item.district) aggregatedMap[key].districts.add(item.district);
+        if (item.school) aggregatedMap[key].schools.add(item.school);
+        if (item.term) aggregatedMap[key].terms.add(item.term);
+        if (item.sy) aggregatedMap[key].sys.add(item.sy);
+        aggregatedMap[key].rawCount++;
+    });
+
+    const aggregatedList = Object.values(aggregatedMap).map(item => ({
+        ...item,
+        districtCount: item.districts.size,
+        districtListStr: Array.from(item.districts).join(', '),
+        schoolListStr: Array.from(item.schools).join(', ')
+    }));
+
+    const groupedByGradeSub = {};
+    aggregatedList.forEach(item => {
+        const grpKey = `${item.gradeLevel} - ${item.learningArea}`;
+        if (!groupedByGradeSub[grpKey]) groupedByGradeSub[grpKey] = [];
+        groupedByGradeSub[grpKey].push(item);
+    });
+
+    let top3ConsolidatedRows = [];
+    let topCounter = 1;
+
+    Object.keys(groupedByGradeSub).sort().forEach(grpKey => {
+        const sorted = groupedByGradeSub[grpKey].sort((a, b) => b.districtCount - a.districtCount || b.rawCount - a.rawCount);
+        const top3 = sorted.slice(0, 3);
+
+        top3.forEach((item, rank) => {
+            const displayLoc = item.schoolListStr 
+                ? `${esc(item.districtListStr)} <br><small style="color:var(--text-muted);">${esc(item.schoolListStr)}</small>` 
+                : esc(item.districtListStr);
+            top3ConsolidatedRows.push(`<tr>
+                <td><strong>${topCounter++}</strong></td>
+                <td><strong>${esc(item.gradeLevel)}</strong></td>
+                <td>${esc(item.learningArea)}</td>
+                <td><span class="badge badge-warning">Rank ${rank + 1}</span></td>
+                <td>${esc(item.desc)}</td>
+                <td><span class="badge badge-critical">${item.districtCount} District(s) / ${item.rawCount} Record(s)</span></td>
+                <td><small style="color:var(--deped-dark);">${displayLoc}</small></td>
+            </tr>`);
+        });
+    });
+
+    const rawRows = compItems.map((r, i) => `<tr>
+        <td><strong>${i + 1}</strong></td>
+        <td><small style="font-weight:bold;">${esc(r.sy ? (r.sy.startsWith('20') ? 'SY ' + r.sy : r.sy) : 'N/A')}</small></td>
+        <td><span class="badge badge-proficient">${esc(r.term || 'N/A')}</span></td>
+        <td><strong>${esc(r.district)}</strong>${r.school ? `<br><small style="color:var(--text-muted);">${esc(r.school)}</small>` : ''}</td>
+        <td><strong>${esc(r.gradeLevel)}</strong></td>
+        <td>${esc(r.learningArea)}</td>
+        <td><code style="background:#EDF2F7; padding:2px 6px; border-radius:3px; font-weight:bold; font-size:0.75rem; color:var(--deped-blue);">${esc(r.code)}</code></td>
+        <td>${esc(r.desc)}</td>
+    </tr>`).join('');
+
+    container.innerHTML = `
+    <div class="card-box" style="margin-bottom: 25px;">
+        <div class="card-box-header" style="background-color: #EBF8FF;">
+            <h3 style="color: var(--deped-blue);">CONSOLIDATED TOP LEAST LEARNED COMPETENCIES</h3>
+            <span class="badge badge-proficient">District & Program Aggregation</span>
+        </div>
+        <div style="padding:12px 20px; background: #F7FAFC; border-bottom:1px solid var(--border-color); font-size:0.82rem; color:var(--text-muted);">
+            Ranked competencies reported as least learned based on frequency across input records for each Grade Level and Specialization Track.
+        </div>
+        <div class="table-scroll"><table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Grade Level</th>
+                    <th>Program / Specialization Area</th>
+                    <th>Rank</th>
+                    <th>Competency Description / Learning Competency</th>
+                    <th>Affected Districts / Records</th>
+                    <th>Reporting Districts & Schools</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${top3ConsolidatedRows.length ? top3ConsolidatedRows.join('') : '<tr><td colspan="7" style="text-align:center;">No consolidated least learned competencies recorded.</td></tr>'}
+            </tbody>
+        </table></div>
+    </div>
+    <div class="card-box">
+        <div class="card-box-header">
+            <h3>Complete District Least Learned Competencies Log (All Recorded Inputs)</h3>
+            <span class="badge badge-proficient">Total Input Records: ${compItems.length}</span>
+        </div>
+        <div style="padding:10px 20px; background: #FFF; border-bottom:1px solid var(--border-color); font-size:0.82rem; color:var(--text-muted);">
+            Full itemized list reflecting every individual least learned competency input submitted via manual entry or Excel upload.
+        </div>
+        <div class="table-scroll"><table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>School Year</th>
+                    <th>Term</th>
+                    <th>District & School</th>
+                    <th>Grade Level</th>
+                    <th>Program / Specialization Area</th>
+                    <th>Code</th>
+                    <th>Competency Description / Learning Competency</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rawRows.length ? rawRows : '<tr><td colspan="8" style="text-align:center;">No individual competency records found.</td></tr>'}
+            </tbody>
+        </table></div>
+    </div>`;
+}
+
+async function renderGradeConsolidation(container) {
+    const data = await getFilteredData();
+    const userDist = currentUser ? currentUser.district : "ALL";
+
+    const gradeMap = {};
+    ALL_GRADES.forEach(g => gradeMap[g] = { mpsSum: 0, count: 0 });
+
+    data.forEach(r => {
+        if (gradeMap[r.gradeLevel]) {
+            gradeMap[r.gradeLevel].mpsSum += r.mps;
+            gradeMap[r.gradeLevel].count++;
+        }
+    });
+
+    const rows = ALL_GRADES.map(g => {
+        const item = gradeMap[g];
+        const avgMPS = item.count ? parseFloat((item.mpsSum / item.count).toFixed(2)) : 0;
+        return `<tr>
+            <td><strong>${g}</strong></td>
+            <td>${item.count ? `<strong>${avgMPS}%</strong>` : '<span class="no-data">No data</span>'}</td>
+            <td>${item.count ? `<span class="badge ${getBadgeClass(getPL(avgMPS))}">${getPL(avgMPS)}</span>` : '<span class="no-data">No data</span>'}</td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+    <div class="card-box">
+        <div class="card-box-header"><h3>Consolidated Performance by Grade Level (Grades 1 to 12) - ${userDist !== "ALL" ? `${esc(userDist)} District` : 'Division'} Scope</h3></div>
+        <div class="table-scroll"><table class="data-table">
+            <thead><tr><th>Grade Level</th><th>District MPS (%)</th><th>Proficiency Level</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table></div>
+    </div>`;
+}
+
+function renderReportsView(container) {
+    const userDist = currentUser ? currentUser.district : "ALL";
+    container.innerHTML = `
+    <div class="card-box" style="padding:20px;">
+        <h3>Printable Official ${userDist !== "ALL" ? `${esc(userDist)} District` : 'Division'} Assessment Report</h3>
+        <p style="font-size:0.88rem; color:var(--text-muted); margin-bottom:15px;">Generate official consolidated reports for MAPEH, 7 SPA Disciplines, 30 SPS Sports Tracks, 10 SPFL Foreign Languages, and 8 IPED Learning Subjects for submission to the Schools Division Office.</p>
+        <button class="btn btn-primary" onclick="window.print()">Print Official Report</button>
+    </div>`;
+}
+
+function renderSettingsView(container) {
+    // Restricted ONLY to Admin and Supervisor
+    if (!canAccessSettings()) {
+        container.innerHTML = `
+        <div class="card-box" style="padding: 40px; text-align: center;">
+            <h3 style="color: var(--danger); margin-bottom: 10px;">Access Restricted</h3>
+            <p style="color: var(--text-muted);">Only system users with <strong>Admin</strong> or <strong>Supervisor</strong> privileges can access Settings & Branding.</p>
+        </div>`;
+        return;
+    }
+
+    const coordFormRows = DEFAULT_DISTRICTS.map((d, i) => {
+        const info = districtCoordinators[d] || { name: "", position: "Public Schools District Supervisor" };
+        return `<div style="background: #F8FAFC; padding: 12px; border-radius: 6px; border:1px solid var(--border-color); margin-bottom: 10px;">
+            <h5 style="color:var(--deped-blue); margin-bottom:8px;">${i + 1}. ${esc(d)} District</h5>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Coordinator Name</label>
+                    <input type="text" id="coord-name-${d.replace(/[^a-zA-Z0-9]/g,'_')}" value="${esc(info.name)}" placeholder="Enter Full Name">
+                </div>
+                <div class="form-group">
+                    <label>Designated Position / Title</label>
+                    <input type="text" id="coord-pos-${d.replace(/[^a-zA-Z0-9]/g,'_')}" value="${esc(info.position)}" placeholder="e.g., Public Schools District Supervisor, Principal In-Charge">
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+
+    const syOptionsHTML = SCHOOL_YEARS.map(sy => `<option value="${sy}">SY ${sy}</option>`).join('');
+
+    container.innerHTML = `
+    <div class="card-box" style="padding: 20px; margin-bottom:20px;">
+        <h3>Print Header & Footer Settings</h3>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 15px;">Upload custom logo graphics and customize official print text.</p>
+        <form onsubmit="savePrintBrandingSettings(event)">
+            <h4 style="color:var(--deped-blue); margin-bottom: 10px;">Header Customization</h4>
+            <div class="form-grid">
+                <div class="form-group" style="grid-column: span 2;">
+                    <label>Header Logo Image</label>
+                    <input type="file" accept="image/*" onchange="handleImageUpload(event, 'headerLogo')">
+                </div>
+                <div class="form-group"><label>Header Line 1</label><input type="text" id="s-hl1" value="${esc(settings.headerL1)}"></div>
+                <div class="form-group"><label>Header Line 2</label><input type="text" id="s-hl2" value="${esc(settings.headerL2)}"></div>
+                <div class="form-group"><label>Header Line 3</label><input type="text" id="s-hl3" value="${esc(settings.headerL3)}"></div>
+                <div class="form-group"><label>Header Line 4</label><input type="text" id="s-hl4" value="${esc(settings.headerL4)}"></div>
+            </div>
+            <h4 style="color:var(--deped-blue); margin-top: 15px; margin-bottom:10px;">Footer Customization</h4>
+            <div class="form-grid">
+                <div class="form-group"><label>Footer Logo 1 (DepEd Logo)</label><input type="file" accept="image/*" onchange="handleImageUpload(event, 'footerLogo1')"></div>
+                <div class="form-group"><label>Footer Logo 2 (Bagong Pilipinas)</label><input type="file" accept="image/*" onchange="handleImageUpload(event, 'footerLogo2')"></div>
+                <div class="form-group"><label>Footer Logo 3 (Division Seal)</label><input type="file" accept="image/*" onchange="handleImageUpload(event, 'footerLogo3')"></div>
+            </div>
+            <div class="form-grid" style="margin-top:10px;">
+                <div class="form-group"><label>Address</label><input type="text" id="s-fa" value="${esc(settings.footerAddress)}"></div>
+                <div class="form-group"><label>Telephone Number</label><input type="text" id="s-fp" value="${esc(settings.footerPhone)}"></div>
+                <div class="form-group"><label>Email Address</label><input type="text" id="s-fe" value="${esc(settings.footerEmail)}"></div>
+                <div class="form-group"><label>Website</label><input type="text" id="s-fw" value="${esc(settings.footerWebsite)}"></div>
+                <div class="form-group"><label>Facebook Page</label><input type="text" id="s-ffb" value="${esc(settings.footerFacebook)}"></div>
+            </div>
+            <button type="submit" class="btn btn-success" style="margin-top: 15px;">Save Header & Footer Settings</button>
+        </form>
+    </div>
+    <div class="card-box" style="padding: 20px; margin-bottom:20px;">
+        <h3>District Coordinator & Position Management</h3>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 15px;">Customize designated District Coordinators and official positions for report signatories and profiles.</p>
+        <form onsubmit="saveDistrictCoordinators(event)">
+            ${coordFormRows}
+            <button type="submit" class="btn btn-success" style="margin-top: 10px;">Save District Coordinators</button>
+        </form>
+    </div>
+    <div class="card-box" style="padding: 20px;">
+        <h3>System Settings & Division Signatories</h3>
+        <form onsubmit="saveSettings(event)" style="margin-top:15px;">
+            <div class="form-grid">
+                <div class="form-group"><label>Prepared By (Name)</label><input type="text" id="s-pn" value="${esc(settings.sigPrepName)}"></div>
+                <div class="form-group"><label>Prepared By (Position)</label><input type="text" id="s-pp" value="${esc(settings.sigPrepPos)}"></div>
+                <div class="form-group"><label>Checked By (Name)</label><input type="text" id="s-cn" value="${esc(settings.sigCheckName)}"></div>
+                <div class="form-group"><label>Checked By (Position)</label><input type="text" id="s-cp" value="${esc(settings.sigCheckPos)}"></div>
+                <div class="form-group"><label>Noted By (Name)</label><input type="text" id="s-nn" value="${esc(settings.sigNoteName)}"></div>
+                <div class="form-group"><label>Noted By (Position)</label><input type="text" id="s-np" value="${esc(settings.sigNotePos)}"></div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Save Division Signatories</button>
+        </form>
+        <hr style="margin:25px 0; border:none; border-top: 1px solid var(--border-color);">
+        
+        <h3>Clear Data for Specific School Year</h3>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 12px;">Remove all consolidated records belonging to a single school year (e.g. SY 2025-2026). Requires you to re-enter your password.</p>
+        <div style="display:flex; gap:12px; align-items:center; margin-bottom:25px;">
+            <select id="clear-sy-select" style="padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border-color); font-weight:bold;">
+                ${syOptionsHTML}
+            </select>
+            <button class="btn btn-danger" onclick="clearSpecificSYData()">Delete Selected SY Records</button>
+        </div>
+
+        <hr style="margin:25px 0; border:none; border-top: 1px solid var(--border-color);">
+        <h3>Complete Database Reset</h3>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 12px;">Clear ALL database records across all school years. Requires you to re-enter your password.</p>
+        <button class="btn btn-danger" onclick="clearAllData()">Clear All Database Records</button>
+    </div>`;
+}
+
+function handleImageUpload(e, settingKey) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 500 * 1024) {
+        toast("That image is larger than 500 KB. Please choose a smaller file.", "error");
+        e.target.value = "";
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        settings[settingKey] = evt.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+async function persistSettings() {
+    const { data, error } = await sb().from("app_settings").update({ data: settings }).eq("id", 1).select("id");
+    if (error) throw error;
+    if (!data || data.length !== 1) { const e = new Error("denied"); e.code = "42501"; throw e; }
+}
+
+async function savePrintBrandingSettings(e) {
+    e.preventDefault();
+    if (!canAccessSettings()) { toast("Access Denied!", "error"); return; }
+    const btn = e.submitter || e.target.querySelector('button[type="submit"]');
+    const snapshot = { ...settings };
+    settings.headerL1 = document.getElementById("s-hl1").value;
+    settings.headerL2 = document.getElementById("s-hl2").value;
+    settings.headerL3 = document.getElementById("s-hl3").value;
+    settings.headerL4 = document.getElementById("s-hl4").value;
+    settings.footerAddress = document.getElementById("s-fa").value;
+    settings.footerPhone = document.getElementById("s-fp").value;
+    settings.footerEmail = document.getElementById("s-fe").value;
+    settings.footerWebsite = document.getElementById("s-fw").value;
+    settings.footerFacebook = document.getElementById("s-ffb").value;
+
+    setBusy(btn, true);
+    try {
+        await persistSettings();
+        applyPrintBrandingUI();
+        toast("Header and Footer Branding Saved Successfully!");
+    } catch (err) {
+        settings = snapshot;
+        toast(friendlyError(err), "error");
+    } finally {
+        setBusy(btn, false);
+    }
+}
+
+function applyPrintBrandingUI() {
+    const hLogo = document.getElementById("print-h-logo");
+    if (settings.headerLogo) { 
+        hLogo.src = settings.headerLogo;
+        hLogo.style.display = "block"; 
+    } else { 
+        hLogo.style.display = "none"; 
+    }
+    
+    document.getElementById("print-h-l1").textContent = settings.headerL1 || "";
+    document.getElementById("print-h-l2").textContent = settings.headerL2 || "";
+    document.getElementById("print-h-l3").textContent = settings.headerL3 || "";
+    document.getElementById("print-h-l4").textContent = settings.headerL4 || "";
+
+    const fLogos = [
+        { el: "print-f-logo1", data: settings.footerLogo1 },
+        { el: "print-f-logo2", data: settings.footerLogo2 },
+        { el: "print-f-logo3", data: settings.footerLogo3 }
+    ];
+
+    fLogos.forEach(item => {
+        const imgEl = document.getElementById(item.el);
+        if (item.data) { 
+            imgEl.src = item.data; 
+            imgEl.style.display = "inline-block"; 
+        } else { 
+            imgEl.style.display = "none"; 
+        }
+    });
+
+    document.getElementById("print-f-addr").textContent = settings.footerAddress || "";
+    document.getElementById("print-f-phone").textContent = settings.footerPhone || "";
+    document.getElementById("print-f-email").textContent = settings.footerEmail || "";
+    document.getElementById("print-f-web").textContent = settings.footerWebsite || "";
+    document.getElementById("print-f-fb").textContent = settings.footerFacebook || "";
+}
+
+async function saveDistrictCoordinators(e) {
+    e.preventDefault();
+    if (!canAccessSettings()) { toast("Access Denied!", "error"); return; }
+    const btn = e.submitter || e.target.querySelector('button[type="submit"]');
+    setBusy(btn, true);
+    try {
+        const results = await Promise.all(DEFAULT_DISTRICTS.map(async d => {
+            const key = d.replace(/[^a-zA-Z0-9]/g, '_');
+            const { data, error } = await sb().from("districts").update({
+                coordinator_name: document.getElementById(`coord-name-${key}`).value,
+                coordinator_position: document.getElementById(`coord-pos-${key}`).value
+            }).eq("id", districtIdByName[d]).select("id");
+            return { d, ok: !error && !!data && data.length === 1, error };
+        }));
+        await initDB(); // show what the database really holds, even if some rows failed
+        updateSignatoriesUI();
+        const failed = results.filter(r => !r.ok);
+        if (failed.length) {
+            toast(`Not all coordinators were saved (${failed.map(f => f.d).join(", ")}). ${friendlyError(failed[0].error || { code: "42501" })}`, "error");
+        } else {
+            toast("District Coordinators and Positions updated successfully!");
+        }
+    } catch (err) {
+        toast(friendlyError(err), "error");
+    } finally {
+        setBusy(btn, false);
+    }
+}
+
+async function saveSettings(e) {
+    e.preventDefault();
+    if (!canAccessSettings()) { toast("Access Denied!", "error"); return; }
+    const btn = e.submitter || e.target.querySelector('button[type="submit"]');
+    const snapshot = { ...settings };
+    settings.sigPrepName = document.getElementById("s-pn").value;
+    settings.sigPrepPos = document.getElementById("s-pp").value;
+    settings.sigCheckName = document.getElementById("s-cn").value;
+    settings.sigCheckPos = document.getElementById("s-cp").value;
+    settings.sigNoteName = document.getElementById("s-nn").value;
+    settings.sigNotePos = document.getElementById("s-np").value;
+    setBusy(btn, true);
+    try {
+        await persistSettings();
+        updateSignatoriesUI();
+        toast("General settings saved successfully!");
+    } catch (err) {
+        settings = snapshot;
+        toast(friendlyError(err), "error");
+    } finally {
+        setBusy(btn, false);
+    }
+}
+
+function updateSignatoriesUI() {
+    const userDist = currentUser ? currentUser.district : "ALL";
+    const activeDist = userDist !== "ALL" ? userDist : filters.district;
+
+    if (activeDist !== "ALL" && districtCoordinators[activeDist]) {
+        const coord = districtCoordinators[activeDist];
+        document.getElementById("sig-p-name").textContent = coord.name;
+        document.getElementById("sig-p-pos").textContent = `${activeDist} ${coord.position}`;
+        document.getElementById("print-title").textContent = `${activeDist.toUpperCase()} DISTRICT PROFICIENCY CONSOLIDATION REPORT`;
+    } else {
+        document.getElementById("sig-p-name").textContent = settings.sigPrepName;
+        document.getElementById("sig-p-pos").textContent = settings.sigPrepPos;
+        document.getElementById("print-title").textContent = "DIVISION DISTRICT & TERM PROFICIENCY CONSOLIDATION REPORT";
+    }
+    document.getElementById("sig-c-name").textContent = settings.sigCheckName;
+    document.getElementById("sig-c-pos").textContent = settings.sigCheckPos;
+    document.getElementById("sig-n-name").textContent = settings.sigNoteName;
+    document.getElementById("sig-n-pos").textContent = settings.sigNotePos;
+}
+
+async function clearSpecificSYData() {
+    if (!canAccessSettings()) { toast("Access Denied: Admin or Supervisor authorization required.", "error"); return; }
+    const selectedSY = document.getElementById("clear-sy-select").value;
+    if (!(await requireReauth(`Enter your password to clear stored records for SY ${selectedSY}.`))) return;
+    if (confirm(`Password verified. Are you sure you want to delete all stored assessment records for SY ${selectedSY}? This action cannot be undone.`)) {
+        try {
+            const n = await deleteRecordsBySY(selectedSY);
+            toast(`${n} assessment record(s) for SY ${selectedSY} cleared.`);
+            switchView("division");
+        } catch (err) {
+            toast(friendlyError(err), "error");
+        }
+    }
+}
+
+async function clearAllData() {
+    if (!canAccessSettings()) { toast("Access Denied: Admin or Supervisor authorization required.", "error"); return; }
+    if (!(await requireReauth("Enter your password to clear all stored database records."))) return;
+    if (confirm("Password verified. Are you sure you want to clear all stored database records? This action cannot be undone.")) {
+        try {
+            const n = await clearDatabase();
+            toast(`Database cleared: ${n} record(s) removed.`);
+            switchView("division");
+        } catch (err) {
+            toast(friendlyError(err), "error");
+        }
+    }
+}
+
+/* 7. INITIALIZATION */
+window.addEventListener("DOMContentLoaded", async () => {
+    populateSchoolYearFilters();
+    populateSubjectFilter();
+    populateDistrictFilter();
+    applyPrintBrandingUI();
+    updateSignatoriesUI();
+    setupNav();
+    updateEnvBanner();
+
+    if (!isConfigured()) {
+        showLoginError("This site is not configured yet: the Supabase settings in config.js are missing.");
+        return;
+    }
+    sb().auth.onAuthStateChange((event) => {
+        if (event === "SIGNED_OUT") {
+            currentUser = null;
+            document.getElementById("login-screen").style.display = "flex";
+        }
+    });
+    try {
+        const { data: { session } } = await sb().auth.getSession();
+        if (session) await enterApp();
+    } catch (err) {
+        /* enterApp already displayed the message on the login screen */
+    }
+});
+</script>
+</body>
+</html>

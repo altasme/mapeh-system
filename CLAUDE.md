@@ -298,7 +298,7 @@ This preserves today's permissions exactly: all signed-in users can enter data i
 4. Verify all 13 logins from the deployed URL before handover.
 
 ### 8.5 Destructive actions
-- Remove the hardcoded `"depedmapehDavNor"` check and the `prompt()` (which shows the password in clear text).
+- Remove the hardcoded password check (the literal is in `legacy/` only) and the `prompt()` (which shows the password in clear text).
 - Replace with a **re-authentication modal**: a password field (`type="password"`) that calls `signInWithPassword` with the current user's own email. On success, show the existing confirm text, then delete.
 - Delete by SY: `.delete().eq('sy', sy)`. Clear all: `.delete().gt('id', 0)` (supabase-js refuses an unfiltered delete). Report the deleted count from the response.
 
