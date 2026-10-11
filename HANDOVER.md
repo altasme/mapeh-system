@@ -1,8 +1,8 @@
 # HANDOVER: MAPEH Davao del Norte Assessment System · Test Deployment
 
 **Built by:** Altaventures Business Development Services
-**Handover date:** 2026-10-11 (Supabase live; Cloudflare Pages deploy still to be done)  ·  **Spec version built:** v1.2
-**Test URL:** TBD (set when the Cloudflare Pages project is created)  ·  **Repo:** https://github.com/altasme/mapeh-system (private)
+**Handover date:** 2026-10-11 (live)  ·  **Spec version built:** v1.2
+**Test URL:** https://mapeh-system.pages.dev  ·  **Repo:** https://github.com/altasme/mapeh-system (private)
 
 ## 1. What was delivered
 - Existing app, unchanged in behavior, ready for Cloudflare Pages. All 9 views, formulas, print layout and Excel template preserved.
@@ -11,7 +11,7 @@
 - Code audit: docs/AUDIT.md (29 register entries: 15 fixed in code, 12 documented for the upgrade, 2 accepted risks; plus 9 findings added during the build).
 - Visual polish: responsive layout with phone drawer menu, loading / empty / error states, toasts, test-environment banner, re-authentication modal, keyboard-operable navigation.
 - Placeholders shipped on purpose: `public/config.js` and `public/_headers` contain `[PROJECT-REF]` and `[PUBLISHABLE_KEY]` until the Supabase project exists. The site shows "not configured yet" on the login screen until they are filled.
-- Verification: 118 automated checks against an in-memory stand-in (`node tools/qa/run_qa.mjs`), the RLS matrix on a local Postgres, and, against the LIVE Supabase project: 27 of 27 access-rule checks as real signed-in users (`tools/verify-live.mjs`), 20 of 20 browser checks of the real app with real CDN scripts and SRI (`tools/qa/live_smoke.mjs`), and all 13 accounts signing in.
+- Verification: 118 automated checks against an in-memory stand-in (`node tools/qa/run_qa.mjs`), the RLS matrix on a local Postgres, and, against the LIVE project and the DEPLOYED site (real CSP, real CDN scripts with SRI): 27 of 27 access-rule checks as real signed-in users (`tools/verify-live.mjs`), 20 of 20 browser checks (`LIVE_URL=... node tools/qa/live_smoke.mjs`), 15 of 15 write-path checks with full restore (`tools/qa/live_writes.mjs`: manual entry, valid and invalid Excel imports, baseline edit, notes, settings), and all 13 accounts signing in. Not tested live: the 360px layout and print output (checked on the stand-in only) and a client walkthrough.
 
 ## 2. Run & deploy
 No build step.
@@ -27,8 +27,8 @@ No build step.
 
 **Cloudflare Pages**
 6. `public/config.js` and `public/_headers` already hold the project URL, publishable key and ref (done).
-7. Create the Pages project from this repo: framework preset None, build command empty, output directory `public`. Deploys on every push to `main`.
-8. In Supabase Authentication > URL Configuration set Site URL to the Pages URL.
+7. DONE: Cloudflare Pages project `mapeh-system` from this repo (framework None, no build command, output `public`). Deploys on every push to `main`.
+8. Supabase Authentication > URL Configuration: Site URL must be https://mapeh-system.pages.dev (to be confirmed by Altaventures; it is not readable through the API).
 9. **Real-project checks before handing over:** sign in as each of the 13 accounts; confirm a coordinator sees only their district; run one Excel import, one manual entry, one baseline edit; print one report; run `tools/verify-sri.sh`.
 
 - Config: public/config.js (public values only). Pinned versions: supabase-js 2.117.3, SheetJS 0.20.3, Chart.js 4.4.1 (all with SRI).
@@ -78,7 +78,7 @@ All flags are reserved and unwired.
 - Current accounts: 13 (1 admin, 1 supervisor, 11 district coordinators). Passwords are the ones already defined in the client's original file; nothing new was distributed. Recommend new passwords before any real data goes in (AUDIT R2).
 
 ## 8. Accounts & infrastructure (pointers, NOT secrets)
-- Cloudflare Pages: Altaventures account / project name TBD
+- Cloudflare Pages: Altaventures account / project `mapeh-system` (https://mapeh-system.pages.dev)
 - Supabase: Altaventures dedicated account / project ref `yesnxycbzwaaugqbwowd` / region ap-southeast-1 (confirm in dashboard) / plan TBD
 - Inactivity pause behavior and backups: check the plan at creation. Free projects have historically paused after about a week of inactivity and have no automated backups. Record the chosen plan here, and take a manual export (Dashboard > Database > Backups, or `pg_dump`) before any client session if the plan has no backups.
 - Repo: https://github.com/altasme/mapeh-system
@@ -93,6 +93,6 @@ All flags are reserved and unwired.
 - The original passwords are still in use (AUDIT R2).
 
 ## 10. Recommended next steps
-- Before the client's first session: complete Cloudflare steps 7 to 9 in section 2 and send the Test URL. Rotate the Supabase database password, secret key and service-role key (they were shared in a chat transcript).
+- Before the client's first session: confirm the Site URL (step 8), do a short walkthrough with the client on a phone and a laptop, then send the Test URL. Rotate the Supabase database password, secret key and service-role key (they were shared in a chat transcript).
 - Ask the client to confirm: real coordinator names and signatories, whether Supervisor should keep Admin powers, how division MPS should be averaged, and the "8 IPED" wording.
 - When the client is ready for real data: change all passwords, move to a paid plan with backups, purge the sample rows, set `environment` to "production", and scope the upgrade items in section 4.

@@ -1,4 +1,5 @@
-// Smoke test of the deployed-shape app (public/) against the REAL Supabase project, real CDN scripts, SRI enforced.
+// Smoke test against the REAL Supabase project with real CDN scripts (SRI enforced). By default the app is served from public/;
+// set LIVE_URL=https://<project>.pages.dev to test the deployed site, including its real CSP headers.
 // Passwords come from legacy/ at run time. Usage: node tools/qa/live_smoke.mjs
 import { createRequire } from 'module';
 import http from 'http'; import fs from 'fs'; import path from 'path';
@@ -7,14 +8,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || '/opt/node22/lib/nod
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
 const legacy = fs.readFileSync(path.join(ROOT, 'legacy/mapehDavNor.original.html'), 'utf8');
 const pw = Object.fromEntries([...legacy.matchAll(/username:\s*"([^"]+)",\s*password:\s*"([^"]+)"/g)].map(m => [m[1], m[2]]));
-const BASE = 'https://app.test'; // virtual origin: files are served from public/ by route interception, everything else is real network
+const BASE = process.env.LIVE_URL || 'https://app.test'; // virtual origin: files are served from public/ by route interception, everything else is real network
 const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY } : undefined;
 const browser = await chromium.launch({ proxy });
 let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log(`  ${c ? 'PASS' : 'FAIL'} ${m}`); };
 const txt = async p => (await p.evaluate(() => document.getElementById('view-container').innerText)).replace(/\s+/g, ' ');
 for (const user of ['admin', 'carmen_coord']) {
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1280, height: 900 } });
-  await ctx.route('https://app.test/**', route => { const u = new URL(route.request().url()); const f = path.join(ROOT, 'public', u.pathname === '/' ? 'index.html' : u.pathname);
+  if (!process.env.LIVE_URL) await ctx.route('https://app.test/**', route => { const u = new URL(route.request().url()); const f = path.join(ROOT, 'public', u.pathname === '/' ? 'index.html' : u.pathname);
     if (!fs.existsSync(f)) return route.fulfill({ status: 404, body: '' });
     route.fulfill({ contentType: f.endsWith('.js') ? 'text/javascript' : 'text/html', body: fs.readFileSync(f) }); });
   const page = await ctx.newPage();
