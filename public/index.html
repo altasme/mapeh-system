@@ -568,6 +568,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--blue); outl
 .note-col strong { color: var(--ink-2) !important; font-size: 0.82rem; }
 .coord-row { background: transparent !important; border: 0 !important; border-top: 1px solid var(--rule) !important; border-radius: 0 !important; padding: 14px 0 !important; margin-bottom: 0 !important; }
 .coord-row h5 { color: var(--ink) !important; font-size: 0.92rem; }
+.sig-grid { display: grid; grid-template-columns: 130px minmax(0, 1fr) minmax(0, 1fr); gap: 10px 16px; align-items: center; margin-top: 4px; max-width: 900px; }
+.sig-h { font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+.sig-role { font-weight: 600; font-size: 0.9rem; color: var(--ink-2); }
+.sig-cell input { width: 100%; height: 38px; padding: 0 12px; }
+.sig-cell::before { display: none; }
 .lc-box { background: transparent !important; border: 0 !important; border-radius: 0 !important; padding: 0 !important; }
 
 /* Charts */
@@ -588,6 +593,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--blue); outl
 
 @media screen and (max-width: 640px) {
 .btn { white-space: normal; }
+.sig-grid { grid-template-columns: 1fr; gap: 4px; }
+.sig-h { display: none; }
+.sig-role { margin-top: 14px; }
+.sig-cell::before { display: block; content: attr(data-label); font-size: 0.78rem; font-weight: 600; color: var(--muted); margin: 6px 0 4px; }
 .form-grid { grid-template-columns: 1fr; }
 .form-group { grid-column: auto !important; }
 }
@@ -598,7 +607,7 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
 .header-info { order: 1; flex: 1 1 0; min-width: 0; }
 .header-info h1 { font-size: 1.2rem; }
 .header-info p { display: none; }
-.header-actions { order: 2; width: 100%; justify-content: space-between; gap: 8px; }
+.header-actions { order: 2; width: 100%; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 #filters-toggle { display: inline-flex; }
 .user-profile-badge > div:nth-child(2) { display: none; }
 .filter-bar { display: none; padding: 4px 16px 16px; }
@@ -715,6 +724,7 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
             <p>Republic of the Philippines | Region XI SDO Davao del Norte | <span id="header-sy-label">All School Years</span></p>
         </div>
         <div class="header-actions">
+            <button type="button" id="csv-btn" class="btn btn-secondary no-print" style="display:none;" onclick="downloadCsv(event)">Download CSV</button>
             <button type="button" id="filters-toggle" class="btn btn-secondary no-print" onclick="document.getElementById('filter-bar').classList.toggle('open')">Filters</button>
             <button class="btn btn-primary" onclick="window.print()">Print Report</button>
             <div class="user-profile-badge">
@@ -1038,6 +1048,8 @@ function applyUserPermissionsUI() {
     if (navSettings) {
         navSettings.style.display = canAccessSettings() ? "flex" : "none";
     }
+    const csvBtn = document.getElementById("csv-btn");
+    if (csvBtn) csvBtn.style.display = canAccessSettings() ? "" : "none";
 
     populateDistrictFilter();
 }
@@ -1140,7 +1152,8 @@ function fromRow(row) {
         pct75: Number(row.pct75),
         proficiencyLevel: row.proficiency_level,
         leastLearned: Array.isArray(row.least_learned) ? row.least_learned : [],
-        isDemo: !!row.is_demo
+        isDemo: !!row.is_demo,
+        createdAt: row.created_at || ""
     };
 }
 
@@ -2789,13 +2802,17 @@ function renderSettingsView(container) {
     <div class="card-box" style="padding: 20px;">
         <h3>System Settings & Division Signatories</h3>
         <form onsubmit="saveSettings(event)" style="margin-top:15px;">
-            <div class="form-grid">
-                <div class="form-group"><label>Prepared By (Name)</label><input type="text" id="s-pn" value="${esc(settings.sigPrepName)}"></div>
-                <div class="form-group"><label>Prepared By (Position)</label><input type="text" id="s-pp" value="${esc(settings.sigPrepPos)}"></div>
-                <div class="form-group"><label>Checked By (Name)</label><input type="text" id="s-cn" value="${esc(settings.sigCheckName)}"></div>
-                <div class="form-group"><label>Checked By (Position)</label><input type="text" id="s-cp" value="${esc(settings.sigCheckPos)}"></div>
-                <div class="form-group"><label>Noted By (Name)</label><input type="text" id="s-nn" value="${esc(settings.sigNoteName)}"></div>
-                <div class="form-group"><label>Noted By (Position)</label><input type="text" id="s-np" value="${esc(settings.sigNotePos)}"></div>
+            <div class="sig-grid">
+                <div class="sig-h" aria-hidden="true"></div><div class="sig-h" aria-hidden="true">Name</div><div class="sig-h" aria-hidden="true">Position</div>
+                <label class="sig-role" for="s-pn">Prepared by</label>
+                <div class="sig-cell" data-label="Name"><input type="text" id="s-pn" aria-label="Prepared by, name" value="${esc(settings.sigPrepName)}"></div>
+                <div class="sig-cell" data-label="Position"><input type="text" id="s-pp" aria-label="Prepared by, position" value="${esc(settings.sigPrepPos)}"></div>
+                <label class="sig-role" for="s-cn">Checked by</label>
+                <div class="sig-cell" data-label="Name"><input type="text" id="s-cn" aria-label="Checked by, name" value="${esc(settings.sigCheckName)}"></div>
+                <div class="sig-cell" data-label="Position"><input type="text" id="s-cp" aria-label="Checked by, position" value="${esc(settings.sigCheckPos)}"></div>
+                <label class="sig-role" for="s-nn">Noted by</label>
+                <div class="sig-cell" data-label="Name"><input type="text" id="s-nn" aria-label="Noted by, name" value="${esc(settings.sigNoteName)}"></div>
+                <div class="sig-cell" data-label="Position"><input type="text" id="s-np" aria-label="Noted by, position" value="${esc(settings.sigNotePos)}"></div>
             </div>
             <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Save Division Signatories</button>
         </form>
@@ -2976,6 +2993,59 @@ function updateSignatoriesUI() {
     document.getElementById("sig-n-name").textContent = settings.sigNoteName;
     document.getElementById("sig-n-pos").textContent = settings.sigNotePos;
     updateSheetHead();
+}
+
+/* DOWNLOAD CSV (Admin and Supervisor): every record in the database, one row per record, sorted by school year,
+   district, term, grade and learning area. Column names match the import template, so the file can be re-imported;
+   the extra columns at the end are ignored by the import. */
+function csvCell(v) {
+    let s = v === null || v === undefined ? "" : String(v);
+    // a text cell starting with = + - @ would run as a formula in Excel: neutralise it with a leading apostrophe
+    if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+async function downloadCsv(ev) {
+    if (!canAccessSettings()) { toast("Access Denied: Admin or Supervisor authorization required.", "error"); return; }
+    const btn = ev && ev.currentTarget;
+    setBusy(btn, true);
+    try {
+        const recs = await getAllRecords();
+        if (!recs.length) { toast("There are no records to export.", "info"); return; }
+        const rank = (list, v) => { const i = list.indexOf(v); return i < 0 ? list.length : i; };
+        recs.sort((a, b) =>
+            a.sy.localeCompare(b.sy) || rank(DEFAULT_DISTRICTS, a.district) - rank(DEFAULT_DISTRICTS, b.district) ||
+            a.term.localeCompare(b.term) || rank(ALL_GRADES, a.gradeLevel) - rank(ALL_GRADES, b.gradeLevel) ||
+            rank(SUBJECTS, a.learningArea) - rank(SUBJECTS, b.learningArea) || a.id - b.id);
+        const maxLc = Math.max(3, ...recs.map(r => r.leastLearned.length));
+        const head = ["School Year", "Term", "District", "School Name", "Key Stage", "Grade Level", "Learning Area",
+            "SY Baseline MPS", "Mean Percentage Score (MPS%)", "% Learners Scoring >= 75%", "Proficiency Level"];
+        for (let i = 1; i <= maxLc; i++) head.push(`Least Learned Competency ${i} Code`, `Least Learned Competency ${i} Description`);
+        head.push("Sample Data", "Record ID", "Date Added");
+        const lines = [head.map(csvCell).join(",")];
+        recs.forEach(r => {
+            const row = [r.sy, r.term, r.district, r.school, r.keyStage, r.gradeLevel, r.learningArea,
+                r.baselineMps.toFixed(2), r.mps.toFixed(2), r.pct75.toFixed(2), r.proficiencyLevel];
+            for (let i = 0; i < maxLc; i++) {
+                const c = r.leastLearned[i];
+                row.push(c ? (typeof c === "string" ? `LC-${i + 1}` : (c.code || `LC-${i + 1}`)) : "", c ? (typeof c === "string" ? c : (c.desc || c.description || "")) : "");
+            }
+            row.push(r.isDemo ? "Yes" : "No", r.id, r.createdAt ? String(r.createdAt).slice(0, 10) : "");
+            lines.push(row.map(csvCell).join(","));
+        });
+        // UTF-8 byte order mark so Excel reads accented characters correctly
+        const blob = new Blob(["\uFEFF" + lines.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `mapeh-assessment-records-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        toast(`Downloaded ${recs.length} record(s) as CSV.`);
+    } catch (err) {
+        toast(friendlyError(err), "error");
+    } finally {
+        setBusy(btn, false);
+    }
 }
 
 async function clearSpecificSYData() {

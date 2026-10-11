@@ -431,6 +431,76 @@ console.log('\n[10] Print output: PDFs of the original and the ported app for di
   }
 }
 
+console.log('\n[11] Download CSV (Admin and Supervisor) and the aligned signatory rows');
+{
+  const parseCsv = text => { // RFC 4180 parser (quotes, doubled quotes, newlines inside quotes)
+    const rows = []; let row = [], cell = '', q = false;
+    for (let i = 0; i < text.length; i++) { const c = text[i];
+      if (q) { if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') q = false; else cell += c; }
+      else if (c === '"') q = true; else if (c === ',') { row.push(cell); cell = ''; }
+      else if (c === '\n') { row.push(cell.replace(/\r$/, '')); rows.push(row); row = []; cell = ''; } else cell += c; }
+    if (cell || row.length) { row.push(cell); rows.push(row); } return rows; };
+  const tricky = Object.assign({}, demo[0], { district: 'Carmen', school: 'Hope, "Central"\nSchool', learningArea: 'SPA - Vocal Arts',
+    leastLearned: [{ code: '=1+1', desc: 'plain' }, { code: 'LC-2', desc: '@SUM(A1)' }, { code: 'LC-3', desc: 'x' }, { code: 'LC-4', desc: 'fourth' }] });
+  const rowsIn = [demo[0], tricky, demo.find(r => r.district === 'Asuncion' && r.term === 'Term 2'), demo.find(r => r.district === 'Langilan')];
+  for (const user of ['admin', 'supervisor']) {
+    const N = await openNew(user, rowsIn);
+    ok(await N.page.locator('#csv-btn').isVisible(), `${user}: "Download CSV" button is visible`);
+    const [dl] = await Promise.all([N.page.waitForEvent('download'), N.page.click('#csv-btn')]);
+    const file = `${OUT}/${user}.csv`; await dl.saveAs(file);
+    const raw = fs.readFileSync(file, 'utf8'); const rows = parseCsv(raw.replace(/^﻿/, ''));
+    ok(/^mapeh-assessment-records-\d{4}-\d{2}-\d{2}\.csv$/.test(dl.suggestedFilename()), `${user}: file name ${dl.suggestedFilename()}`);
+    ok(raw.charCodeAt(0) === 0xFEFF, `${user}: UTF-8 byte order mark so Excel reads it correctly`);
+    ok(rows.length === 1 + rowsIn.length, `${user}: header plus every record (${rows.length - 1} of ${rowsIn.length} rows)`);
+    const h = rows[0];
+    const want = ['School Year', 'Term', 'District', 'School Name', 'Key Stage', 'Grade Level', 'Learning Area', 'SY Baseline MPS', 'Mean Percentage Score (MPS%)', '% Learners Scoring >= 75%'];
+    ok(want.every((w, i) => h[i] === w), `${user}: columns start with the import template's names, so the file can be re-imported`);
+    ok(h.includes('Least Learned Competency 4 Description') && h.includes('Sample Data') && h.includes('Record ID'), `${user}: competency columns expand to the longest list; sample flag and id included`);
+    ok(rows.every(r => r.length === h.length), `${user}: every row has exactly ${h.length} columns (quoting is sound)`);
+    const t = rows.find(r => r[h.indexOf('Learning Area')] === 'SPA - Vocal Arts');
+    ok(t && t[h.indexOf('School Name')] === 'Hope, "Central"\nSchool', `${user}: commas, quotes and line breaks inside a cell round-trip`);
+    ok(t && t[h.indexOf('Least Learned Competency 1 Code')] === "'=1+1" && t[h.indexOf('Least Learned Competency 2 Description')] === "'@SUM(A1)", `${user}: text starting with = or @ is neutralised against spreadsheet formulas`);
+    const src = rowsIn[0]; const first = rows[1];
+    ok(first[h.indexOf('Mean Percentage Score (MPS%)')] === src.mps.toFixed(2) && first[h.indexOf('Proficiency Level')] === src.proficiencyLevel, `${user}: figures written with two decimals and the right level`);
+    const order = rows.slice(1).map(r => r[h.indexOf('District')]);
+    ok(JSON.stringify(order) === JSON.stringify([...order].sort((a, b) => ['Asuncion', 'B.E. Dujali', 'Carmen', 'Kapalong East', 'Kapalong West', 'New Corella', 'San Isidro', 'Sto. Tomas East', 'Sto. Tomas West', 'Talaingod', 'Langilan'].indexOf(a) - ['Asuncion', 'B.E. Dujali', 'Carmen', 'Kapalong East', 'Kapalong West', 'New Corella', 'San Isidro', 'Sto. Tomas East', 'Sto. Tomas West', 'Talaingod', 'Langilan'].indexOf(b))), `${user}: rows organised by school year, then district order, term, grade`);
+    ok(/Downloaded 4 record/.test(await N.page.textContent('#toast-host')), `${user}: confirmation toast reports the count`);
+    await N.ctx.close();
+  }
+  // the whole database, not the current filter
+  { const N = await openNew('admin', demo);
+    await N.page.selectOption('#flt-district', 'Carmen'); await settled(N.page);
+    const [dl] = await Promise.all([N.page.waitForEvent('download'), N.page.click('#csv-btn')]);
+    await dl.saveAs(`${OUT}/all.csv`); const rows = parseCsv(fs.readFileSync(`${OUT}/all.csv`, 'utf8').replace(/^﻿/, ''));
+    ok(rows.length === 1 + demo.length, `exports the entire data (${rows.length - 1} rows) even while a district filter is active, including the 1,452-row set past the 1,000-row cap`);
+    await N.ctx.close(); }
+  // coordinators cannot see or use it
+  { const N = await openNew('carmen_coord', rowsIn);
+    ok(!(await N.page.locator('#csv-btn').isVisible()), 'coordinator: no Download CSV button');
+    let got = false; N.page.once('download', () => { got = true; });
+    await N.page.evaluate(() => downloadCsv()); await N.page.waitForTimeout(500);
+    ok(!got && /Access Denied/.test(await N.page.textContent('#toast-host')), 'coordinator: calling it directly is refused and nothing downloads');
+    await N.ctx.close(); }
+  // empty database
+  { const N = await openNew('admin', []); await N.page.click('#csv-btn');
+    ok(/no records to export/i.test(await N.page.textContent('#toast-host')), 'empty database: a clear message instead of an empty file'); await N.ctx.close(); }
+
+  // signatories: three rows, Name and Position in aligned columns
+  const A = await openNew('admin', []);
+  await A.page.evaluate(() => switchView('settings')); await settled(A.page);
+  const box = id => A.page.locator('#' + id).boundingBox();
+  const [pn, pp, cn, cp, nn, np] = await Promise.all(['s-pn', 's-pp', 's-cn', 's-cp', 's-nn', 's-np'].map(box));
+  ok([[pn, pp], [cn, cp], [nn, np]].every(([a, b]) => Math.abs(a.y - b.y) < 2 && b.x > a.x + a.width), 'signatories: each row has Name then Position side by side');
+  ok(Math.abs(pn.x - cn.x) < 2 && Math.abs(cn.x - nn.x) < 2 && Math.abs(pp.x - cp.x) < 2 && Math.abs(cp.x - np.x) < 2, 'signatories: Name inputs share one column and Position inputs share one column');
+  ok(pn.y < cn.y && cn.y < nn.y, 'signatories: order is Prepared by, Checked by, Noted by');
+  const roles = await A.page.locator('.sig-role').allTextContents();
+  ok(JSON.stringify(roles) === JSON.stringify(['Prepared by', 'Checked by', 'Noted by']), 'signatories: row labels');
+  await A.page.fill('#s-cn', 'CHECKER NAME'); await A.page.fill('#s-cp', 'Checker Position');
+  await A.page.click('button:has-text("Save Division Signatories")'); await A.page.waitForSelector('.toast-success');
+  ok(await A.page.evaluate(() => document.getElementById('sig-c-name').textContent === 'CHECKER NAME' && document.getElementById('sig-c-pos').textContent === 'Checker Position'), 'signatories: saving still updates the printed signatory block');
+  await A.ctx.close();
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await browser.close(); server.close();
 process.exit(fail ? 1 : 0);
