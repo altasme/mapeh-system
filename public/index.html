@@ -462,6 +462,7 @@ header.top-header { background: transparent; border: 0; box-shadow: none; paddin
 .btn-sm { padding: 5px 10px; font-size: 0.8rem; }
 
 /* The sheet: every view is laid out as the official sheet it prints as */
+#view-container > div.no-head { padding-top: 28px !important; }
 #view-container > div:not(.view-loading) { background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; padding: 0 36px 40px; max-width: 1280px; box-shadow: 0 1px 2px rgba(16,27,51,0.05), 0 12px 28px -18px rgba(16,27,51,0.22); }
 .view-loading { color: var(--muted); }
 .sheet-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 18px 0 14px; margin-bottom: 26px; border-bottom: 1px solid var(--rule); font-size: 0.82rem; color: var(--muted); }
@@ -518,6 +519,15 @@ table.data-table tr:hover { background: #f6f8fc; }
 table.data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 #view-container small, #view-container small * { font-size: 0.8rem !important; }
 table.data-table td small { color: var(--muted); }
+table.data-table td.loc-cell { min-width: 300px; white-space: normal; }
+.card-box-header[data-tint] { background: transparent !important; }
+.card-note { background: transparent !important; border: 0 !important; padding: 0 0 14px !important; font-size: 0.86rem !important; }
+.card-box-header h3 { text-transform: lowercase; }
+.card-box-header h3::first-letter { text-transform: uppercase; }
+.sheet-title { text-align: left !important; margin-bottom: 18px !important; }
+.sheet-title h3 { color: var(--ink) !important; font-size: 1.08rem; font-weight: 650; text-transform: lowercase !important; }
+.sheet-title h3::first-letter { text-transform: uppercase; }
+.sheet-title p { color: var(--muted) !important; font-size: 0.8rem !important; font-weight: 500 !important; }
 .ruler-cell { display: flex; flex-direction: column; align-items: flex-end; }
 .ruler-cell .ruler-sm { width: 120px; }
 .excel-table-container { border: 1px solid var(--rule-strong); border-radius: 6px; margin-bottom: 28px; }
@@ -526,13 +536,15 @@ table.excel-table th, table.excel-table td { border: 1px solid var(--rule); padd
 table.excel-table th { background: #eef2fa; color: var(--ink-2); font-size: 0.78rem; font-weight: 600; text-transform: none; letter-spacing: 0; }
 table.excel-table tr.mapeh-row { background: #f4f7fd; font-weight: 600; }
 table.excel-table tr.mapeh-row td { color: var(--ink); }
-table.excel-table td.text-left[style*="color"] { color: var(--blue) !important; }
+table.excel-table td.text-left[style*="color"] { color: var(--ink) !important; font-weight: 600; }
 
 /* Forms */
 input[type="text"], input[type="number"], input[type="password"], textarea, .form-group select, .modal-card input { border: 1px solid var(--rule-strong); border-radius: 6px; background: #fff; color: var(--ink); font-size: 0.9rem; transition: border-color 150ms ease; }
 .form-group input, .form-group select { height: 38px; padding: 0 12px; }
 .form-group label { font-size: 0.82rem; font-weight: 600; color: var(--ink-2); }
 .form-group input[type="file"] { height: auto; border: 0; padding: 4px 0; background: transparent; font-size: 0.85rem; }
+input[type="file"]::file-selector-button { font: inherit; font-weight: 600; font-size: 0.85rem; padding: 6px 12px; margin-right: 12px; border: 1px solid var(--rule-strong); border-radius: 6px; background: #fff; color: var(--ink-2); cursor: pointer; transition: background-color 150ms ease; }
+input[type="file"]::file-selector-button:hover { background: #f1f4fa; }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--blue); outline-offset: 1px; border-color: var(--blue); }
 .editable-baseline-input { background: var(--blue-wash); border: 1px solid #9db6ea; color: var(--ink); font-weight: 600; border-radius: 6px; }
 .editable-baseline-input:focus { background: #fff; }
@@ -1493,7 +1505,8 @@ function switchView(view) {
         if (token !== renderToken) return;
         const loading = root.querySelector(".view-loading");
         if (loading) loading.remove();
-        if (view !== "data-input" && view !== "settings") slot.insertAdjacentHTML("afterbegin", `<div class="sheet-head screen-only"><div><span class="sh-title"></span><span class="sh-org"></span></div><div class="sh-right"><span class="sh-sy"></span><span class="chip-sample">Sample data</span></div></div>`);
+        if (view === "data-input" || view === "settings") slot.classList.add("no-head");
+        else slot.insertAdjacentHTML("afterbegin", `<div class="sheet-head screen-only"><div><span class="sh-title"></span><span class="sh-org"></span></div><div class="sh-right"><span class="sh-sy"></span><span class="chip-sample">Sample data</span></div></div>`);
         updateSheetHead();
     }).catch(err => {
         if (token !== renderToken) return; // a newer view replaced this one
@@ -1955,7 +1968,7 @@ async function renderComparativeView(container) {
         </div>
     </div>
     <div class="card-box" style="padding:20px;">
-        <div style="text-align:center; margin-bottom:15px;">
+        <div class="sheet-title" style="text-align:center; margin-bottom:15px;">
             <h3 style="text-transform:uppercase; color:var(--deped-dark);">TERMLY COMPARATIVE ASSESSMENT REPORT SHEET</h3>
             <p style="font-size:0.88rem; font-weight: bold; color:var(--deped-blue);">
                 SY: ${filters.sy === 'ALL' ? 'ALL YEARS' : esc(filters.sy)} | SCOPE: ${esc(scopeLabel.toUpperCase())} | SUBJECT: ${esc(subjectLabel.toUpperCase())}
@@ -2155,17 +2168,18 @@ async function renderDashboard(container) {
             const { ctx, chartArea: { left, right }, scales: { y } } = chart;
             ctx.save();
             ctx.setLineDash([3, 4]); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(16,27,51,0.30)';
-            ctx.fillStyle = '#56627e'; ctx.font = "10px 'Public Sans', sans-serif"; ctx.textAlign = 'right';
+            ctx.fillStyle = '#56627e'; ctx.font = "12px 'Public Sans', sans-serif"; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
             [75, 80, 85, 90].forEach(v => {
                 const yy = y.getPixelForValue(v);
                 ctx.beginPath(); ctx.moveTo(left, yy); ctx.lineTo(right, yy); ctx.stroke();
-                ctx.fillText(String(v), right - 4, yy - 3);
+                ctx.fillText(String(v), right + 6, yy);
             });
             ctx.restore();
         }
     };
     const chartOptions = {
         responsive: true, maintainAspectRatio: false,
+        layout: { padding: { right: 30 } },
         plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${Number(c.parsed.y).toFixed(2)}%` } } },
         scales: {
             y: { max: 100, min: 0, ticks: { stepSize: 20, callback: v => v + '%' }, grid: { color: '#e6eaf2' }, border: { display: false } },
@@ -2588,7 +2602,7 @@ async function renderLeastLearnedView(container) {
                 <td><span class="badge badge-warning">Rank ${rank + 1}</span></td>
                 <td>${esc(item.desc)}</td>
                 <td><span class="badge badge-critical">${item.districtCount} District(s) / ${item.rawCount} Record(s)</span></td>
-                <td><small style="color:var(--deped-dark);">${displayLoc}</small></td>
+                <td class="loc-cell"><small style="color:var(--deped-dark);">${displayLoc}</small></td>
             </tr>`);
         });
     });
@@ -2606,11 +2620,11 @@ async function renderLeastLearnedView(container) {
 
     container.innerHTML = `
     <div class="card-box" style="margin-bottom: 25px;">
-        <div class="card-box-header" style="background-color: #EBF8FF;">
+        <div class="card-box-header" style="background-color: #EBF8FF;" data-tint="1">
             <h3 style="color: var(--deped-blue);">CONSOLIDATED TOP LEAST LEARNED COMPETENCIES</h3>
             <span class="badge badge-proficient">District & Program Aggregation</span>
         </div>
-        <div style="padding:12px 20px; background: #F7FAFC; border-bottom:1px solid var(--border-color); font-size:0.82rem; color:var(--text-muted);">
+        <div class="card-note" style="padding:12px 20px; background: #F7FAFC; border-bottom:1px solid var(--border-color); font-size:0.82rem; color:var(--text-muted);">
             Ranked competencies reported as least learned based on frequency across input records for each Grade Level and Specialization Track.
         </div>
         <div class="table-scroll"><table class="data-table">
@@ -2635,7 +2649,7 @@ async function renderLeastLearnedView(container) {
             <h3>Complete District Least Learned Competencies Log (All Recorded Inputs)</h3>
             <span class="badge badge-proficient">Total Input Records: ${compItems.length}</span>
         </div>
-        <div style="padding:10px 20px; background: #FFF; border-bottom:1px solid var(--border-color); font-size:0.82rem; color:var(--text-muted);">
+        <div class="card-note" style="padding:10px 20px; background: #FFF; border-bottom:1px solid var(--border-color); font-size:0.82rem; color:var(--text-muted);">
             Full itemized list reflecting every individual least learned competency input submitted via manual entry or Excel upload.
         </div>
         <div class="table-scroll"><table class="data-table">
