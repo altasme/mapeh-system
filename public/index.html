@@ -335,11 +335,13 @@ table.excel-table tr.mapeh-row { background-color: #EBF8FF; font-weight: bold; }
 .toast-success { background: var(--success); }
 .toast-error { background: var(--danger); }
 .toast-info { background: var(--deped-blue); }
-#reauth-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10500; display: none; align-items: center; justify-content: center; padding: 20px; }
+#reauth-modal, #pw-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10500; display: none; align-items: center; justify-content: center; padding: 20px; }
 .modal-card { background: #fff; width: 100%; max-width: 380px; padding: 24px; border-radius: 10px; }
 .modal-card h3 { color: var(--deped-dark); margin-bottom: 8px; font-size: 1.05rem; }
 .modal-card p { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px; }
 .modal-card input { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.9rem; }
+.modal-card label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--ink-2, #3a4764); margin: 12px 0 6px; }
+.pw-rules { font-size: 0.78rem !important; margin: 10px 0 0 !important; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 #nav-toggle, #nav-backdrop, #filters-toggle { display: none; }
 #print-sample-line { display: none; }
@@ -362,7 +364,7 @@ table.excel-table tr.mapeh-row { background-color: #EBF8FF; font-weight: bold; }
     .filter-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
     .filter-item { min-width: 0; }
     .filter-item select { width: 100%; }
-    .filter-item:nth-child(5) { grid-column: 1 / -1; }
+    .filter-item:nth-child(6) { grid-column: 1 / -1; }
     .filter-bar > div[style*="margin-left"] { grid-column: 1 / -1; margin-left: 0 !important; }
     .top-header > div[style*="display: flex"] { width: 100%; }
     .user-profile-badge { flex: 1 1 auto; min-width: 0; }
@@ -372,7 +374,7 @@ table.excel-table tr.mapeh-row { background-color: #EBF8FF; font-weight: bold; }
 
 /* PRINT: rules for the new elements only (the original print block above is unchanged) */
 @media print {
-    #env-banner, #toast-host, #reauth-modal, #nav-toggle, #nav-backdrop, .screen-only { display: none !important; }
+    #env-banner, #toast-host, #reauth-modal, #pw-modal, #nav-toggle, #nav-backdrop, .screen-only { display: none !important; }
     .table-scroll { overflow: visible !important; }
     body.sample-in-view #print-sample-line { display: block !important; font-weight: bold; letter-spacing: 1px; margin-top: 4px; }
 }
@@ -688,6 +690,23 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
         </div>
     </div>
 </div>
+<div id="pw-modal" role="dialog" aria-modal="true" aria-labelledby="pw-title">
+    <div class="modal-card">
+        <h3 id="pw-title">Set a new password</h3>
+        <p id="pw-text"></p>
+        <form id="pw-form" autocomplete="off">
+            <div id="pw-current-row"><label for="pw-current">Current password</label><input type="password" id="pw-current" autocomplete="current-password"></div>
+            <label for="pw-new">New password</label><input type="password" id="pw-new" autocomplete="new-password">
+            <label for="pw-confirm">Confirm new password</label><input type="password" id="pw-confirm" autocomplete="new-password">
+            <p class="pw-rules">At least 10 characters, with a letter and a number. Do not use your username or district name.</p>
+            <div class="login-error" id="pw-error" role="alert"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" id="pw-cancel">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="pw-ok">Change password</button>
+            </div>
+        </form>
+    </div>
+</div>
 <div id="nav-backdrop" onclick="document.body.classList.remove('nav-open')"></div>
 
 <!-- SIDEBAR -->
@@ -733,6 +752,7 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
                     <strong style="font-size: 0.85rem; color: var(--ink);" id="u-name">Guest User</strong><br>
                     <span style="font-size: 0.75rem; color: var(--muted);" id="u-role">View Only</span>
                 </div>
+                <button class="btn btn-secondary btn-sm" onclick="requestPasswordChange({ forced: false })">Password</button>
                 <button class="btn btn-secondary btn-sm" onclick="handleLogout()">Logout</button>
             </div>
         </div>
@@ -759,6 +779,14 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
             <label>District Filter</label>
             <select id="flt-district" onchange="applyFilters()">
                 <option value="ALL">All Districts</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>Education Level</label>
+            <select id="flt-level" onchange="applyFilters()">
+                <option value="ALL">All Levels</option>
+                <option value="elementary">Elementary</option>
+                <option value="secondary">Secondary</option>
             </select>
         </div>
         <div class="filter-item">
@@ -879,7 +907,7 @@ function friendlyError(err) {
         return "Could not reach the server. Your changes were not saved.";
     }
     if (code === "42501" || /row-level security|permission denied/i.test(msg)) {
-        return "You do not have access to that district's data.";
+        return "You do not have access to that district or education level.";
     }
     if (code === "PGRST301" || /jwt expired|jwt/i.test(msg)) {
         return "Your session expired. Please log in again.";
@@ -893,6 +921,7 @@ function friendlyError(err) {
         return "A value is outside the allowed range.";
     }
     if (code === "23503") return "Unknown district.";
+    if (code === "23502" && /education_level/.test(msg)) return "Grade level must be one of Grade 1 to Grade 12.";
     if (code === "23502") return "A required value is missing or is not a valid number.";
     if (code === "22P02" || code === "22003") return "A number is missing or is not valid.";
     return msg || "Something went wrong. Your changes were not saved.";
@@ -949,8 +978,114 @@ function requireReauth(promptText) {
     });
 }
 
+/* PASSWORD CHANGE: used for the forced change of an initial password and for voluntary changes */
+function validateNewPassword(pw) {
+    if (pw.length < 10) return "Use at least 10 characters.";
+    if (!/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)) return "Use at least one letter and at least one number.";
+    const low = pw.toLowerCase();
+    if (currentUser) {
+        const name = currentUser.username.toLowerCase();
+        const code = name.split("_")[0];
+        if (low.includes(name) || (code.length >= 3 && low.includes(code))) return "Do not use your username or district name in the password.";
+    }
+    if (low.includes("password") || low.includes("123456")) return "That password is too easy to guess.";
+    return "";
+}
+
+function passwordErrorMessage(error) {
+    const msg = String(error.message || "");
+    if (error.code === "same_password" || /different from the old/i.test(msg)) return "Choose a password you have not used before.";
+    if (error.code === "weak_password" || /password.*(weak|short|characters)/i.test(msg)) return "That password does not meet the server's rules. Use a longer, less predictable one.";
+    return friendlyError(error);
+}
+
+function requestPasswordChange(opts) {
+    const forced = !!(opts && opts.forced);
+    return new Promise(resolve => {
+        const overlay = document.getElementById("pw-modal");
+        const form = document.getElementById("pw-form");
+        const err = document.getElementById("pw-error");
+        const cur = document.getElementById("pw-current"), nw = document.getElementById("pw-new"), cf = document.getElementById("pw-confirm");
+        const ok = document.getElementById("pw-ok"), cancel = document.getElementById("pw-cancel");
+        document.getElementById("pw-title").textContent = forced ? "Set a new password" : "Change password";
+        document.getElementById("pw-text").textContent = forced
+            ? "Your account was issued with an initial password. Choose your own password to continue. Until you do, no data can be opened."
+            : "Choose a new password for your account.";
+        document.getElementById("pw-current-row").style.display = forced ? "none" : "block";
+        cancel.textContent = forced ? "Log out" : "Cancel";
+        [cur, nw, cf].forEach(i => { i.value = ""; });
+        err.textContent = "";
+        overlay.style.display = "flex";
+        (forced ? nw : cur).focus();
+        const done = v => {
+            overlay.style.display = "none";
+            form.onsubmit = null; cancel.onclick = null;
+            [cur, nw, cf].forEach(i => { i.value = ""; });
+            resolve(v);
+        };
+        cancel.onclick = async () => {
+            if (forced) { await sb().auth.signOut().catch(() => {}); location.reload(); return; }
+            done(false);
+        };
+        form.onsubmit = async (ev) => {
+            ev.preventDefault();
+            err.textContent = "";
+            const problem = validateNewPassword(nw.value) || (nw.value !== cf.value ? "The two new passwords do not match." : "");
+            if (problem) { err.textContent = problem; return; }
+            ok.disabled = true;
+            try {
+                if (!forced) {
+                    const { error: e1 } = await sb().auth.signInWithPassword({ email: currentUser.email, password: cur.value });
+                    if (e1) { err.textContent = e1.status === 400 ? "Your current password is incorrect." : friendlyError(e1); return; }
+                }
+                const { error } = await sb().auth.updateUser({ password: nw.value });
+                if (error) { err.textContent = passwordErrorMessage(error); return; }
+                await loadProfile(); // the server clears the initial-password flag when the password really changes
+                if (currentUser.mustChangePassword) { err.textContent = "The password was changed, but the account is still locked. Please contact the administrator."; return; }
+                if (!forced) toast("Password changed.");
+                done(true);
+            } catch (e2) {
+                err.textContent = friendlyError(e2);
+            } finally {
+                ok.disabled = false;
+            }
+        };
+    });
+}
+
 /* 1. AUTHENTICATION (Supabase Auth; accounts live in the database) */
 const ROLE_LABELS = { admin: "Admin", supervisor: "Supervisor", district_coordinator: "District Coordinator" };
+
+/* EDUCATION LEVELS. Elementary is Grade 1 to 6 and Secondary is Grade 7 to 12: the same rule as
+   public.app_education_level() in the database, which row level security enforces. This copy only shapes the screen. */
+const LEVELS = {
+    elementary: { label: "Elementary", grades: ["Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6"], keyStages: ["Key Stage 1", "Key Stage 2"] },
+    secondary: { label: "Secondary", grades: ["Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"], keyStages: ["Key Stage 3", "Key Stage 4"] }
+};
+function levelOfGrade(g) {
+    return LEVELS.elementary.grades.includes(g) ? "elementary" : LEVELS.secondary.grades.includes(g) ? "secondary" : null;
+}
+// The level a screen should show: a coordinator's own level, otherwise whatever the Education Level filter says.
+function effectiveLevel() {
+    const own = currentUser ? currentUser.educationLevel : "ALL";
+    return own !== "ALL" ? own : filters.level;
+}
+function levelOk(r) {
+    const L = effectiveLevel();
+    return L === "ALL" || r.educationLevel === L;
+}
+function gradesForLevel() {
+    const L = effectiveLevel();
+    return L === "ALL" ? ALL_GRADES : LEVELS[L].grades;
+}
+function keyStagesForLevel() {
+    const L = effectiveLevel();
+    return L === "ALL" ? KEY_STAGES : KEY_STAGES.filter(k => LEVELS[L].keyStages.includes(k.code));
+}
+function levelTitleWord() {
+    const L = effectiveLevel();
+    return L === "ALL" ? "" : ` ${LEVELS[L].label.toUpperCase()}`;
+}
 let currentUser = null;
 
 // Only Admin and Supervisor can access Settings & Branding
@@ -972,15 +1107,23 @@ async function loadProfile() {
     const { data: { session } } = await sb().auth.getSession();
     if (!session) throw new Error("No session");
     const { data, error } = await sb().from("profiles")
-        .select("username, display_name, role, districts(name)")
+        .select("username, display_name, role, education_level, active, must_change_password, districts(name)")
         .eq("id", session.user.id).maybeSingle();
     if (error) throw error;
     if (!data) { const e = new Error("NO_PROFILE"); e.userMessage = "This account has no profile. Please contact the administrator."; throw e; }
+    if (!data.active) {
+        const e = new Error("RETIRED");
+        e.userMessage = "This account has been retired. Please sign in with the Elementary or Secondary account issued for your district.";
+        throw e;
+    }
+    const level = data.education_level && LEVELS[data.education_level] ? data.education_level : "ALL";
     currentUser = {
         name: data.display_name,
-        role: ROLE_LABELS[data.role] || data.role,
+        role: level !== "ALL" ? `${LEVELS[level].label} Coordinator` : (ROLE_LABELS[data.role] || data.role),
         username: data.username,
         district: data.districts ? data.districts.name : "ALL",
+        educationLevel: level,
+        mustChangePassword: !!data.must_change_password,
         email: session.user.email
     };
 }
@@ -994,9 +1137,12 @@ function showLoginError(message) {
 async function enterApp() {
     try {
         await loadProfile();
+        // An initial password must be replaced before anything else happens. The database also refuses all data
+        // to such a session, so this screen is a courtesy and not the control.
+        if (currentUser.mustChangePassword) await requestPasswordChange({ forced: true });
         await initDB();
     } catch (err) {
-        if (err && err.message === "NO_PROFILE") await sb().auth.signOut().catch(() => {});
+        if (err && (err.message === "NO_PROFILE" || err.message === "RETIRED")) await sb().auth.signOut().catch(() => {});
         currentUser = null;
         showLoginError(friendlyError(err));
         throw err;
@@ -1004,6 +1150,7 @@ async function enterApp() {
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("login-error").textContent = "";
     if (currentUser.district !== "ALL") filters.district = currentUser.district;
+    if (currentUser.educationLevel !== "ALL") filters.level = currentUser.educationLevel;
     applyUserPermissionsUI();
     applyPrintBrandingUI();
     updateEnvBanner();
@@ -1042,6 +1189,7 @@ function applyUserPermissionsUI() {
     if (!currentUser) return;
     document.getElementById("u-name").textContent = currentUser.name;
     document.getElementById("u-role").textContent = currentUser.district !== "ALL" ? `${currentUser.role} (${currentUser.district})` : currentUser.role;
+    populateLevelFilter();
     document.getElementById("u-avatar").textContent = currentUser.name.charAt(0).toUpperCase();
 
     const navSettings = document.getElementById("nav-settings");
@@ -1128,7 +1276,7 @@ let settings = {
 };
 
 let currentView = "division";
-let filters = { sy: "ALL", term: "ALL", district: "ALL", keystage: "ALL", subject: "ALL" };
+let filters = { sy: "ALL", term: "ALL", district: "ALL", level: "ALL", keystage: "ALL", subject: "ALL" };
 let activeCharts = {};
 
 /* 3. DB HELPERS (Supabase). Names and return shapes match the old IndexedDB helpers. */
@@ -1153,6 +1301,7 @@ function fromRow(row) {
         proficiencyLevel: row.proficiency_level,
         leastLearned: Array.isArray(row.least_learned) ? row.least_learned : [],
         isDemo: !!row.is_demo,
+        educationLevel: row.education_level || levelOfGrade(row.grade_level) || "",
         createdAt: row.created_at || ""
     };
 }
@@ -1247,7 +1396,8 @@ function applyBaselineFilters(q, ksObj, effectiveDistrict) {
     if (effectiveDistrict !== "ALL") q = q.eq("district_id", districtIdByName[effectiveDistrict]);
     if (filters.subject !== "ALL") q = q.eq("learning_area", filters.subject);
     if (filters.term !== "ALL") q = q.eq("term", filters.term);
-    return q.in("grade_level", ksObj.grades);
+    const inLevel = gradesForLevel();
+    return q.in("grade_level", ksObj.grades.filter(g => inLevel.includes(g)));
 }
 
 async function updateBaselineMpsForStage(ksCode, val) {
@@ -1354,6 +1504,7 @@ async function getFilteredData() {
         if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
         if (filters.term !== "ALL" && r.term !== filters.term) return false;
         if (effectiveDistrict !== "ALL" && r.district !== effectiveDistrict) return false;
+        if (!levelOk(r)) return false;
         if (filters.keystage !== "ALL" && r.keyStage !== filters.keystage) return false;
         if (filters.subject !== "ALL" && r.learningArea !== filters.subject) return false;
         return true;
@@ -1483,6 +1634,7 @@ function restoreFilterControls() {
     document.getElementById("flt-sy").value = filters.sy;
     document.getElementById("flt-term").value = filters.term;
     document.getElementById("flt-district").value = filters.district;
+    document.getElementById("flt-level").value = filters.level;
     document.getElementById("flt-keystage").value = filters.keystage;
     document.getElementById("flt-subject").value = filters.subject;
 }
@@ -1564,6 +1716,27 @@ function populateDistrictFilter() {
     }
 }
 
+// Locks the level for coordinators and shows only the key stages that exist in the level in scope.
+function syncKeyStageOptions() {
+    const L = effectiveLevel();
+    const sel = document.getElementById("flt-keystage");
+    if (!sel) return;
+    Array.from(sel.options).forEach(o => {
+        const allowed = o.value === "ALL" || L === "ALL" || LEVELS[L].keyStages.includes(o.value);
+        o.hidden = !allowed; o.disabled = !allowed;
+    });
+    if (sel.selectedOptions[0] && sel.selectedOptions[0].disabled) { sel.value = "ALL"; filters.keystage = "ALL"; }
+}
+
+function populateLevelFilter() {
+    const sel = document.getElementById("flt-level");
+    if (!sel) return;
+    const own = currentUser ? currentUser.educationLevel : "ALL";
+    if (own !== "ALL") { sel.value = own; sel.disabled = true; filters.level = own; }
+    else { sel.disabled = false; sel.value = filters.level; }
+    syncKeyStageOptions();
+}
+
 function populateSubjectFilter() {
     const sel = document.getElementById("flt-subject");
     sel.innerHTML = buildSubjectOptionsHTML(true);
@@ -1577,6 +1750,9 @@ function applyFilters() {
     const userDist = currentUser ? currentUser.district : "ALL";
     filters.district = userDist !== "ALL" ? userDist : document.getElementById("flt-district").value;
     
+    const ownLevel = currentUser ? currentUser.educationLevel : "ALL";
+    filters.level = ownLevel !== "ALL" ? ownLevel : document.getElementById("flt-level").value;
+    syncKeyStageOptions();
     filters.keystage = document.getElementById("flt-keystage").value;
     filters.subject = document.getElementById("flt-subject").value;
 
@@ -1592,7 +1768,8 @@ function updateFilterBadge() {
     const btn = document.getElementById("filters-toggle");
     if (!btn) return;
     const userDist = currentUser ? currentUser.district : "ALL";
-    const active = Object.entries(filters).filter(([k, v]) => v !== "ALL" && !(k === "district" && userDist !== "ALL")).length;
+    const ownLevel = currentUser ? currentUser.educationLevel : "ALL";
+    const active = Object.entries(filters).filter(([k, v]) => v !== "ALL" && !(k === "district" && userDist !== "ALL") && !(k === "level" && ownLevel !== "ALL")).length;
     btn.textContent = active ? `Filters (${active})` : "Filters";
 }
 
@@ -1605,6 +1782,7 @@ function resetFilters() {
         document.getElementById("flt-district").value = "ALL";
     }
     
+    if ((currentUser ? currentUser.educationLevel : "ALL") === "ALL") document.getElementById("flt-level").value = "ALL";
     document.getElementById("flt-keystage").value = "ALL";
     document.getElementById("flt-subject").value = "ALL";
     applyFilters();
@@ -1709,6 +1887,7 @@ async function renderDistrictProfileView(container) {
     const allRecords = await getAllRecords();
     const distRecords = allRecords.filter(r => {
         if (r.district !== selectedDistrict) return false;
+        if (!levelOk(r)) return false;
         if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
         if (filters.term !== "ALL" && r.term !== filters.term) return false;
         if (filters.keystage !== "ALL" && r.keyStage !== filters.keystage) return false;
@@ -1812,7 +1991,7 @@ function changeDistrictView(dist) {
 }
 
 async function renderComparativeView(container) {
-    const records = await getAllRecords();
+    const records = (await getAllRecords()).filter(levelOk);
     const userDist = currentUser ? currentUser.district : "ALL";
     const currentScope = userDist !== "ALL" ? userDist : filters.district;
     
@@ -1831,7 +2010,7 @@ async function renderComparativeView(container) {
     markSample(activeRecords);
     const isUserEditable = canEditData();
 
-    const stageRows = KEY_STAGES.map(ks => {
+    const stageRows = keyStagesForLevel().map(ks => {
         const ksRecs = activeRecords.filter(r => ks.grades.includes(r.gradeLevel));
         const baselineMps = ksRecs.length ? (ksRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / ksRecs.length) : 65.0;
         const currentMps = ksRecs.length ? (ksRecs.reduce((a, c) => a + c.mps, 0) / ksRecs.length) : 0;
@@ -2030,6 +2209,11 @@ async function renderComparativeView(container) {
 }
 
 // Notes are keyed exactly as before: school year, district scope, subject, term ("ALL" allowed in each).
+function comparativeLevel() {
+    const L = effectiveLevel();
+    return L === "ALL" ? "all" : L;
+}
+
 function comparativeScope() {
     const userDist = currentUser ? currentUser.district : "ALL";
     return userDist !== "ALL" ? userDist : filters.district;
@@ -2038,7 +2222,7 @@ function comparativeScope() {
 async function loadComparativeNotes() {
     const scope = comparativeScope();
     let q = sb().from("comparative_notes").select("district_scope, analysis, interventions")
-        .eq("sy", filters.sy).eq("subject", filters.subject).eq("term", filters.term);
+        .eq("sy", filters.sy).eq("subject", filters.subject).eq("term", filters.term).eq("education_level", comparativeLevel());
     if (scope !== "ALL") q = q.eq("district_scope", scope);
     const { data, error } = await q;
     if (error) throw error;
@@ -2054,14 +2238,14 @@ async function saveComparativeNotes(ev) {
     }
     const btn = ev && ev.currentTarget;
     const row = {
-        sy: filters.sy, district_scope: comparativeScope(), subject: filters.subject, term: filters.term,
+        sy: filters.sy, district_scope: comparativeScope(), education_level: comparativeLevel(), subject: filters.subject, term: filters.term,
         analysis: document.getElementById("comp-analysis-input").value,
         interventions: document.getElementById("comp-interventions-input").value
     };
     setBusy(btn, true);
     try {
         const { data, error } = await sb().from("comparative_notes")
-            .upsert(row, { onConflict: "sy,district_scope,subject,term" }).select("id");
+            .upsert(row, { onConflict: "sy,district_scope,education_level,subject,term" }).select("id");
         if (error) throw error;
         if (!data || data.length !== 1) { const e = new Error("denied"); e.code = "42501"; throw e; }
         formDirty = false;
@@ -2220,7 +2404,31 @@ async function renderDashboard(container) {
 
 function downloadExcelTemplate() {
     const userDist = currentUser && currentUser.district !== "ALL" ? currentUser.district : "Asuncion";
-    const templateData = [
+    const secondary = currentUser && currentUser.educationLevel === "secondary";
+    const templateData = secondary ? [
+        {
+            "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} National High School`,
+            "Key Stage": "Key Stage 3", "Grade Level": "Grade 8", "Learning Area": "MAPEH - PE & Health",
+            "SY Baseline MPS": 65.00, "Mean Percentage Score (MPS%)": 78.50, "% Learners Scoring >= 75%": 82.00,
+            "Least Learned Competency 1 Code": "LC-1",
+            "Least Learned Competency 1 Description": "Demonstrates fitness routines and safe movement practices.",
+            "Least Learned Competency 2 Code": "LC-2",
+            "Least Learned Competency 2 Description": "Explains health risks and responsible decision making.",
+            "Least Learned Competency 3 Code": "LC-3",
+            "Least Learned Competency 3 Description": "Applies basic game strategy in team activities."
+        },
+        {
+            "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} National High School (SPA Campus)`,
+            "Key Stage": "Key Stage 4", "Grade Level": "Grade 11", "Learning Area": "SPA - Vocal Arts",
+            "SY Baseline MPS": 66.00, "Mean Percentage Score (MPS%)": 80.20, "% Learners Scoring >= 75%": 83.50,
+            "Least Learned Competency 1 Code": "LC-1",
+            "Least Learned Competency 1 Description": "Performs vocal pieces with correct pitch and phrasing.",
+            "Least Learned Competency 2 Code": "LC-2",
+            "Least Learned Competency 2 Description": "Interprets musical notation in ensemble singing.",
+            "Least Learned Competency 3 Code": "LC-3",
+            "Least Learned Competency 3 Description": "Evaluates own performance using given criteria."
+        }
+    ] : [
         {
             "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} Central Elementary School`,
             "Key Stage": "Key Stage 1", "Grade Level": "Grade 1", "Learning Area": "MAPEH - Music & Arts",
@@ -2248,7 +2456,7 @@ function downloadExcelTemplate() {
     const ws = XLSX.utils.json_to_sheet(templateData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "MAPEH SPA SPS SPFL IPED");
-    XLSX.writeFile(wb, `DepEd_MAPEH_SPA_SPS_SPFL_IPED_Template_${userDist}.xlsx`);
+    XLSX.writeFile(wb, `DepEd_MAPEH_SPA_SPS_SPFL_IPED_Template_${userDist}${currentUser && currentUser.educationLevel !== "ALL" ? "_" + LEVELS[currentUser.educationLevel].label : ""}.xlsx`);
 }
 
 function renderDataInputView(container) {
@@ -2262,7 +2470,9 @@ function renderDataInputView(container) {
     }
 
     const userDist = currentUser ? currentUser.district : "ALL";
-    const gradeOptionsHTML = ALL_GRADES.map(g => `<option value="${g}">${g}</option>`).join('');
+    const levelGrades = gradesForLevel();
+    const gradeOptionsHTML = levelGrades.map(g => `<option value="${g}">${g}</option>`).join('');
+    const keyStageOptionsHTML = keyStagesForLevel().map(ks => `<option value="${ks.code}">${ks.code} (Grades ${ks.grades[0].replace("Grade ", "")}-${ks.grades[ks.grades.length - 1].replace("Grade ", "")})</option>`).join('');
     const syOptionsHTML = SCHOOL_YEARS.map(sy => `<option value="${sy}">${sy}</option>`).join('');
     const manualSubjectOptionsHTML = buildSubjectOptionsHTML(false);
 
@@ -2296,8 +2506,8 @@ function renderDataInputView(container) {
                     <div class="form-group"><label>School Year</label><select id="m-sy">${syOptionsHTML}</select></div>
                     <div class="form-group"><label>Term</label><select id="m-term"><option value="Term 1">Term 1</option><option value="Term 2">Term 2</option><option value="Term 3">Term 3</option></select></div>
                     <div class="form-group"><label>District</label><select id="m-district"></select></div>
-                    <div class="form-group"><label>Key Stage</label><select id="m-keystage" onchange="syncGradeWithKeyStage(this.value)"><option value="Key Stage 1">Key Stage 1 (Grades 1-3)</option><option value="Key Stage 2">Key Stage 2 (Grades 4-6)</option><option value="Key Stage 3">Key Stage 3 (Grades 7-10)</option><option value="Key Stage 4">Key Stage 4 (Grades 11-12)</option></select></div>
-                    <div class="form-group"><label>Grade Level (Grade 1 to 12)</label><select id="m-grade">${gradeOptionsHTML}</select></div>
+                    <div class="form-group"><label>Key Stage</label><select id="m-keystage" onchange="syncGradeWithKeyStage(this.value)">${keyStageOptionsHTML}</select></div>
+                    <div class="form-group"><label>Grade Level (${levelGrades[0]} to ${levelGrades[levelGrades.length - 1]})</label><select id="m-grade">${gradeOptionsHTML}</select></div>
                     <div class="form-group">
                         <label>Learning Area / Program Track</label>
                         <select id="m-subject" onchange="toggleSchoolField(this.value)">
@@ -2401,6 +2611,12 @@ async function handleManualSave(e) {
     if (lc2Desc) leastLearned.push({ code: 'LC-2', desc: lc2Desc });
     if (lc3Desc) leastLearned.push({ code: 'LC-3', desc: lc3Desc });
 
+    const own = currentUser ? currentUser.educationLevel : "ALL";
+    const chosenLevel = levelOfGrade(document.getElementById('m-grade').value);
+    if (!chosenLevel || (own !== "ALL" && chosenLevel !== own)) {
+        toast(own !== "ALL" ? `This account can only enter ${LEVELS[own].label} records (${LEVELS[own].grades[0]} to ${LEVELS[own].grades[5]}).` : "Choose a grade level from Grade 1 to Grade 12.", "error");
+        return;
+    }
     const record = {
         sy: document.getElementById('m-sy').value || "",
         term: document.getElementById('m-term').value,
@@ -2532,7 +2748,20 @@ function handleExcelImport(e) {
             });
         });
 
-        // Districts are a fixed list now: reject unknown names before anything is sent (spreadsheet row 1 is the header).
+        // Districts are a fixed list and every grade must belong to a level this account may import
+        // (spreadsheet row 1 is the header). Nothing is sent unless every row passes.
+        const own = currentUser ? currentUser.educationLevel : "ALL";
+        const levelRows = [];
+        recordsToInsert.forEach((rec, i) => {
+            const lv = levelOfGrade(rec.gradeLevel);
+            if (!lv) levelRows.push(`row ${i + 2}: unknown grade level "${rec.gradeLevel}"`);
+            else if (own !== "ALL" && lv !== own) levelRows.push(`row ${i + 2}: ${rec.gradeLevel} is ${LEVELS[lv].label}`);
+        });
+        if (levelRows.length) {
+            toast(`Nothing was saved. ${own !== "ALL" ? `This account can only import ${LEVELS[own].label} records. ` : ""}${levelRows.length} row(s) cannot be imported: ${levelRows.slice(0, 5).join("; ")}${levelRows.length > 5 ? "; ..." : ""}`, "error");
+            e.target.value = "";
+            return;
+        }
         const badRows = [];
         recordsToInsert.forEach((rec, i) => {
             if (districtIdByName[rec.district] === undefined) badRows.push(`row ${i + 2}: "${rec.district}"`);
@@ -2690,7 +2919,7 @@ async function renderGradeConsolidation(container) {
     const userDist = currentUser ? currentUser.district : "ALL";
 
     const gradeMap = {};
-    ALL_GRADES.forEach(g => gradeMap[g] = { mpsSum: 0, count: 0 });
+    gradesForLevel().forEach(g => gradeMap[g] = { mpsSum: 0, count: 0 });
 
     data.forEach(r => {
         if (gradeMap[r.gradeLevel]) {
@@ -2699,7 +2928,7 @@ async function renderGradeConsolidation(container) {
         }
     });
 
-    const rows = ALL_GRADES.map(g => {
+    const rows = gradesForLevel().map(g => {
         const item = gradeMap[g];
         const avgMPS = item.count ? parseFloat((item.mpsSum / item.count).toFixed(2)) : 0;
         return `<tr>
@@ -2982,11 +3211,11 @@ function updateSignatoriesUI() {
         const coord = districtCoordinators[activeDist];
         document.getElementById("sig-p-name").textContent = coord.name;
         document.getElementById("sig-p-pos").textContent = `${activeDist} ${coord.position}`;
-        document.getElementById("print-title").textContent = `${activeDist.toUpperCase()} DISTRICT PROFICIENCY CONSOLIDATION REPORT`;
+        document.getElementById("print-title").textContent = `${activeDist.toUpperCase()} DISTRICT${levelTitleWord()} PROFICIENCY CONSOLIDATION REPORT`;
     } else {
         document.getElementById("sig-p-name").textContent = settings.sigPrepName;
         document.getElementById("sig-p-pos").textContent = settings.sigPrepPos;
-        document.getElementById("print-title").textContent = "DIVISION DISTRICT & TERM PROFICIENCY CONSOLIDATION REPORT";
+        document.getElementById("print-title").textContent = `DIVISION DISTRICT & TERM${levelTitleWord()} PROFICIENCY CONSOLIDATION REPORT`;
     }
     document.getElementById("sig-c-name").textContent = settings.sigCheckName;
     document.getElementById("sig-c-pos").textContent = settings.sigCheckPos;
@@ -3019,13 +3248,13 @@ async function downloadCsv(ev) {
             rank(SUBJECTS, a.learningArea) - rank(SUBJECTS, b.learningArea) || a.id - b.id);
         const maxLc = Math.max(3, ...recs.map(r => r.leastLearned.length));
         const head = ["School Year", "Term", "District", "School Name", "Key Stage", "Grade Level", "Learning Area",
-            "SY Baseline MPS", "Mean Percentage Score (MPS%)", "% Learners Scoring >= 75%", "Proficiency Level"];
+            "SY Baseline MPS", "Mean Percentage Score (MPS%)", "% Learners Scoring >= 75%", "Proficiency Level", "Education Level"];
         for (let i = 1; i <= maxLc; i++) head.push(`Least Learned Competency ${i} Code`, `Least Learned Competency ${i} Description`);
         head.push("Sample Data", "Record ID", "Date Added");
         const lines = [head.map(csvCell).join(",")];
         recs.forEach(r => {
             const row = [r.sy, r.term, r.district, r.school, r.keyStage, r.gradeLevel, r.learningArea,
-                r.baselineMps.toFixed(2), r.mps.toFixed(2), r.pct75.toFixed(2), r.proficiencyLevel];
+                r.baselineMps.toFixed(2), r.mps.toFixed(2), r.pct75.toFixed(2), r.proficiencyLevel, LEVELS[r.educationLevel] ? LEVELS[r.educationLevel].label : ""];
             for (let i = 0; i < maxLc; i++) {
                 const c = r.leastLearned[i];
                 row.push(c ? (typeof c === "string" ? `LC-${i + 1}` : (c.code || `LC-${i + 1}`)) : "", c ? (typeof c === "string" ? c : (c.desc || c.description || "")) : "");

@@ -61,3 +61,14 @@ print CSS identity and PDF text identity. The ported app runs against `tools/qa/
 an in-memory stand-in. That proves the application logic. It does not prove Supabase itself: the real RLS
 policies are tested by `supabase/tests/rls_matrix.sql` (passes on a local Postgres 16 with a minimal
 Supabase shim), and a final browser run against the real project is part of deployment (HANDOVER section 2).
+
+## Added 2026-10-12: Elementary and Secondary coordinators
+
+| ID | Sev | Finding | Disposition |
+|----|-----|---------|-------------|
+| N10 | High | The original 11 district-wide coordinators could read and write both education levels, so they cannot coexist with a model where a coordinator must never see the other level. | FIX: retired by migration 0004 (`profiles.active = false`, sign-in banned by the provisioning script). Reversible. |
+| N11 | High | Initial passwords follow a guessable pattern (`{district_code}@elem` and `@sec`). Whoever signs in first with an unclaimed account chooses its password. | MITIGATED, not removed: database-enforced password gate (`must_change_password`), forced change at first sign-in, password rules, `tools/reset-password.mjs`. Hand the accounts out together and change them at once (HANDOVER section 11). The convention is in the private repository. |
+| N12 | Med | A coordinator's reach had to be limited by district AND level on records and on notes. Notes were keyed by district only, so the two coordinators of a district would have shared them. | FIX: `comparative_notes.education_level`, new unique key, new policies. |
+| N13 | Med | The forced password change relies on a trigger on `auth.users` (a Supabase-managed schema) to clear the flag. If the trigger were dropped, accounts would stay locked (fails safe, not open). | DOC. The flag is also set again by `tools/reset-password.mjs` after administrative resets. |
+| N14 | Low | Unknown grade levels were accepted before. They now have no education level and are refused (database, import and forms). The silent import default of Grade 1 (M1) still applies. | FIX. |
+| N15 | Info | "Prepared by" on a coordinator's printed report uses one coordinator name per district, although there are now two coordinators per district. | DOC, awaiting the client's decision. |

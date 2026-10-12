@@ -21,11 +21,12 @@ No build step.
 **One-time Supabase setup: DONE on project `yesnxycbzwaaugqbwowd` (steps 1 to 5 below, run 2026-10-11). Kept for rebuilding.**
 1. Create the project. Authentication > Providers > Email: turn **off** "Allow new users to sign up" and "Confirm email".
 2. SQL editor: paste and run `supabase/setup_all.sql` (migrations 0001 to 0003 plus the districts and settings seeds in one file).
-3. Create the 13 accounts: from a terminal run
+3. Create the Admin and Supervisor accounts: from a terminal run
    `SUPABASE_URL=https://<ref>.supabase.co SUPABASE_SERVICE_ROLE_KEY=<service key> node tools/provision-accounts.mjs`
+   (The Elementary and Secondary coordinators are created by `tools/provision-level-coordinators.mjs`; see section 11, which also gives the order to follow on a project that already exists.)
    (add `--dry-run` first to preview). It reads each password from `legacy/mapehDavNor.original.html`, never prints it, and also inserts the profiles rows. Keep the service-role key out of chat, files and git.
 4. Load the 1,452 flagged sample rows: `node tools/load-demo-records.mjs` (same env vars as step 3; `supabase/seed/demo_records.sql` is the equivalent SQL).
-5. Check the access rules: `supabase/tests/rls_matrix.sql` in the SQL editor (five `PASS` notices, rolls back) and `node tools/verify-live.mjs` over the public API.
+5. Check the access rules: `supabase/tests/rls_matrix.sql` in the SQL editor (six `PASS` notices, rolls back) and `node tools/verify-live-levels.mjs` over the public API (all 22 coordinators, Admin, Supervisor and the retired accounts).
 
 **Cloudflare Pages**
 6. `public/config.js` and `public/_headers` already hold the project URL, publishable key and ref (done).
@@ -49,7 +50,7 @@ No build step.
 | `excelDataExport` | false | Export filtered, authorized records to .xlsx | Required column layout |
 | `importValidation` | false | Row-level validation report, no silent defaults, partial accept | Rules for missing fields |
 | `duplicateDetection` | false | Reject or update on re-import | Agreed record identity |
-| `selfServicePassword` | false | Change-password and reset-by-email flows | Real emails |
+| `selfServicePassword` | true (change-password screen built 2026-10-12; reset-by-email is still not built) | Reset-by-email flow | Real emails |
 | (new) | n/a | Weighted MPS, competency standard, school master list, realtime, user management UI, offline use, production hardening and backups | Methodology confirmation, budget |
 
 All flags are reserved and unwired.
@@ -77,7 +78,7 @@ All flags are reserved and unwired.
   ```
 - Reset a password: Authentication > Users > the user > Update user > new password.
 - Disable a user: Authentication > Users > the user > Ban user (or delete the user; the profile is removed with it).
-- Current accounts: 13 (1 admin, 1 supervisor, 11 district coordinators). Passwords are the ones already defined in the client's original file; nothing new was distributed. Recommend new passwords before any real data goes in (AUDIT R2).
+- Current accounts after section 11 is applied: 2 division accounts (Admin, Supervisor; their passwords are still the ones in the client's original file) and 22 level coordinators (initial passwords per section 11, replaced by their owners at first sign-in). The original 11 district-wide coordinators are retired, not deleted. Recommend new passwords before any real data goes in (AUDIT R2).
 
 ## 8. Accounts & infrastructure (pointers, NOT secrets)
 - Cloudflare Pages: Altaventures account / project `mapeh-system` (https://mapeh-system.pages.dev)
@@ -98,3 +99,39 @@ All flags are reserved and unwired.
 - Before the client's first session: confirm the Site URL (step 8), do a short walkthrough with the client on a phone and a laptop, then send the Test URL. Rotate the Supabase database password, secret key and service-role key (they were shared in a chat transcript).
 - Ask the client to confirm: real coordinator names and signatories, whether Supervisor should keep Admin powers, how division MPS should be averaged, and the "8 IPED" wording.
 - When the client is ready for real data: change all passwords, move to a paid plan with backups, purge the sample rows, set `environment` to "production", and scope the upgrade items in section 4.
+
+## 11. Elementary and Secondary coordinators (added 2026-10-12)
+
+**What changed.** Each district now has one Elementary and one Secondary coordinator account (22 in all). A coordinator sees and enters only records of their own district AND their own education level. Education level comes from the grade: Grade 1 to 6 is Elementary, Grade 7 to 12 is Secondary. Admin and Supervisor still see both levels, and gain an Education Level filter. The separation is enforced by Row Level Security in the database (`supabase/migrations/0004_education_levels.sql`), not by the page: records, notes, imports, deletes and reads all go through the same rule. The page only hides what the database would refuse.
+
+**Accounts.**
+| | Username | Initial password |
+|---|---|---|
+| Elementary | `{district_code}_elemcoord` | `{district_code}@elem` |
+| Secondary | `{district_code}_seccoord` | `{district_code}@sec` |
+
+District codes are the ones the original usernames already used: asuncion, dujali, carmen, kapalonge, kapalongw, newcorella, sanisidro, stotomase, stotomasw, talaingod, langilan. **Confirm these are the approved codes.** They are listed in `tools/provision-level-coordinators.mjs`.
+
+**Passwords are initial credentials only.**
+- Every new account is created with `must_change_password = true`. While that is set the database returns no records, notes or anything else and refuses writes, even to someone calling the data API directly. The app forces the change at first sign-in (10 or more characters, a letter and a number, no username or district name, nothing obvious) and the database clears the flag only when the Auth password really changes.
+- The initial passwords are built from the convention at run time by the provisioning script. They are not in `public/`, not in the app, and not printed. The convention itself is visible to anyone who can read this repository (keep it private).
+- Risk to manage: the pattern is guessable, so whoever signs in first with a new account sets its password. Hand the accounts out together, ask each coordinator to sign in right away, and treat an account whose owner reports being locked out as compromised: reset it with `tools/reset-password.mjs`.
+- Any signed-in user can change their own password with the "Password" button (current password required). An administrative reset (`tools/reset-password.mjs <username>`, new temporary password from the environment) makes the person choose again at next sign-in.
+- Also set the Supabase minimum password length to 10 or more (Authentication, Providers, Email) and, on a plan that offers it, turn on leaked-password protection. The app enforces its own rules; the server setting is the backstop.
+
+**Order of work on the live project (do not skip or reorder).**
+1. Merge nothing yet. The new app version needs the new database; the old one keeps working until the SQL below is run, then fails to save notes (their key changed).
+2. In the Supabase SQL editor run `supabase/migrations/0004_education_levels.sql` (an existing project) or `supabase/setup_all.sql` (a new one). The migration also retires the original district-wide coordinators (`profiles.active = false`; set it back to true to restore one).
+3. Merge `feature/education-levels` into `main` (Cloudflare Pages redeploys in about a minute). Between steps 2 and 3, saving comparative notes fails; nothing else is affected.
+4. `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node tools/provision-level-coordinators.mjs --dry-run`, then without `--dry-run`. This creates the 22 accounts and bans sign-in for the original 11.
+5. `node tools/verify-live-levels.mjs` (needs the publishable key as well). It tests every one of the 22 accounts against the real project, lifts and restores each account's password gate itself, and cleans up after itself. Do not release the accounts until it reports 0 failed.
+6. Hand the accounts out (initial passwords delivered privately) and ask each owner to sign in and choose a password.
+
+**What was verified, and what was not.** The access rules pass `supabase/tests/rls_matrix.sql` on Postgres 16 both as an upgrade of the existing schema and as a fresh install (Admin, Supervisor, four coordinators across two districts and both levels, a retired account, an initial-password account, signed out). The app passes 212 browser checks against an in-memory stand-in that mirrors those rules, including all 22 accounts, cross-level attempts through the app and through the data API, imports, the forced password change and the CSV. **Not yet run against the live project:** steps 4 and 5 above. `verify-live-levels.mjs` has been syntax-checked only.
+
+**Decisions to confirm.**
+- Education level is derived from the grade (not chosen separately), so a record can never claim a level that its grade contradicts. A grade outside Grade 1 to 12 is refused.
+- Coordinators still cannot delete records (as before); only Admin and Supervisor can. Coordinators can create and edit within their scope.
+- Comparative notes are now filed per district and level. A division user with the Education Level filter on All Levels writes "all levels" notes that coordinators cannot see.
+- The printed "Prepared by" for a coordinator still comes from the single coordinator name saved for the district in Settings. There is now one Elementary and one Secondary coordinator per district, so you may want two names per district. Not built; say if you want it.
+- The Key Stage / Grade mismatch noted in AUDIT M8 is unchanged: the level follows the grade.

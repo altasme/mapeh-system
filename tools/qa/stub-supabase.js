@@ -14,30 +14,34 @@
   const key = 'stub_session';
   const sess = () => { try { return JSON.parse(sessionStorage.getItem(key)); } catch (_) { return null; } };
   const me = () => { const s = sess(); return s ? T.profiles.find(p => p.id === s.user.id) : null; };
-  const isDivision = () => { const p = me(); return !!p && (p.role === 'admin' || p.role === 'supervisor'); };
+  const sessionOk = () => { const p = me(); return !!p && p.active !== false && !p.must_change_password; };
+  const isDivision = () => { const p = me(); return sessionOk() && (p.role === 'admin' || p.role === 'supervisor'); };
   const distName = id => (T.districts.find(d => d.id === id) || {}).name;
   const err = (code, message) => ({ code, message });
   const net = () => window.__STUB_OFFLINE ? { name: 'TypeError', message: 'Failed to fetch' } : null;
+  const levelOf = g => ['Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6'].includes(g) ? 'elementary' : ['Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12'].includes(g) ? 'secondary' : null;
+  const coordScope = (districtId, level) => { const p = me(); return sessionOk() && p.role === 'district_coordinator' && districtId === p.district_id && !!level && level === p.education_level; };
 
   function canRead(table, row) {
     const p = me(); if (!p) return false;
     if (table === 'profiles') return row.id === p.id;
-    if (table === 'assessment_records') return isDivision() || row.district_id === p.district_id;
-    if (table === 'comparative_notes') return isDivision() || row.district_scope === distName(p.district_id);
+    if (table === 'assessment_records') return isDivision() || coordScope(row.district_id, levelOf(row.grade_level));
+    if (table === 'comparative_notes') return isDivision() || (sessionOk() && p.role === 'district_coordinator' && row.district_scope === distName(p.district_id) && row.education_level === p.education_level);
     return true; // districts, app_settings
   }
   function canWrite(table, op, row) {
     const p = me(); if (!p) return false;
     if (table === 'assessment_records') {
       if (op === 'delete') return isDivision();
-      return isDivision() || row.district_id === p.district_id;
+      return isDivision() || coordScope(row.district_id, levelOf(row.grade_level));
     }
-    if (table === 'comparative_notes') return op !== 'delete' && (isDivision() || row.district_scope === distName(p.district_id));
+    if (table === 'comparative_notes') return op !== 'delete' && canRead('comparative_notes', row);
     if (table === 'districts' || table === 'app_settings') return op === 'update' && isDivision();
     return false;
   }
   function check(table, r) {
     if (table !== 'assessment_records') return null;
+    if (!levelOf(r.grade_level)) return err('23502', 'null value in column "education_level" of relation "assessment_records" violates not-null constraint');
     const bad = c => err('23514', 'new row for relation "assessment_records" violates check constraint "assessment_records_' + c + '_check"');
     if (!/^[0-9]{4}-[0-9]{4}$/.test(r.sy)) return bad('sy');
     if (!['Term 1', 'Term 2', 'Term 3'].includes(r.term)) return bad('term');
@@ -92,7 +96,8 @@
         const staged = [];
         for (const r0 of this.rows) {
           const r = Object.assign({}, r0);
-          if (this.table === 'assessment_records') { r.created_by = me().id; }
+          if (this.table === 'assessment_records') { r.created_by = me().id; r.education_level = levelOf(r.grade_level); }
+          if (this.table === 'comparative_notes' && r.education_level === undefined) r.education_level = 'all';
           if (this.op === 'upsert') {
             const k = (this.onConflict || '').split(',');
             const ex = tbl.find(x => k.every(c => x[c] === r[c]));
@@ -112,7 +117,9 @@
       }
       if (this.op === 'update') {
         const hits = tbl.filter(r => canRead(this.table, r) && match(r));
+        for (const r of hits) { if (!canWrite(this.table, 'update', Object.assign({}, r, this.vals)) && canRead(this.table, r) && this.table !== 'districts' && this.table !== 'app_settings' && this.table !== 'profiles') return { data: null, error: err('42501', 'new row violates row-level security policy for table "' + this.table + '"'), count: null }; }
         const upd = hits.filter(r => canWrite(this.table, 'update', Object.assign({}, r, this.vals)));
+        upd.forEach(r => { if (this.table === 'assessment_records' && this.vals.grade_level) this.vals.education_level = levelOf(this.vals.grade_level); });
         for (const r of upd) { const c = check(this.table, Object.assign({}, r, this.vals)); if (c) return { data: null, error: c, count: null }; }
         upd.forEach(r => Object.assign(r, this.vals));
         return { data: this.ret ? upd.map(r => ({ id: r.id })) : null, error: null, count: this.cnt ? upd.length : null };
@@ -139,6 +146,14 @@
             const s = { user: { id: p.id, email } };
             sessionStorage.setItem(key, JSON.stringify(s));
             return { data: { session: s }, error: null };
+          },
+          async updateUser({ password }) {
+            const e = net(); if (e) throw e;
+            const sn = sess(); if (!sn) return { data: null, error: { status: 401, message: 'not signed in' } };
+            const p = T.profiles.find(x => x.id === sn.user.id);
+            if (S.passwords[p.username] === password) return { data: null, error: { status: 422, code: 'same_password', message: 'New password should be different from the old password.' } };
+            S.passwords[p.username] = password; p.must_change_password = false;   // what the database trigger does
+            return { data: { user: sn.user }, error: null };
           },
           async signOut() { sessionStorage.removeItem(key); listeners.forEach(f => f('SIGNED_OUT', null)); return { error: null }; },
           onAuthStateChange(f) { listeners.push(f); return { data: { subscription: { unsubscribe() {} } } }; }

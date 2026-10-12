@@ -49,14 +49,24 @@ const ACCOUNTS = [
   ['talaingod_coord', 'Talaingod District Coordinator', 'district_coordinator', 'Talaingod'],
   ['langilan_coord', 'Langilan District Coordinator', 'district_coordinator', 'Langilan'],
 ];
-const profiles = ACCOUNTS.map(([username, display_name, role, dn], i) => ({
-  id: `00000000-0000-0000-0000-${String(i + 1).padStart(12, '0')}`, username, display_name, role,
-  district_id: dn ? districts.find(d => d.name === dn).id : null }));
+const CODES = { 'Asuncion': 'asuncion', 'B.E. Dujali': 'dujali', 'Carmen': 'carmen', 'Kapalong East': 'kapalonge', 'Kapalong West': 'kapalongw', 'New Corella': 'newcorella', 'San Isidro': 'sanisidro', 'Sto. Tomas East': 'stotomase', 'Sto. Tomas West': 'stotomasw', 'Talaingod': 'talaingod', 'Langilan': 'langilan' };
+const LEVEL_ACCOUNTS = []; // 22 level coordinators: {district_code}_elemcoord / _seccoord, initial password {district_code}@elem / @sec
+for (const [district, code] of Object.entries(CODES)) for (const [level, user, pwTag, label] of [['elementary', 'elemcoord', 'elem', 'Elementary'], ['secondary', 'seccoord', 'sec', 'Secondary']])
+  LEVEL_ACCOUNTS.push({ username: `${code}_${user}`, password: `${code}@${pwTag}`, district, level, name: `${district} ${label} Coordinator` });
+const DIVISION = ACCOUNTS.filter(a => a[2] !== 'district_coordinator');
+const profiles = [
+  ...DIVISION.map(([username, display_name, role], i) => ({ id: `00000000-0000-0000-0000-${String(i + 1).padStart(12, '0')}`, username, display_name, role, district_id: null, education_level: null, active: true, must_change_password: false })),
+  ...LEVEL_ACCOUNTS.map((a, i) => ({ id: `00000000-0000-0000-0001-${String(i + 1).padStart(12, '0')}`, username: a.username, display_name: a.name, role: 'district_coordinator',
+    district_id: districts.find(d => d.name === a.district).id, education_level: a.level, active: true, must_change_password: false })),
+  // one of the original district-wide coordinators, retired by the migration
+  { id: '00000000-0000-0000-0002-000000000001', username: 'carmen_coord', display_name: 'Carmen District Coordinator', role: 'district_coordinator', district_id: 3, education_level: null, active: false, must_change_password: false }
+];
 const settingsSeed = (() => { // parse supabase/seed/settings.sql json
   const s = fs.readFileSync(path.join(ROOT, 'supabase/seed/settings.sql'), 'utf8');
   return JSON.parse(s.slice(s.indexOf("'{") + 1, s.lastIndexOf("}'") + 1));
 })();
-const toRowish = r => ({ sy: r.sy, term: r.term, district_id: districts.find(d => d.name === r.district).id, school: r.school,
+const gradeLevelOf = g => ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'].includes(g) ? 'elementary' : 'secondary';
+const toRowish = r => ({ education_level: gradeLevelOf(r.gradeLevel), sy: r.sy, term: r.term, district_id: districts.find(d => d.name === r.district).id, school: r.school,
   key_stage: r.keyStage, grade_level: r.gradeLevel, learning_area: r.learningArea, baseline_mps: r.baselineMps, mps: r.mps,
   pct75: r.pct75, proficiency_level: r.proficiencyLevel, least_learned: r.leastLearned, is_demo: r.isDemo !== false });
 
@@ -111,10 +121,13 @@ async function openLegacy(username, records, viewport) {
   return { ctx, page };
 }
 async function openNew(username, records, extra = {}, viewport) {
-  const { passwords: pw } = await readPasswords();
+  let { passwords: pw } = await readPasswords();
   const ctx = await context('new', viewport); const page = await ctx.newPage();
   const errors = []; page.on('pageerror', e => errors.push(String(e)));
-  const stub = { districts: JSON.parse(JSON.stringify(districts)), profiles, passwords: pw, records: records.map((r, i) => Object.assign({ id: i + 1 }, toRowish(r))),
+  const allPw = Object.assign({}, pw, Object.fromEntries(LEVEL_ACCOUNTS.map(a => [a.username, a.password])));
+  const profs = JSON.parse(JSON.stringify(profiles)).map(p => Object.assign(p, { must_change_password: p.must_change_password || (extra.mustChange || []).includes(p.username) }));
+  pw = allPw;
+  const stub = { districts: JSON.parse(JSON.stringify(districts)), profiles: profs, passwords: allPw, records: records.map((r, i) => Object.assign({ id: i + 1 }, toRowish(r))),
     notes: extra.notes || [], settings: JSON.parse(JSON.stringify(settingsSeed)) };
   await page.addInitScript(s => { window.__STUB = s; }, stub);
   await page.goto(`${BASE}/public/index.html`);
@@ -181,7 +194,7 @@ console.log('\n[1] Seed fidelity: districts, coordinators, settings and constant
   ok(JSON.stringify(districts.map(d => d.name)) === JSON.stringify(legacyDistricts), 'district list and order identical');
   ok(districts.every(d => legacyCoords[d.name].name === d.coordinator_name && legacyCoords[d.name].position === d.coordinator_position), 'coordinator defaults identical (seed vs original)');
   ok(JSON.stringify(settingsSeed) === JSON.stringify(legacySettings), 'settings defaults identical (seed vs original)');
-  ok(profiles.length === 13, '13 accounts provisioned per Appendix D');
+  ok(profiles.filter(p => p.role !== 'district_coordinator').length === 2 && profiles.filter(p => p.education_level).length === 22 && profiles.filter(p => !p.active).length === 1, 'accounts: Admin and Supervisor kept, 22 level coordinators, the original district-wide coordinators retired');
 }
 
 console.log('\n[2] Parity on the 1,452-row sample set (admin): every view, 5 filter combinations');
@@ -259,13 +272,13 @@ console.log('\n[4] Security: stored XSS is neutralised (and was live in the orig
 
 console.log('\n[5] Roles: coordinator scope, settings access, destructive actions');
 {
-  const N = await openNew('carmen_coord', demo);
+  const N = await openNew('carmen_elemcoord', demo);
   await N.page.evaluate(() => switchView('division')); await settled(N.page);
   let t = await text(N.page);
   ok(t.includes('Carmen') && !t.includes('Asuncion'), 'coordinator sees only own district (Division Summary)');
   ok(await N.page.evaluate(() => document.getElementById('nav-settings').style.display === 'none'), 'Settings & Branding hidden for coordinator');
   await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
-  ok(/TOTAL DISTRICT RECORDS\s+132/i.test(await text(N.page)), 'coordinator sees 132 own-district records only (database filtered)');
+  ok(/TOTAL DISTRICT RECORDS\s+66/i.test(await text(N.page)), 'elementary coordinator sees 66 records: own district and own level only (database filtered)');
   await N.page.evaluate(() => switchView('settings')); await settled(N.page);
   ok((await text(N.page)).includes('Access Restricted'), 'Settings view refuses a coordinator');
   await N.ctx.close();
@@ -407,10 +420,10 @@ console.log('\n[9] Print CSS: the original @media print block is byte-identical'
 
 console.log('\n[10] Print output: PDFs of the original and the ported app for division and district scope');
 {
-  for (const [user, label, view] of [['admin', 'division', 'comparative'], ['carmen_coord', 'district', 'comparative'], ['admin', 'division-dashboard', 'dashboard']]) {
+  for (const [user, label, view, filt] of [['admin', 'division', 'comparative', null], ['admin', 'district', 'comparative', { 'flt-district': 'Carmen' }], ['admin', 'division-dashboard', 'dashboard', null]]) {
     const L = await openLegacy(user, demo); const N = await openNew(user, demo);
     await legacyReady(L.page);
-    await goView(L, N, view, null);
+    await goView(L, N, view, filt);
     // hide only the QA-irrelevant banner difference: the ported page has no extra on-screen element in print
     const files = [];
     // ported is printed twice: as shipped (with the SAMPLE DATA line) and with the flag cleared (must equal the original)
@@ -475,7 +488,7 @@ console.log('\n[11] Download CSV (Admin and Supervisor) and the aligned signator
     ok(rows.length === 1 + demo.length, `exports the entire data (${rows.length - 1} rows) even while a district filter is active, including the 1,452-row set past the 1,000-row cap`);
     await N.ctx.close(); }
   // coordinators cannot see or use it
-  { const N = await openNew('carmen_coord', rowsIn);
+  { const N = await openNew('carmen_elemcoord', rowsIn);
     ok(!(await N.page.locator('#csv-btn').isVisible()), 'coordinator: no Download CSV button');
     let got = false; N.page.once('download', () => { got = true; });
     await N.page.evaluate(() => downloadCsv()); await N.page.waitForTimeout(500);
@@ -499,6 +512,179 @@ console.log('\n[11] Download CSV (Admin and Supervisor) and the aligned signator
   await A.page.click('button:has-text("Save Division Signatories")'); await A.page.waitForSelector('.toast-success');
   ok(await A.page.evaluate(() => document.getElementById('sig-c-name').textContent === 'CHECKER NAME' && document.getElementById('sig-c-pos').textContent === 'Checker Position'), 'signatories: saving still updates the printed signatory block');
   await A.ctx.close();
+}
+
+console.log('\n[12] Elementary and Secondary coordinators: 22 accounts, separation, password gate');
+{
+  const LV = { elementary: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'], secondary: ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'] };
+  const LABEL = { elementary: 'Elementary', secondary: 'Secondary' };
+  ok(LEVEL_ACCOUNTS.length === 22 && new Set(LEVEL_ACCOUNTS.map(a => a.username)).size === 22, '22 distinct accounts: one Elementary and one Secondary coordinator for each of the 11 districts');
+  ok(LEVEL_ACCOUNTS.every(a => /^[a-z]+_(elemcoord|seccoord)$/.test(a.username)), 'usernames follow {district_code}_elemcoord and {district_code}_seccoord');
+
+  // --- every one of the 22 accounts: own district and own level, nothing else
+  let allGood = true; const problems = [];
+  for (const a of LEVEL_ACCOUNTS) {
+    const N = await openNew(a.username, demo);
+    const r = await N.page.evaluate(async lvl => {
+      await switchView('dashboard');
+      const rows = (await sb().from('assessment_records').select('district_id, education_level, grade_level').range(0, 999)).data;
+      const own = districtIdByName[currentUser.district];
+      return {
+        role: document.getElementById('u-role').textContent, rowCount: rows.length,
+        onlyOwn: rows.every(x => x.district_id === own && x.education_level === lvl),
+        districtLocked: document.getElementById('flt-district').disabled && document.getElementById('flt-district').value === currentUser.district,
+        levelLocked: document.getElementById('flt-level').disabled && document.getElementById('flt-level').value === lvl,
+        keyStages: Array.from(document.querySelectorAll('#flt-keystage option')).filter(o => !o.disabled).map(o => o.value),
+        settingsHidden: document.getElementById('nav-settings').style.display === 'none',
+        csvHidden: document.getElementById('csv-btn').style.display === 'none'
+      };
+    }, a.level);
+    const want = a.level === 'elementary' ? ['ALL', 'Key Stage 1', 'Key Stage 2'] : ['ALL', 'Key Stage 3', 'Key Stage 4'];
+    const good = r.role === `${LABEL[a.level]} Coordinator (${a.district})` && r.rowCount === 66 && r.onlyOwn && r.districtLocked && r.levelLocked
+      && JSON.stringify(r.keyStages) === JSON.stringify(want) && r.settingsHidden && r.csvHidden;
+    if (!good) { allGood = false; problems.push(a.username + ' ' + JSON.stringify(r)); }
+    await N.ctx.close();
+  }
+  ok(allGood, 'all 22 accounts: correct label, 66 rows (own district AND level only), district and level locked, own key stages only, no Settings, no CSV' + (problems.length ? ' -> ' + problems[0] : ''));
+
+  // --- an Elementary and a Secondary coordinator of the same district try to cross over
+  for (const [user, own, otherLevel, otherGrade, ownGrade] of [['asuncion_elemcoord', 'elementary', 'secondary', 'Grade 8', 'Grade 3'], ['asuncion_seccoord', 'secondary', 'elementary', 'Grade 3', 'Grade 9']]) {
+    const N = await openNew(user, demo);
+    const att = await N.page.evaluate(async ([og, wg]) => {
+      const d = districtIdByName['Asuncion'], other = districtIdByName['Carmen'];
+      const row = (district, grade) => ({ sy: '2025-2026', term: 'Term 1', district_id: district, school: '', key_stage: 'Key Stage 1', grade_level: grade, learning_area: 'X', baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' });
+      const out = {};
+      out.createOther = (await sb().from('assessment_records').insert(row(d, og))).error?.code;
+      out.createOtherDistrict = (await sb().from('assessment_records').insert(row(other, wg))).error?.code;
+      out.createUnknownGrade = (await sb().from('assessment_records').insert(row(d, 'Grade 13'))).error?.code;
+      const mine = (await sb().from('assessment_records').insert(row(d, wg)).select('id')).data;
+      out.createOwn = !!(mine && mine.length === 1);
+      out.moveLevel = (await sb().from('assessment_records').update({ grade_level: og }).eq('id', mine[0].id)).error?.code;
+      out.moveDistrict = (await sb().from('assessment_records').update({ district_id: other }).eq('id', mine[0].id)).error?.code;
+      out.deleteOwn = (await sb().from('assessment_records').delete({ count: 'exact' }).eq('id', mine[0].id)).count;
+      out.readOtherLevel = (await sb().from('assessment_records').select('id').eq('education_level', og === 'Grade 8' ? 'secondary' : 'elementary')).data.length;
+      out.addRecordHelper = await addRecord({ sy: '2025-2026', term: 'Term 1', district: 'Asuncion', school: '', keyStage: 'Key Stage 1', gradeLevel: og, learningArea: 'X', baselineMps: 65, mps: 80, pct75: 70, proficiencyLevel: 'x', leastLearned: [] }).then(() => 'saved', e => e.code);
+      return out;
+    }, [otherGrade, ownGrade]);
+    ok(att.createOther === '42501' && att.createOtherDistrict === '42501', `${user}: cannot create ${LABEL[otherLevel]} records in its own district, nor anything in another district`);
+    ok(att.createUnknownGrade === '23502' || att.createUnknownGrade === '42501', `${user}: an unknown grade level is refused (education level cannot be determined)`);
+    ok(att.createOwn && att.moveLevel === '42501' && att.moveDistrict === '42501', `${user}: can create its own, but cannot move a record to the other level or another district`);
+    ok(att.deleteOwn === 0 && att.readOtherLevel === 0, `${user}: cannot delete, and reads 0 ${LABEL[otherLevel]} rows even though they exist in the same district`);
+    ok(att.addRecordHelper === '42501', `${user}: the app's own save path surfaces the refusal`);
+    // the forms only offer this level
+    await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page);
+    await N.page.click('text=Method 2: Fast Manual Entry');
+    const grades = await N.page.evaluate(() => Array.from(document.querySelectorAll('#m-grade option')).map(o => o.value));
+    ok(JSON.stringify(grades) === JSON.stringify(LV[own]), `${user}: manual entry offers only ${LABEL[own]} grades`);
+    // Excel import: one row of the wrong level rejects the whole file, naming the rows
+    const xl = rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
+    const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'S', 'Key Stage': 'Key Stage 1', 'Grade Level': ownGrade, 'Learning Area': 'MAPEH - Music & Arts', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'x' };
+    const before = await N.page.evaluate(() => window.__STUB.records.length);
+    const upload = async rows => { await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page); await N.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
+      await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xl(rows)) }); };
+    await upload([base, { ...base, 'Grade Level': otherGrade }, { ...base, 'Grade Level': 'Grade 99' }]);
+    await N.page.waitForSelector('.toast-error'); const msg = await N.page.textContent('#toast-host');
+    ok(new RegExp(`only import ${LABEL[own]} records`).test(msg) && /row 3/.test(msg) && /row 4/.test(msg) && (await N.page.evaluate(() => window.__STUB.records.length)) === before, `${user}: an import with other-level or unknown grades is rejected with row numbers and saves nothing`);
+    await upload([base, { ...base, Term: 'Term 2' }]); await N.page.waitForSelector('.toast-success');
+    ok((await N.page.evaluate(() => window.__STUB.records.length)) === before + 2, `${user}: an import of its own level is saved`);
+    await N.ctx.close();
+  }
+
+  // --- forced password change for an account that still has its initial password
+  {
+    const u = 'dujali_seccoord', init = LEVEL_ACCOUNTS.find(a => a.username === u).password;
+    const N = await openNew(u, demo, { noLogin: true, mustChange: [u] });
+    await N.page.fill('#login-username', u); await N.page.fill('#login-password', init); await N.page.click('#login-screen button[type=submit]');
+    await N.page.waitForSelector('#pw-modal', { state: 'visible' });
+    ok(true, 'initial password: the change-password screen opens before anything else');
+    ok((await N.page.textContent('#pw-title')) === 'Set a new password' && !(await N.page.locator('#pw-current').isVisible()), 'forced change does not ask for the current password again and cannot be cancelled (only Log out)');
+    ok((await N.page.textContent('#pw-cancel')) === 'Log out', 'the only alternative is Log out');
+    ok(await N.page.evaluate(() => document.getElementById('login-screen').style.display !== 'none' && !document.querySelector('#view-container .kpi-grid')), 'no data screen is reachable while the password is still initial');
+    const direct = await N.page.evaluate(async () => (await sb().from('assessment_records').select('id').range(0, 5)).data.length);
+    ok(direct === 0, 'initial password: even a direct data request returns nothing (enforced by the access rules)');
+    const tryPw = async (pw, conf) => { await N.page.fill('#pw-new', pw); await N.page.fill('#pw-confirm', conf ?? pw); await N.page.click('#pw-ok'); await N.page.waitForFunction(() => document.getElementById('pw-error').textContent.length > 0 || document.getElementById('pw-modal').style.display === 'none'); return N.page.textContent('#pw-error'); };
+    ok(/at least 10/i.test(await tryPw('Short1')), 'rule: at least 10 characters');
+    ok(/letter and at least one number/i.test(await tryPw('onlyletterslong')), 'rule: a letter and a number');
+    ok(/username or district/i.test(await tryPw(init + '12345')), 'rule: the initial pattern (district name) is refused');
+    ok(/username or district/i.test(await tryPw('Dujali_seccoord9')), 'rule: the username is refused');
+    ok(/too easy/i.test(await tryPw('Password-2026x')), 'rule: obvious passwords are refused');
+    ok(/do not match/i.test(await tryPw('Quiet-River-2026', 'Quiet-River-2027')), 'rule: both entries must match');
+    ok(await N.page.evaluate(u => window.__STUB.profiles.find(p => p.username === u).must_change_password === true, u), 'nothing was unlocked by the failed attempts');
+    await tryPw('Quiet-River-2026');
+    await N.page.waitForFunction(() => document.getElementById('login-screen').style.display === 'none'); await settled(N.page);
+    ok(true, 'a valid new password unlocks the account and loads the app');
+    ok(/TOTAL DISTRICT RECORDS\s+0/i.test(await text(N.page)) || await N.page.evaluate(() => currentUser.educationLevel === 'secondary'), 'the unlocked account is still limited to its own district and level');
+    ok(await N.page.evaluate(() => window.__STUB.passwords['dujali_seccoord'] === 'Quiet-River-2026' && window.__STUB.profiles.find(p => p.username === 'dujali_seccoord').must_change_password === false), 'the server holds the new password and has cleared the flag');
+    // voluntary change later needs the current password
+    await N.page.click('.user-profile-badge button:has-text("Password")'); await N.page.waitForSelector('#pw-modal', { state: 'visible' });
+    ok(await N.page.locator('#pw-current').isVisible(), 'voluntary change asks for the current password');
+    await N.page.fill('#pw-current', 'wrong-one-123'); await N.page.fill('#pw-new', 'Calm-Harbor-2026'); await N.page.fill('#pw-confirm', 'Calm-Harbor-2026'); await N.page.click('#pw-ok');
+    await N.page.waitForFunction(() => document.getElementById('pw-error').textContent.length > 0);
+    ok(/current password is incorrect/i.test(await N.page.textContent('#pw-error')), 'voluntary change: a wrong current password is refused');
+    await N.page.fill('#pw-current', 'Quiet-River-2026'); await N.page.fill('#pw-new', 'Quiet-River-2026'); await N.page.fill('#pw-confirm', 'Quiet-River-2026'); await N.page.click('#pw-ok');
+    await N.page.waitForFunction(() => document.getElementById('pw-error').textContent.length > 0);
+    ok(/not used before/i.test(await N.page.textContent('#pw-error')), 'voluntary change: re-using the same password is refused');
+    await N.page.fill('#pw-current', 'Quiet-River-2026'); await N.page.fill('#pw-new', 'Calm-Harbor-2026'); await N.page.fill('#pw-confirm', 'Calm-Harbor-2026'); await N.page.click('#pw-ok');
+    await N.page.waitForFunction(() => document.getElementById('pw-modal').style.display === 'none');
+    ok(await N.page.evaluate(() => window.__STUB.passwords['dujali_seccoord'] === 'Calm-Harbor-2026'), 'voluntary change: saved');
+    await N.ctx.close();
+    // log out from the forced screen, and the initial password stops working once replaced
+    const M = await openNew(u, demo, { noLogin: true, mustChange: [u] });
+    await M.page.fill('#login-username', u); await M.page.fill('#login-password', init); await M.page.click('#login-screen button[type=submit]');
+    await M.page.waitForSelector('#pw-modal', { state: 'visible' });
+    await Promise.all([M.page.waitForEvent('load'), M.page.click('#pw-cancel')]);
+    ok(await M.page.evaluate(() => !sessionStorage.getItem('stub_session')), 'Log out from the forced screen ends the session');
+    await M.ctx.close();
+  }
+
+  // --- the original district-wide coordinators are retired
+  {
+    const N = await openNew('carmen_coord', demo, { noLogin: true });
+    const { passwords: pw } = await readPasswords();
+    await N.page.fill('#login-username', 'carmen_coord'); await N.page.fill('#login-password', pw.carmen_coord); await N.page.click('#login-screen button[type=submit]');
+    await N.page.waitForFunction(() => /retired/i.test(document.getElementById('login-error').textContent));
+    ok(await N.page.evaluate(() => document.getElementById('login-screen').style.display !== 'none' && !sessionStorage.getItem('stub_session')), 'a retired district-wide coordinator account is signed out with a clear message and sees nothing');
+    await N.ctx.close();
+  }
+
+  // --- Admin and Supervisor: both levels, with an Education Level filter
+  for (const user of ['admin', 'supervisor']) {
+    const N = await openNew(user, demo);
+    ok(await N.page.evaluate(() => !document.getElementById('flt-level').disabled && document.getElementById('flt-level').value === 'ALL'), `${user}: Education Level filter is free (All Levels)`);
+    await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
+    ok(/TOTAL DISTRICT RECORDS\s+1452/i.test(await text(N.page)), `${user}: sees both levels (1452 records)`);
+    await N.page.selectOption('#flt-level', 'elementary'); await settled(N.page);
+    ok(/TOTAL DISTRICT RECORDS\s+726/i.test(await text(N.page)), `${user}: Elementary filter shows 726 records`);
+    ok(JSON.stringify(await N.page.evaluate(() => Array.from(document.querySelectorAll('#flt-keystage option')).filter(o => !o.disabled).map(o => o.value))) === JSON.stringify(['ALL', 'Key Stage 1', 'Key Stage 2']), `${user}: key stages narrow to the chosen level`);
+    ok(await N.page.evaluate(() => document.getElementById('print-title').textContent.includes('ELEMENTARY')), `${user}: the printed report title names the level`);
+    await N.page.evaluate(() => switchView('grade-view')); await settled(N.page);
+    ok((await N.page.locator('#view-container table.data-table tbody tr').count()) === 6, `${user}: grade level breakdown shows Grades 1 to 6 only`);
+    await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
+    ok((await N.page.locator('.editable-baseline-input').count()) === 2, `${user}: comparative analysis shows the two Elementary key stages`);
+    await N.page.selectOption('#flt-level', 'secondary'); await settled(N.page);
+    await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
+    ok(/TOTAL DISTRICT RECORDS\s+726/i.test(await text(N.page)), `${user}: Secondary filter shows the other 726`);
+    const [dl] = await Promise.all([N.page.waitForEvent('download'), N.page.click('#csv-btn')]);
+    await dl.saveAs(`${OUT}/levels-${user}.csv`); const lines = fs.readFileSync(`${OUT}/levels-${user}.csv`, 'utf8').replace(/^﻿/, '').trim().split(/\r?\n/);
+    const hdr = lines[0].split(','); const li = hdr.indexOf('Education Level');
+    const lv = new Set(lines.slice(1).map(l => l.split(',')[li]));
+    ok(li > 0 && lines.length === 1453 && lv.has('Elementary') && lv.has('Secondary'), `${user}: the CSV is the entire data (1452 rows, both levels) with an Education Level column`);
+    await N.ctx.close();
+  }
+
+  // --- notes are filed per district and level; the secondary template matches the level
+  {
+    const N = await openNew('asuncion_seccoord', demo);
+    await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
+    await N.page.fill('#comp-analysis-input', 'secondary note'); await N.page.click('text=Save Qualitative Notes'); await N.page.waitForSelector('.toast-success');
+    const n = await N.page.evaluate(() => window.__STUB.notes.map(x => [x.district_scope, x.education_level]));
+    ok(JSON.stringify(n) === JSON.stringify([['Asuncion', 'secondary']]), 'notes are saved under the coordinator\'s district AND level');
+    ok((await N.page.locator('.editable-baseline-input').count()) === 2, 'a Secondary coordinator sees only Key Stages 3 and 4 in the comparative table');
+    await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page);
+    const [dl] = await Promise.all([N.page.waitForEvent('download'), N.page.click('text=Download Excel Template')]);
+    ok(/_Secondary\.xlsx$/.test(dl.suggestedFilename()), 'the Excel template is the Secondary template (' + dl.suggestedFilename() + ')');
+    await N.ctx.close();
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
