@@ -80,7 +80,17 @@ try {
     const mv = await A('PATCH', `assessment_records?id=eq.${id}`, { grade_level: GRADE[other(level)] }, 'return=representation');
     ok(denied(mv) || (Array.isArray(mv.j) && mv.j.length === 0), `${tag}: cannot move its record to the other level`);
     const del = await A('DELETE', `assessment_records?id=eq.${id}`, null, 'return=representation');
-    ok(denied(del) || (Array.isArray(del.j) && del.j.length === 0), `${tag}: cannot delete`);
+    ok(denied(del) || (Array.isArray(del.j) && del.j.length === 0), `${tag}: cannot hard delete`);
+    // migration 0005: soft delete through scope-checked functions, protected columns, MAPEH grade rule
+    const otherRow = (await svc('GET', `assessment_records?select=id&school=eq.LEVEL-TEST&district_id=eq.${dist[district]}&education_level=eq.${other(level)}`)).j[0];
+    ok(otherRow && denied(await A('POST', 'rpc/app_delete_records', { p_ids: [otherRow.id] })), `${tag}: cannot soft delete the other level (function refuses)`);
+    ok(denied(await A('PATCH', `assessment_records?id=eq.${id}`, { is_demo: true })) && denied(await A('PATCH', `assessment_records?id=eq.${id}`, { deleted_at: '2020-01-01' })), `${tag}: cannot set is_demo or deleted_at through the API`);
+    ok(denied(await A('POST', 'rpc/app_delete_records_by_sy', { p_sy: '2025-2026' })) && denied(await A('POST', 'rpc/app_restore_records', { p_ids: [id] })), `${tag}: cannot bulk delete or restore`);
+    const mapehBad = await A('POST', 'assessment_records', { ...rec(dist[district], level), grade_level: 'Grade 3', learning_area: 'MAPEH - Music' });
+    ok(mapehBad.s === 400 && mapehBad.code === '23514', `${tag}: the database refuses Music for Grade 3`);
+    const softOwn = await A('POST', 'rpc/app_delete_records', { p_ids: [id], p_reason: 'verify' });
+    ok(softOwn.s === 200 && softOwn.j === 1, `${tag}: can soft delete its own record`);
+    ok(((await A('GET', `assessment_records?select=id&id=eq.${id}`)).j || []).length === 0, `${tag}: a deleted record disappears for the coordinator`);
     const bad = await A('POST', 'assessment_records', { ...rec(dist[district], level), grade_level: 'Grade 13' });
     ok(bad.s >= 400, `${tag}: an unknown grade level is refused`);
     const note = l => ({ sy: 'LEVELTEST', district_scope: district, education_level: l, subject: 'ALL', term: 'ALL', analysis: 'x', interventions: 'y' });

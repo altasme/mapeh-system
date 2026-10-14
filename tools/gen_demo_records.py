@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate the demo records (the legacy seedDemoData() shape, but with a fixed seed).
-11 districts x 3 terms x 4 grades x 11 subjects = 1,452 rows, every row is_demo = true.
+11 districts x 3 terms x 4 grades (47 subject rows per district and term) = 1,551 rows, every row is_demo = true.
 
   python3 tools/gen_demo_records.py > supabase/seed/demo_records.sql
   python3 tools/gen_demo_records.py --json > demo_records.json     (QA: same rows as app-shaped objects)

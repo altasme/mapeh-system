@@ -72,3 +72,16 @@ Supabase shim), and a final browser run against the real project is part of depl
 | N13 | Med | The forced password change relies on a trigger on `auth.users` (a Supabase-managed schema) to clear the flag. If the trigger were dropped, accounts would stay locked (fails safe, not open). | DOC. The flag is also set again by `tools/reset-password.mjs` after administrative resets. |
 | N14 | Low | Unknown grade levels were accepted before. They now have no education level and are refused (database, import and forms). The silent import default of Grade 1 (M1) still applies. | FIX. |
 | N15 | Info | "Prepared by" on a coordinator's printed report uses one coordinator name per district, although there are now two coordinators per district. | DOC, awaiting the client's decision. |
+
+## Added 2026-10-14: MAPEH components, grade rules, record editing and deletion
+
+| ID | Sev | Finding | Disposition |
+|----|-----|---------|-------------|
+| N16 | Med | Grade 1 to 3 records could be filed under Music, Arts, PE or Health, and any grade under any MAPEH area, because learning area was free text. | FIX: database trigger `app_mapeh_rule_problem` (create, and edit when grade or area change), mirrored in forms, imports and templates. IPED, SPA, SPS and SPFL unrestricted. The grade rules are an assumption to confirm with the client. |
+| N17 | Med | Old combined MAPEH records (`Music & Arts`, `PE & Health`) cannot be split into the four components. | DOC. Kept, shown, editable and still counted in the MAPEH total; Grade 1 to 3 legacy rows are flagged "Needs correction". Not converted automatically. |
+| N18 | Med | Overall MAPEH may not be the plain average of the four components (client question). | Handled by design: overall is its own official record and is never derived. Component and overall MPS are shown side by side. |
+| N19 | High | Coordinators could not edit, and edits that bypassed the screen would not have updated `proficiency_level` (the client computed it). | FIX: `proficiency_level` is computed by a trigger from `mps`; edit stamps `updated_by`. |
+| N20 | High | Deletion was permanent (Admin/Supervisor, whole school year or everything). | FIX: soft delete with who, when and why; restore for the division team; bulk deletes are soft too; direct DELETE revoked. Permanent purge only from the SQL editor by the database owner. |
+| N21 | High | Direct API writes could set any column of a record in scope, including `is_demo` and `created_by`. | FIX: column-level INSERT/UPDATE privileges limit writes to the business columns; delete/restore only through scope-checked, all-or-nothing functions. |
+| N22 | Low | The old app sends `is_demo` on insert, which the new privileges refuse. | DOC: deploy 0005 and the matching app together (HANDOVER section 12). |
+| N23 | Info | Division Summary averages component figures as a mean of term means (same method as its matrix); Grade Level Breakdown uses flat means like its existing table. | DOC (AUDIT M3 applies to the new tables as well). |

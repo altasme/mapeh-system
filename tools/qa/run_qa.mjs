@@ -694,6 +694,219 @@ console.log('\n[12] Elementary and Secondary coordinators: 22 accounts, separati
   }
 }
 
+
+console.log('\n[16] MAPEH components, grade rules, and record edit / delete');
+{
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const f2 = v => v.toFixed(2) + '%';
+  const meanOf = f => mean(demoNew.filter(f).map(r => r.mps));
+  const termMean = (f) => { const tm = ['Term 1', 'Term 2', 'Term 3'].map(t => demoNew.filter(r => r.term === t && f(r)).map(r => r.mps)).filter(a => a.length).map(mean); return mean(tm); };
+  const cardRows = (page, title) => page.evaluate(t => {
+    const card = Array.from(document.querySelectorAll('#view-container .card-box')).find(c => (c.querySelector('h3') || {}).textContent.includes(t));
+    return card ? Array.from(card.querySelectorAll('tbody tr')).map(tr => Array.from(tr.children).map(td => td.innerText.replace(/\s+/g, ' ').trim())) : null;
+  }, title);
+
+  // ---- component breakdown
+  {
+    const N = await openNew('admin', demoNew);
+    await N.page.evaluate(() => switchView('grade-view')); await settled(N.page);
+    const g = await cardRows(N.page, 'MAPEH Components by Grade Level');
+    ok(!!g && g.length === 13, 'Grade Level Breakdown has the component table (12 grades + all-grades row)');
+    const g4 = g.find(r => r[0] === 'Grade 4'), g1 = g.find(r => r[0] === 'Grade 1'), g11 = g.find(r => r[0] === 'Grade 11');
+    ok(g4[1].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Music'))) && g4[2].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Arts')))
+      && g4[3].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - PE'))) && g4[4].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Health'))), 'Grade 4: Music, Arts, PE and Health MPS shown separately and correct');
+    const ov4 = meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Overall');
+    const avgParts = mean(['Music', 'Arts', 'PE', 'Health'].map(c => meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - ' + c)));
+    ok(g4[5].startsWith(f2(ov4)) && f2(ov4) !== f2(avgParts), 'Grade 4: Overall MAPEH is the official record (' + f2(ov4) + '), not the average of the components (' + f2(avgParts) + ')');
+    ok(g1[1].includes('Not recorded') && g1[4].includes('Not recorded') && g1[5].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 1' && r.learningArea === 'MAPEH - Overall'))), 'Grade 1: components not recorded, overall MAPEH only');
+    ok(g11.slice(1, 6).every(c => c.includes('Not recorded')), 'Grade 11: no MAPEH');
+    await N.page.evaluate(() => switchView('division')); await settled(N.page);
+    const d = await cardRows(N.page, 'MAPEH Components by District');
+    const asu = d.find(r => r[1] === 'Asuncion');
+    ok(!!d && asu[2].startsWith(f2(termMean(r => r.district === 'Asuncion' && r.learningArea === 'MAPEH - Music'))) && asu[6].startsWith(f2(termMean(r => r.district === 'Asuncion' && r.learningArea === 'MAPEH - Overall'))), 'Division Summary: district component table (mean of term means) matches');
+    await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
+    const ch = await N.page.evaluate(() => Object.values(activeCharts).map(c => [c.data.labels, c.data.datasets[0].data]));
+    ok(ch.length === 3 && JSON.stringify(ch[2][0]) === JSON.stringify(['Music', 'Arts', 'Physical Education (PE)', 'Health', 'Overall MAPEH']) && Math.abs(ch[2][1][4] - meanOf(r => r.learningArea === 'MAPEH - Overall')) < 0.006, 'Dashboard: MAPEH components chart with the overall as its own bar');
+    ok(new RegExp('MAPEH Consolidated Total MPS\\s+' + meanOf(r => r.learningArea === 'MAPEH - Overall').toFixed(2) + '%', 'i').test(await text(N.page)), 'Dashboard MAPEH total = official overall records only (components are not double counted)');
+    await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
+    const ct = await text(N.page);
+    ok(/MAPEH component: Music/.test(ct) && /MAPEH component: Physical Education \(PE\)/.test(ct) && /CONSOLIDATED MAPEH TOTAL \(Overall MAPEH\)/.test(ct), 'Comparative sheet: component rows under the MAPEH total');
+    await N.page.evaluate(() => { resetFilters(); switchView('district-view'); }); await settled(N.page);
+    ok(/MAPEH - Health/.test(await text(N.page)), 'District Profile lists the new MAPEH areas as subject rows');
+    ok(N.errors.length === 0, 'no page errors while rendering the component views' + (N.errors[0] ? ': ' + N.errors[0] : ''));
+    await N.ctx.close();
+  }
+
+  // ---- grade rules: forms, imports, and the backend
+  {
+    const N = await openNew('admin', demoNew.slice(0, 20));
+    await N.page.evaluate(() => switchView('data-input')); await settled(N.page);
+    await N.page.click('text=Method 2: Fast Manual Entry');
+    const opts = async g => { await N.page.selectOption('#m-grade', g); return N.page.evaluate(() => Array.from(document.querySelectorAll('#m-subject option')).map(o => o.value)); };
+    const o1 = await opts('Grade 2'), o5 = await opts('Grade 5'), o11 = await opts('Grade 11');
+    ok(o1.includes('MAPEH - Overall') && !o1.some(v => /MAPEH - (Music|Arts|PE|Health)/.test(v)) && o1.includes('IPED - English'), 'manual entry Grade 2: overall MAPEH only (no components, no combined areas); IPED untouched');
+    ok(['MAPEH - Overall', 'MAPEH - Music', 'MAPEH - Arts', 'MAPEH - PE', 'MAPEH - Health'].every(v => o5.includes(v)) && !o5.some(v => /&/.test(v) && /^MAPEH/.test(v)), 'manual entry Grade 5: overall plus four components, no combined areas');
+    ok(!o11.some(v => /^MAPEH/.test(v)) && o11.includes('SPA - Vocal Arts'), 'manual entry Grade 11: no MAPEH areas');
+    const filterOpts = await N.page.evaluate(() => Array.from(document.querySelectorAll('#flt-subject option')).map(o => o.value));
+    ok(filterOpts.includes('MAPEH - Music') && filterOpts.includes('MAPEH - Music & Arts'), 'the subject filter lists new areas and still lists the legacy ones');
+
+    const xlsx = async rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
+    const upload = async rows => { await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page); await N.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
+      await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xlsx(rows)) }); };
+    const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'X', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 1', 'Learning Area': 'MAPEH - Overall', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'lc' };
+    const count = () => N.page.evaluate(() => window.__STUB.records.length);
+    const bad = [['Grade 2', 'MAPEH - Music'], ['Grade 3', 'MAPEH - Health'], ['Grade 1', 'MAPEH - Music & Arts'], ['Grade 5', 'MAPEH - PE & Health'], ['Grade 11', 'MAPEH - Overall'], ['Grade 12', 'MAPEH - Arts']];
+    for (const [gr, area] of bad) {
+      await upload([base, Object.assign({}, base, { 'Grade Level': gr, 'Learning Area': area })]);
+      await N.page.waitForSelector('.toast-error');
+      const m = await N.page.textContent('#toast-host');
+      ok(/Nothing was saved/.test(m) && /row 3/.test(m) && await count() === 20, `import refuses ${gr} / ${area} with its row number, and saves nothing (the valid row 2 is not saved either)`);
+    }
+    await upload([Object.assign({}, base, { 'Grade Level': 'Grade 2', 'Learning Area': 'IPED - MAPEH (Music & Arts)' }), Object.assign({}, base, { 'Grade Level': 'Grade 5', 'Key Stage': 'Key Stage 2', 'Learning Area': 'MAPEH - Music' }), Object.assign({}, base, { 'Grade Level': 'Grade 9', 'Key Stage': 'Key Stage 3', 'Learning Area': 'MAPEH - Overall' })]);
+    await N.page.waitForSelector('.toast-success');
+    ok(await count() === 23, 'import accepts IPED in Grade 2 (unrestricted), Music in Grade 5 and Overall in Grade 9');
+    // the backend refuses the same combinations when the app is bypassed
+    const api = await N.page.evaluate(async () => {
+      const row = (g, a) => ({ sy: '2025-2026', term: 'Term 1', district_id: 1, school: '', key_stage: 'Key Stage 1', grade_level: g, learning_area: a, baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' });
+      const r = {};
+      r.g1music = (await sb().from('assessment_records').insert(row('Grade 1', 'MAPEH - Music'))).error;
+      r.g4legacy = (await sb().from('assessment_records').insert(row('Grade 4', 'MAPEH - Music & Arts'))).error;
+      r.g12 = (await sb().from('assessment_records').insert(row('Grade 12', 'MAPEH - Overall'))).error;
+      r.iped = (await sb().from('assessment_records').insert(row('Grade 1', 'IPED - MAPEH (PE & Health)'))).error;
+      const id = (await sb().from('assessment_records').insert(row('Grade 5', 'MAPEH - Music')).select('id')).data[0].id;
+      r.move = (await sb().from('assessment_records').update({ grade_level: 'Grade 2' }).eq('id', id)).error;
+      r.msg = friendlyError(r.g1music);
+      return r;
+    });
+    ok(api.g1music?.code === '23514' && api.g4legacy?.code === '23514' && api.g12?.code === '23514' && api.iped === null && api.move?.code === '23514', 'backend refuses Grade 1 Music, Grade 4 legacy, Grade 12 MAPEH and editing Music into Grade 2; IPED passes');
+    ok(/^Grades 1 to 3 are recorded as overall MAPEH only/.test(api.msg), 'the backend rule is shown in plain English');
+    await N.ctx.close();
+  }
+
+  // ---- templates follow the rules
+  for (const user of ['asuncion_elemcoord', 'asuncion_seccoord']) {
+    const N = await openNew(user, demoNew);
+    const rows = await N.page.evaluate(() => { let got = null; XLSX.writeFile = wb => { got = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]); }; downloadExcelTemplate(); return got.map(r => [r['Grade Level'], r['Learning Area'], mapehRuleProblem(r['Grade Level'], r['Learning Area'])]); });
+    ok(rows.length >= 2 && rows.every(r => r[2] === ''), `${user}: every template example row passes the MAPEH rules`);
+    await N.ctx.close();
+  }
+
+  // ---- Manage Records: edit
+  const asuG4 = demoNew.findIndex(r => r.district === 'Asuncion' && r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Music' && r.term === 'Term 1') + 1;
+  const legacyRec = Object.assign({}, demoNew[0], { district: 'Asuncion', gradeLevel: 'Grade 2', keyStage: 'Key Stage 1', learningArea: 'MAPEH - Music & Arts', school: '' });
+  const withLegacy = demoNew.concat([legacyRec]);
+  const legacyId = withLegacy.length;
+  {
+    const N = await openNew('admin', withLegacy);
+    const total = withLegacy.length;
+    await N.page.evaluate(() => switchView('manage-records')); await settled(N.page);
+    ok(await N.page.locator('#mr-tab-deleted').count() === 1 && /of 1[0-9]{3}/.test(await N.page.textContent('#mr-pager')), 'Manage Records: admin sees every record and the Deleted records tab');
+    await N.page.fill('#mr-search', 'Music & Arts');
+    const flagged = await N.page.textContent('#mr-table');
+    ok(/Needs correction/.test(flagged) && /of 1\b/.test(await N.page.textContent('#mr-pager')), 'search narrows the list; a Grade 2 legacy record is flagged "Needs correction"');
+    // edit legacy record: score only (old area stays allowed because grade and area did not change)
+    await N.page.evaluate(id => openRecordEditor(id), legacyId);
+    await N.page.fill('#e-mps', '91.5'); await N.page.click('#rec-save');
+    await N.page.waitForSelector('.toast-success');
+    let rec = await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id), legacyId);
+    ok(rec.mps === 91.5 && rec.proficiency_level === 'Advanced' && rec.learning_area === 'MAPEH - Music & Arts' && !!rec.updated_by, 'editing only the score of a legacy Grade 2 record saves; proficiency is recomputed by the database; editor is stamped');
+    // edit into a forbidden combination: Grade 4 Music -> Grade 2
+    await N.page.evaluate(id => openRecordEditor(id), asuG4);
+    await N.page.selectOption('#e-grade', 'Grade 2'); await N.page.selectOption('#e-subject', 'MAPEH - Music'); await N.page.click('#rec-save');
+    ok(/Grades 1 to 3 are recorded as overall MAPEH only/.test(await N.page.textContent('#rec-error')) && (await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id).grade_level, asuG4)) === 'Grade 4', 'edit form refuses Music for Grade 2 before saving');
+    await N.page.selectOption('#e-grade', 'Grade 4'); await N.page.selectOption('#e-subject', 'MAPEH - Music');
+    await N.page.fill('#e-mps', '120'); await N.page.click('#rec-save');
+    ok(/MPS must be between 0 and 100/.test(await N.page.textContent('#rec-error')), 'edit form revalidates ranges');
+    await N.page.fill('#e-mps', '93.25'); await N.page.fill('#e-school', 'Edited School'); await N.page.click('#rec-save');
+    await N.page.waitForSelector('.toast-success');
+    rec = await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id), asuG4);
+    ok(rec.mps === 93.25 && rec.school === 'Edited School' && rec.proficiency_level === 'Advanced', 'a valid edit is saved and confirmed by the database');
+    // the edit is visible in the reports
+    await N.page.evaluate(() => { formDirty = false; switchView('grade-view'); }); await settled(N.page);
+    const g = await cardRows(N.page, 'MAPEH Components by Grade Level');
+    const newMean = mean(demoNew.map((r, i) => ({ r, mps: i + 1 === asuG4 ? 93.25 : r.mps })).filter(x => x.r.gradeLevel === 'Grade 4' && x.r.learningArea === 'MAPEH - Music').map(x => x.mps));
+    ok(g.find(r => r[0] === 'Grade 4')[1].startsWith(f2(newMean)), 'Grade Level Breakdown reflects the edited record (' + f2(newMean) + ')');
+    // backend: direct edit of an out-of-range value
+    const e = await N.page.evaluate(async id => (await sb().from('assessment_records').update({ mps: 101 }).eq('id', id)).error?.code, asuG4);
+    ok(e === '23514', 'backend refuses mps 101 on a direct edit');
+
+    // delete: cancel first, then confirm
+    await N.page.evaluate(() => switchView('manage-records')); await settled(N.page);
+    await N.page.evaluate(id => openRecordDelete(id), asuG4);
+    await N.page.click('#record-modal .btn-secondary');
+    ok(await N.page.evaluate(id => !window.__STUB.records.find(r => r.id === id).deleted_at, asuG4), 'cancelling the delete changes nothing');
+    await N.page.evaluate(id => openRecordDelete(id), asuG4);
+    await N.page.fill('#del-reason', 'entered by mistake'); await N.page.click('#rec-confirm-delete');
+    await N.page.waitForSelector('.toast-success');
+    rec = await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id), asuG4);
+    ok(!!rec.deleted_at && rec.delete_reason === 'entered by mistake' && !!rec.deleted_by && await N.page.evaluate(() => window.__STUB.records.length) === total, 'delete is soft: the row stays, with who, when and why');
+    await N.page.evaluate(() => { switchView('dashboard'); }); await settled(N.page);
+    ok(new RegExp('TOTAL DISTRICT RECORDS\\s+' + (total - 1) + '\\b', 'i').test(await text(N.page)), 'dashboards no longer count the deleted record');
+    await N.page.evaluate(() => switchView('grade-view')); await settled(N.page);
+    const g2 = await cardRows(N.page, 'MAPEH Components by Grade Level');
+    const afterMean = mean(demoNew.filter((r, i) => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Music' && i + 1 !== asuG4).map(r => r.mps));
+    ok(g2.find(r => r[0] === 'Grade 4')[1].startsWith(f2(afterMean)), 'reports exclude the deleted record');
+    await N.page.evaluate(() => switchView('manage-records')); await settled(N.page);
+    await N.page.click('#mr-tab-deleted'); await N.page.waitForFunction(() => /Deleted Assessment Records/.test(document.getElementById('mr-title').textContent));
+    ok(/entered by mistake/.test(await N.page.textContent('#mr-table')), 'Deleted records tab lists it with the reason');
+    N.page.on('dialog', d => d.accept());
+    await N.page.click('#mr-table button:has-text("Restore")'); await N.page.waitForSelector('.toast-success');
+    ok(await N.page.evaluate(id => !window.__STUB.records.find(r => r.id === id).deleted_at, asuG4), 'Restore brings the record back');
+    await N.ctx.close();
+  }
+
+  // ---- permissions: coordinators and direct API requests
+  {
+    const N = await openNew('asuncion_elemcoord', demoNew);
+    const ownN = demoNew.filter(r => r.district === 'Asuncion' && ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'].includes(r.gradeLevel)).length;
+    await N.page.evaluate(() => switchView('manage-records')); await settled(N.page);
+    ok(new RegExp('of ' + ownN + '\\b').test(await N.page.textContent('#mr-pager')) && await N.page.locator('#mr-tab-deleted').count() === 0, `coordinator: Manage Records lists only own district and level (${ownN}) and has no Deleted tab`);
+    const ids = {
+      own: demoNew.findIndex(r => r.district === 'Asuncion' && r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Arts' && r.term === 'Term 1') + 1,
+      ownB: demoNew.findIndex(r => r.district === 'Asuncion' && r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Health' && r.term === 'Term 1') + 1,
+      otherLevel: demoNew.findIndex(r => r.district === 'Asuncion' && r.gradeLevel === 'Grade 8' && r.term === 'Term 1') + 1,
+      otherDist: demoNew.findIndex(r => r.district === 'Carmen' && r.gradeLevel === 'Grade 4' && r.term === 'Term 1') + 1
+    };
+    await N.page.evaluate(id => openRecordEditor(id), ids.own);
+    ok(await N.page.evaluate(() => document.getElementById('e-district').disabled && Array.from(document.querySelectorAll('#e-grade option')).every(o => ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'].includes(o.value))), 'coordinator edit form: district locked, only own-level grades offered');
+    await N.page.fill('#e-mps', '82'); await N.page.click('#rec-save'); await N.page.waitForSelector('.toast-success');
+    ok(await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id).mps, ids.own) === 82, 'coordinator can edit a record in scope');
+    const a = await N.page.evaluate(async ids => {
+      const r = {}, T = () => window.__STUB.records;
+      r.editOther = (await sb().from('assessment_records').update({ mps: 1 }).eq('id', ids.otherDist).select('id')).data.length;
+      r.editOtherLevel = (await sb().from('assessment_records').update({ mps: 1 }).eq('id', ids.otherLevel).select('id')).data.length;
+      r.rpcOtherDist = (await sb().rpc('app_delete_records', { p_ids: [ids.otherDist] })).error?.code;
+      r.rpcOtherLevel = (await sb().rpc('app_delete_records', { p_ids: [ids.otherLevel] })).error?.code;
+      r.rpcMixed = (await sb().rpc('app_delete_records', { p_ids: [ids.own, ids.otherDist] })).error?.code;
+      r.mixedUntouched = !T().find(x => x.id === ids.own).deleted_at;
+      r.hardDelete = (await sb().from('assessment_records').delete().eq('id', ids.own)).error?.code;
+      r.setDeleted = (await sb().from('assessment_records').update({ deleted_at: '2020-01-01' }).eq('id', ids.own)).error?.code;
+      r.setDemo = (await sb().from('assessment_records').update({ is_demo: true }).eq('id', ids.own)).error?.code;
+      r.setOwner = (await sb().from('assessment_records').update({ created_by: '00000000-0000-0000-0000-000000000001' }).eq('id', ids.own)).error?.code;
+      r.bulkSy = (await sb().rpc('app_delete_records_by_sy', { p_sy: '2025-2026' })).error?.code;
+      r.bulkAll = (await sb().rpc('app_delete_all_records')).error?.code;
+      r.restore = (await sb().rpc('app_restore_records', { p_ids: [ids.own] })).error?.code;
+      r.delOwn = (await sb().rpc('app_delete_records', { p_ids: [ids.ownB], p_reason: 'api' })).data;
+      r.seeDeleted = (await sb().from('assessment_records').select('id').eq('id', ids.ownB)).data.length;
+      r.seeDeletedList = (await sb().from('assessment_records').select('id').not('deleted_at', 'is', null)).data.length;
+      r.editDeleted = (await sb().from('assessment_records').update({ mps: 5 }).eq('id', ids.ownB).select('id')).data.length;
+      r.unchanged = T().find(x => x.id === ids.otherDist).mps !== 1 && T().find(x => x.id === ids.otherLevel).mps !== 1;
+      return r;
+    }, ids);
+    ok(a.editOther === 0 && a.editOtherLevel === 0 && a.unchanged, 'coordinator direct edit of another district or the other level changes nothing');
+    ok(a.rpcOtherDist === '42501' && a.rpcOtherLevel === '42501' && a.rpcMixed === '42501' && a.mixedUntouched, 'coordinator delete outside scope is refused, and a batch with one bad id deletes nothing');
+    ok(a.hardDelete === '42501' && a.setDeleted === '42501' && a.setDemo === '42501' && a.setOwner === '42501', 'direct API cannot hard delete, set deleted_at, or rewrite is_demo / created_by');
+    ok(a.bulkSy === '42501' && a.bulkAll === '42501' && a.restore === '42501', 'coordinator cannot bulk delete or restore');
+    ok(a.delOwn === 1 && a.seeDeleted === 0 && a.seeDeletedList === 0 && a.editDeleted === 0, 'coordinator can delete in scope; the deleted record disappears for them and cannot be edited');
+    await N.ctx.close();
+    const S = await openNew('supervisor', demoNew);
+    await S.page.evaluate(() => { window.__STUB.records.find(r => r.id === 5).deleted_at = '2026-01-01T00:00:00Z'; switchView('manage-records'); }); await settled(S.page);
+    await S.page.click('#mr-tab-deleted'); await S.page.waitForFunction(() => /Deleted Assessment Records/.test(document.getElementById('mr-title').textContent));
+    ok(await S.page.locator('#mr-table button:has-text("Restore")').count() === 1, 'supervisor sees deleted records and can restore them');
+    await S.ctx.close();
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await browser.close(); server.close();
 process.exit(fail ? 1 : 0);

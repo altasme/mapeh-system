@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Loads the 1,452 flagged sample records (is_demo = true) through the REST API, in batches.
+// Loads the 1,551 flagged sample records (is_demo = true) through the REST API, in batches.
 // Run AFTER setup_all.sql and tools/provision-accounts.mjs (created_by points at the admin profile).
 //   SUPABASE_URL=https://<ref>.supabase.co SUPABASE_SERVICE_ROLE_KEY=<service_role JWT> node tools/load-demo-records.mjs
 // Refuses to run if any demo rows already exist (so it cannot double the data). Never prints the key.

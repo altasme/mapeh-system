@@ -25,7 +25,7 @@ No build step.
    `SUPABASE_URL=https://<ref>.supabase.co SUPABASE_SERVICE_ROLE_KEY=<service key> node tools/provision-accounts.mjs`
    (The Elementary and Secondary coordinators are created by `tools/provision-level-coordinators.mjs`; see section 11, which also gives the order to follow on a project that already exists.)
    (add `--dry-run` first to preview). It reads each password from `legacy/mapehDavNor.original.html`, never prints it, and also inserts the profiles rows. Keep the service-role key out of chat, files and git.
-4. Load the 1,452 flagged sample rows: `node tools/load-demo-records.mjs` (same env vars as step 3; `supabase/seed/demo_records.sql` is the equivalent SQL).
+4. Load the 1,551 flagged sample rows (current MAPEH structure): `node tools/load-demo-records.mjs` (same env vars as step 3; `supabase/seed/demo_records.sql` is the equivalent SQL).
 5. Check the access rules: `supabase/tests/rls_matrix.sql` in the SQL editor (six `PASS` notices, rolls back) and `node tools/verify-live-levels.mjs` over the public API (all 22 coordinators, Admin, Supervisor and the retired accounts).
 
 **Cloudflare Pages**
@@ -64,7 +64,7 @@ All flags are reserved and unwired.
 - Star 9: default `*.pages.dev` address; custom domain not set.
 
 ## 6. Data-integrity status
-- [x] Demo rows present: 1,452 (loaded). Purge: `delete from public.assessment_records where is_demo;`
+- [x] Demo rows present: 1,452 (loaded before the MAPEH restructure, so they use the legacy combined areas; to switch to the current structure purge and reload, see section 12). Purge: `delete from public.assessment_records where is_demo;`
 - [x] Test banner on (`environment: "test"`)
 - [ ] Coordinator names and signatories replaced with real values (not done: star 5)
 - [x] Real data: not applicable (prototype, star 4). Real data requires an upgrade plus SDO authorization
@@ -92,7 +92,7 @@ All flags are reserved and unwired.
 - Division MPS differs between Division Summary and Dashboard (different averaging, AUDIT M3).
 - Inline script handlers require 'unsafe-inline' in CSP (AUDIT R1, accepted).
 - Saving all 11 district coordinators is 11 separate updates; a failure is reported and the screen reloads the truth (AUDIT N6).
-- Each view reloads its data when opened (about two requests for 1,452 rows). Fine at test volumes.
+- Each view reloads its data when opened (about two requests per 1,000 rows). Fine at test volumes.
 - The original passwords are still in use (AUDIT R2).
 
 ## 10. Recommended next steps
@@ -131,7 +131,38 @@ District codes are the ones the original usernames already used: asuncion, dujal
 
 **Decisions to confirm.**
 - Education level is derived from the grade (not chosen separately), so a record can never claim a level that its grade contradicts. A grade outside Grade 1 to 12 is refused.
-- Coordinators still cannot delete records (as before); only Admin and Supervisor can. Coordinators can create and edit within their scope.
+- Superseded by section 12: coordinators can now edit and delete (recoverably) within their own district and level; only Admin and Supervisor can restore.
 - Comparative notes are now filed per district and level. A division user with the Education Level filter on All Levels writes "all levels" notes that coordinators cannot see.
 - The printed "Prepared by" for a coordinator still comes from the single coordinator name saved for the district in Settings. There is now one Elementary and one Secondary coordinator per district, so you may want two names per district. Not built; say if you want it.
 - The Key Stage / Grade mismatch noted in AUDIT M8 is unchanged: the level follows the grade.
+
+## 12. MAPEH components, grade rules, and record editing / deletion (added 2026-10-14)
+
+**What changed.**
+1. **Component breakdown.** Grade Level Breakdown now has a second table, "MAPEH Components by Grade Level": Music, Arts, Physical Education (PE), Health and Overall MAPEH, per grade. The Division Summary has "MAPEH Components by District" (mean of term means, the method of the matrix above it). The Dashboard has a "MAPEH Components and Overall MAPEH" chart and the Comparative sheet has a row per component under the MAPEH total. These sections appear when records under the new structure exist; with only old records the screens and printouts are exactly as before. The existing grade table, KPI and totals were not changed.
+2. **Overall MAPEH is its own official record.** It is entered or imported as learning area `MAPEH - Overall`. It is never calculated from the four components (the system makes no assumption about how the official overall is derived). All figures are unweighted means of record MPS, like the rest of the system (AUDIT M4).
+3. **Grade rules, enforced by the database** (a trigger, so the app, Excel imports and direct API calls all obey it; the app repeats the same rules to give early, readable messages):
+   | Grades | Allowed MAPEH records |
+   |---|---|
+   | 1 to 3 | `MAPEH - Overall` only (no Music, Arts, PE, Health, and no combined areas) |
+   | 4 to 10 | `MAPEH - Overall` plus `MAPEH - Music`, `Arts`, `PE`, `Health` (combined areas no longer accepted) |
+   | 11 to 12 | no MAPEH records |
+   IPED, SPA, SPS and SPFL are not restricted (IPED keeps its own MAPEH subjects, `IPED - MAPEH (Music & Arts)` and `(PE & Health)`, in every grade). **Please confirm these grade rules with the client.** They are one function (`app_mapeh_rule_problem`) plus its copy in the app (`mapehRuleProblem`).
+4. **Old combined records are kept.** `MAPEH - Music & Arts` and `MAPEH - PE & Health` rows stay in the database, are shown everywhere, are editable (score, school, etc.), and still count toward the MAPEH totals exactly as before (the "MAPEH total" counts overall plus legacy records, never the four components, so nothing is counted twice). The rule is enforced when a row is created or when its grade or learning area is changed, so an old Grade 1 to 3 combined record is not deleted: it is flagged "Needs correction" in Manage Records. Grade 4 to 10 legacy rows are tagged "Legacy area".
+5. **Manage Records** (new menu item). A searchable, paged list of the records in the user's scope (it follows the filter bar) with Edit and Delete. The edit form revalidates everything (ranges, grade and level, MAPEH rules); the database checks again. Delete asks for confirmation and an optional reason. Deleted records are hidden from every view, summary, chart, report and CSV, but kept. Admin and Supervisor have a "Deleted records" tab with Restore.
+6. **Who may do what (enforced by Supabase, not by the screen).** Coordinators: edit and delete inside their own district AND education level. Admin and Supervisor: everywhere, plus restore, delete by school year and delete all (now also soft). Direct DELETE on the table is removed for everyone but the database owner. Writes are limited to the business columns, so `is_demo`, `created_by`, `deleted_*` and `updated_by` cannot be set through the API. Deletion and restore go through functions that check scope and are all-or-nothing (a batch containing one record outside your scope deletes nothing).
+7. **Audit trail.** `proficiency_level` is now computed by the database from the MPS (same 90/85/80/75 scale), so an edit can never leave it stale. Every edit stamps `updated_by`/`updated_at`. Every change is in `audit_log` with the old and new row; soft deletes and restores are labelled `SOFT_DELETE` and `RESTORE` and carry who, when and the reason (`deleted_by`, `deleted_at`, `delete_reason` on the record). Admin reads it in the Supabase dashboard (no screen).
+
+**Order of work on the live project.**
+1. Run `supabase/migrations/0005_mapeh_components_and_record_controls.sql` in the SQL editor (it needs 0004 first; a new project just runs `setup_all.sql`). Then run `supabase/tests/rls_matrix.sql` (seven PASS notices).
+2. Merge `feature/mapeh-components-edit-delete` (it contains the education-level work too) into `main`. **Do this right after step 1:** the previous app version sends `is_demo` on insert, which the new column privileges refuse, so saving new records from the old page fails until the new page is live. Reading is unaffected.
+3. Optional: to show the new structure in the sample data, run `delete from public.assessment_records where is_demo;` and then `node tools/load-demo-records.mjs`. The sample rows loaded earlier use the old combined areas; they stay valid and visible but the component tables stay empty until components are entered.
+
+**Verified.** `supabase/tests/rls_matrix.sql` on Postgres 16 as an upgrade and as a fresh install: every grade/area combination of the rule table, rejection on create and on edit, grandfathered old rows, computed proficiency, editor stamp, soft delete/restore/audit labels, atomic batches, bulk RPCs division-only, direct DELETE and protected columns refused, plus all the earlier level checks. The browser suite (`node tools/qa/run_qa.mjs`) covers the component figures against hand-computed means, the form/import/template rules, edit and delete in the screen, reports reflecting edits and deletions, and the coordinator direct-API attempts. The browser suite runs against an in-memory stand-in for Supabase; the SQL tests are what prove the real policies. Not yet run against the live project (needs step 1 first).
+
+**Decisions to confirm.**
+- The grade rules above, and that Grade 11 to 12 have no MAPEH.
+- That Overall MAPEH is reported by districts and not derived (the system never computes it from the components).
+- Whether old combined records should be corrected by the districts (use Manage Records: change the area, or the grade) or left as history.
+- Coordinators can now delete (recoverably) within their scope. Say if deletion should be limited to Admin and Supervisor; it is one policy and one function check.
+- Hard deletion is not available from the app. Permanent removal is done by Altaventures in the SQL editor if ever needed.
