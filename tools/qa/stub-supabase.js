@@ -22,17 +22,31 @@
   const levelOf = g => ['Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6'].includes(g) ? 'elementary' : ['Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12'].includes(g) ? 'secondary' : null;
   const coordScope = (districtId, level) => { const p = me(); return sessionOk() && p.role === 'district_coordinator' && districtId === p.district_id && !!level && level === p.education_level; };
 
+  const isDel = r => r.deleted_at !== undefined && r.deleted_at !== null;
+  const WRITABLE = ['sy','term','district_id','school','key_stage','grade_level','learning_area','baseline_mps','mps','pct75','proficiency_level','least_learned'];
+  const pl = m => m >= 90 ? 'Advanced' : m >= 85 ? 'Proficient' : m >= 80 ? 'Approaching Proficiency' : m >= 75 ? 'Developing' : 'Beginning';
+  // mirror of public.app_mapeh_rule_problem()
+  const LEG = ['MAPEH - Music & Arts', 'MAPEH - PE & Health'], COMP = ['MAPEH - Music', 'MAPEH - Arts', 'MAPEH - PE', 'MAPEH - Health'];
+  const ruleProblem = (g, a) => {
+    if (a !== 'MAPEH - Overall' && !COMP.includes(a) && !LEG.includes(a)) return null;
+    if (['Grade 1','Grade 2','Grade 3'].includes(g) && a !== 'MAPEH - Overall') return 'Grades 1 to 3 are recorded as overall MAPEH only. Music, Arts, PE and Health are not recorded separately for these grades.';
+    if (['Grade 4','Grade 5','Grade 6','Grade 7','Grade 8','Grade 9','Grade 10'].includes(g) && LEG.includes(a)) return 'Grades 4 to 10 are recorded as overall MAPEH plus Music, Arts, PE and Health. The combined Music & Arts and PE & Health areas are no longer used.';
+    if (['Grade 11','Grade 12'].includes(g)) return 'MAPEH is not assessed in Grades 11 and 12.';
+    return null;
+  };
+  const canSeeRecord = r => (isDivision() || coordScope(r.district_id, levelOf(r.grade_level)));
+
   function canRead(table, row) {
     const p = me(); if (!p) return false;
     if (table === 'profiles') return row.id === p.id;
-    if (table === 'assessment_records') return isDivision() || coordScope(row.district_id, levelOf(row.grade_level));
+    if (table === 'assessment_records') return canSeeRecord(row) && (!isDel(row) || isDivision());
     if (table === 'comparative_notes') return isDivision() || (sessionOk() && p.role === 'district_coordinator' && row.district_scope === distName(p.district_id) && row.education_level === p.education_level);
     return true; // districts, app_settings
   }
   function canWrite(table, op, row) {
     const p = me(); if (!p) return false;
     if (table === 'assessment_records') {
-      if (op === 'delete') return isDivision();
+      if (op === 'delete') return false;   // direct DELETE is revoked; deleting goes through the app_delete_* functions
       return isDivision() || coordScope(row.district_id, levelOf(row.grade_level));
     }
     if (table === 'comparative_notes') return op !== 'delete' && canRead('comparative_notes', row);
@@ -60,6 +74,9 @@
     upsert(rows, o) { this.op = 'upsert'; this.rows = [].concat(rows); this.ret = false; this.onConflict = (o && o.onConflict) || null; return this; }
     update(v, o) { this.op = 'update'; this.vals = v; this.ret = false; if (o) this.cnt = o.count || null; return this; }
     delete(o) { this.op = 'delete'; this.ret = false; if (o) this.cnt = o.count || null; return this; }
+    is(c, v) { this.f.push(r => (r[c] === undefined ? null : r[c]) === v); return this; }
+    not(c, op, v) { this.f.push(r => !(op === 'is' ? (r[c] === undefined ? null : r[c]) === v : r[c] === v)); return this; }
+    limit(n) { this.lim = n; return this; }
     eq(c, v) { this.f.push(r => r[c] === v); return this; }
     neq(c, v) { this.f.push(r => r[c] !== v); return this; }
     gt(c, v) { this.f.push(r => r[c] > v); return this; }
@@ -85,6 +102,7 @@
         const total = rows.length;
         if (this.ord) rows = rows.slice().sort((a, b) => a[this.ord] < b[this.ord] ? -1 : a[this.ord] > b[this.ord] ? 1 : 0);
         if (this.rng) rows = rows.slice(this.rng[0], this.rng[1] + 1);
+        if (this.lim) rows = rows.slice(0, this.lim);
         rows = rows.slice(0, 1000);                                   // PostgREST max-rows
         const count = this.cnt ? total : null;
         if (this.head) return { data: null, error: null, count };
@@ -96,7 +114,13 @@
         const staged = [];
         for (const r0 of this.rows) {
           const r = Object.assign({}, r0);
-          if (this.table === 'assessment_records') { r.created_by = me().id; r.education_level = levelOf(r.grade_level); }
+          if (this.table === 'assessment_records') {
+            if (Object.keys(r0).some(k => !WRITABLE.includes(k))) return { data: null, error: err('42501', 'permission denied for table assessment_records'), count: null };
+            const rp = ruleProblem(r.grade_level, r.learning_area);
+            if (rp) return { data: null, error: err('23514', rp), count: null };
+            r.created_by = me().id; r.education_level = levelOf(r.grade_level); r.is_demo = false;
+            if (typeof r.mps === 'number') r.proficiency_level = pl(r.mps);
+          }
           if (this.table === 'comparative_notes' && r.education_level === undefined) r.education_level = 'all';
           if (this.op === 'upsert') {
             const k = (this.onConflict || '').split(',');
@@ -116,15 +140,26 @@
         return { data: this.ret ? out : null, error: null, count: this.cnt ? staged.length : null };
       }
       if (this.op === 'update') {
-        const hits = tbl.filter(r => canRead(this.table, r) && match(r));
+        if (this.table === 'assessment_records' && Object.keys(this.vals).some(k => !WRITABLE.includes(k))) return { data: null, error: err('42501', 'permission denied for table assessment_records'), count: null };
+        const hits = tbl.filter(r => canRead(this.table, r) && match(r) && !(this.table === 'assessment_records' && isDel(r)));
+        if (this.table === 'assessment_records') {
+          for (const r of hits) {
+            if ((this.vals.grade_level !== undefined && this.vals.grade_level !== r.grade_level) || (this.vals.learning_area !== undefined && this.vals.learning_area !== r.learning_area)) {
+              const rp = ruleProblem(this.vals.grade_level !== undefined ? this.vals.grade_level : r.grade_level, this.vals.learning_area !== undefined ? this.vals.learning_area : r.learning_area);
+              if (rp) return { data: null, error: err('23514', rp), count: null };
+            }
+          }
+        }
         for (const r of hits) { if (!canWrite(this.table, 'update', Object.assign({}, r, this.vals)) && canRead(this.table, r) && this.table !== 'districts' && this.table !== 'app_settings' && this.table !== 'profiles') return { data: null, error: err('42501', 'new row violates row-level security policy for table "' + this.table + '"'), count: null }; }
         const upd = hits.filter(r => canWrite(this.table, 'update', Object.assign({}, r, this.vals)));
         upd.forEach(r => { if (this.table === 'assessment_records' && this.vals.grade_level) this.vals.education_level = levelOf(this.vals.grade_level); });
+        if (this.table === 'assessment_records') { if (typeof this.vals.mps === 'number') this.vals.proficiency_level = pl(this.vals.mps); this.vals.updated_by = me().id; }
         for (const r of upd) { const c = check(this.table, Object.assign({}, r, this.vals)); if (c) return { data: null, error: c, count: null }; }
         upd.forEach(r => Object.assign(r, this.vals));
         return { data: this.ret ? upd.map(r => ({ id: r.id })) : null, error: null, count: this.cnt ? upd.length : null };
       }
       if (this.op === 'delete') {
+        if (this.table === 'assessment_records') return { data: null, error: err('42501', 'permission denied for table assessment_records'), count: null };
         const hits = tbl.filter(r => canRead(this.table, r) && match(r) && canWrite(this.table, 'delete', r));
         hits.forEach(r => tbl.splice(tbl.indexOf(r), 1));
         return { data: null, error: null, count: this.cnt ? hits.length : null };
@@ -136,6 +171,32 @@
     createClient() {
       return {
         from: t => new Q(t),
+        rpc(name, a) {
+          return Promise.resolve().then(() => {
+            const e = net(); if (e) throw e;
+            const T2 = T.assessment_records, now = new Date().toISOString();
+            if (!sessionOk()) return { data: null, error: err('42501', 'Not allowed.') };
+            const mark = (rows, reason) => { rows.forEach(r => { r.deleted_at = now; r.deleted_by = me().id; r.delete_reason = reason; }); return rows.length; };
+            if (name === 'app_delete_records') {
+              const ids = Array.from(new Set(a.p_ids || []));
+              const rows = T2.filter(r => ids.includes(r.id) && !isDel(r));
+              if (rows.some(r => !canSeeRecord(r))) return { data: null, error: err('42501', 'You do not have access to one or more of these records.') };
+              return { data: mark(rows, (a.p_reason || '').trim() || null), error: null };
+            }
+            if (name === 'app_restore_records') {
+              if (!isDivision()) return { data: null, error: err('42501', 'Only the division team can restore records.') };
+              const rows = T2.filter(r => (a.p_ids || []).includes(r.id) && isDel(r));
+              rows.forEach(r => { r.deleted_at = null; r.deleted_by = null; r.delete_reason = null; });
+              return { data: rows.length, error: null };
+            }
+            if (name === 'app_delete_records_by_sy' || name === 'app_delete_all_records') {
+              if (!isDivision()) return { data: null, error: err('42501', 'Only the division team can delete in bulk.') };
+              const rows = T2.filter(r => !isDel(r) && (name === 'app_delete_all_records' || r.sy === a.p_sy));
+              return { data: mark(rows, name === 'app_delete_all_records' ? 'Bulk delete: all records' : 'Bulk delete: school year ' + a.p_sy), error: null };
+            }
+            return { data: null, error: err('42883', 'function does not exist') };
+          });
+        },
         auth: {
           async getSession() { const e = net(); if (e) throw e; return { data: { session: sess() }, error: null }; },
           async signInWithPassword({ email, password }) {

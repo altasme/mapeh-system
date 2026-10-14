@@ -14,7 +14,10 @@ const CDN = process.env.CDN_DIR || '/tmp/claude-0/cdn';
 const OUT = process.env.QA_OUT || '/tmp/claude-0/qa-out';
 fs.mkdirSync(OUT, { recursive: true });
 const stubJs = fs.readFileSync(path.join(ROOT, 'tools/qa/stub-supabase.js'), 'utf8');
-const demo = JSON.parse(execSync(`python3 ${ROOT}/tools/gen_demo_records.py --json`, { maxBuffer: 1 << 26 }).toString());
+// `demo` is the original combined-area structure: it is what the original app understands, so parity tests use it.
+// `demoNew` is the current MAPEH structure (overall + components), used by the component, rule and edit/delete tests.
+const demo = JSON.parse(execSync(`python3 ${ROOT}/tools/gen_demo_records.py --legacy --json`, { maxBuffer: 1 << 26 }).toString());
+const demoNew = JSON.parse(execSync(`python3 ${ROOT}/tools/gen_demo_records.py --json`, { maxBuffer: 1 << 26 }).toString());
 const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, 'fixtures/regression.json'), 'utf8'));
 
 let pass = 0, fail = 0;
@@ -151,7 +154,7 @@ const text = async page => norm(await page.evaluate(() => {
   if (!document.getElementById('qa-hide')) { const st = document.createElement('style'); st.id = 'qa-hide'; st.textContent = '.screen-only{display:none!important}'; document.head.appendChild(st); }
   return document.getElementById('view-container').innerText;
 }));
-const charts = async page => page.evaluate(() => Object.values(activeCharts).map(c => c.data.datasets[0].data.map(Number)));
+const charts = async page => page.evaluate(() => Object.values(activeCharts).slice(0, 2).map(c => c.data.datasets[0].data.map(Number)));
 
 async function goView(L, N, view, filt) {
   for (const [p, isNew] of [[L.page, false], [N.page, true]]) {
@@ -169,9 +172,13 @@ function canonLegacy(t) {
   return t.toLowerCase().replace(/\s+/g, ' ').trim()
     .replace(/(?<![\d.])0\.00% (?<![\d.])0\.00% \+?0\.00% maintained beginning/g, '- - - - -')
     .replace(/-65\.00% decreased beginning/g, '- - -')
-    .replace(/(?<![\d.])(?:0\.00%|0%) beginning/g, 'nd');
+    .replace(/(?<![\d.])(?:0\.00%|0%) beginning/g, 'nd')
+    // intended label changes of the MAPEH restructure (the legacy records are still counted exactly as before)
+    .replace(/\(music & arts \+ pe\)/g, '(overall mapeh)')
+    .replace(/consolidated mapeh total \(music & arts \+ pe & health\)/g, 'consolidated mapeh total (overall mapeh)')
+    .replace(/tracked specializations \d+ \d+ mapeh,/g, 'tracked specializations N N mapeh,');
 }
-function canonPorted(t) { return t.toLowerCase().replace(/\s+/g, ' ').trim().replace(/no data no data/g, 'nd').replace(/no data/g, 'nd'); }
+function canonPorted(t) { return t.toLowerCase().replace(/\s+/g, ' ').trim().replace(/no data no data/g, 'nd').replace(/no data/g, 'nd').replace(/tracked specializations \d+ \d+ mapeh,/g, 'tracked specializations N N mapeh,'); }
 function firstDiff(a, b) {
   const A = a.split(' '), B = b.split(' ');
   for (let i = 0; i < Math.max(A.length, B.length); i++) if (A[i] !== B[i]) return `    legacy: ...${A.slice(Math.max(0, i - 6), i + 8).join(' ')}\n    ported: ...${B.slice(Math.max(0, i - 6), i + 8).join(' ')}`;
@@ -297,7 +304,7 @@ console.log('\n[5] Roles: coordinator scope, settings access, destructive action
   await A.page.fill('#reauth-password', (await readPasswords()).passwords.admin); await A.page.click('#reauth-ok');
   await A.page.waitForSelector('.toast-success');
   ok(/1452 assessment record/.test(await A.page.textContent('#toast-host')), 'correct password: delete succeeds and the confirmed count (1452) is reported');
-  ok(await A.page.evaluate(() => window.__STUB.records.length === 0), 'records are gone');
+  ok(await A.page.evaluate(() => window.__STUB.records.filter(r => !r.deleted_at).length === 0 && window.__STUB.records.length === 1452), 'records are hidden from every view but kept in the database (soft delete, recoverable)');
   await A.ctx.close();
 }
 
@@ -307,7 +314,7 @@ console.log('\n[6] Writes: confirmed saves, constraint errors, all-or-nothing im
   const xlsx = async rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
   const upload = async rows => { await N.page.evaluate(() => switchView('data-input')); await settled(N.page);
     await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xlsx(rows)) }); };
-  const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'X', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 1', 'Learning Area': 'MAPEH - Music & Arts', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'lc one' };
+  const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'X', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 1', 'Learning Area': 'MAPEH - Overall', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'lc one' };
   const count = () => N.page.evaluate(() => window.__STUB.records.length);
   await upload([base, Object.assign({}, base, { District: 'Atlantis' }), Object.assign({}, base, { District: 'Nowhere' })]);
   await N.page.waitForSelector('.toast-error');
@@ -317,7 +324,7 @@ console.log('\n[6] Writes: confirmed saves, constraint errors, all-or-nothing im
   await N.page.evaluate(() => document.getElementById('toast-host').innerHTML = '');
   await upload([base, Object.assign({}, base, { 'Mean Percentage Score (MPS%)': 150 })]);
   await N.page.waitForSelector('.toast-error'); tmsg = await N.page.textContent('#toast-host');
-  ok(/Nothing was saved\. MPS must be between 0 and 100/.test(tmsg), 'MPS 150: plain-English database error, no partial save');
+  ok(/Nothing was saved\..*row 3: MPS must be between 0 and 100/.test(tmsg), 'MPS 150: plain-English database error, no partial save');
   ok(await count() === 20, 'MPS 150: nothing saved (one bad row rejects the file)');
   await N.page.evaluate(() => document.getElementById('toast-host').innerHTML = '');
   await upload([base, Object.assign({}, base, { Term: 'Term 2' })]);
@@ -361,7 +368,7 @@ console.log('\n[7] Unsaved-changes guard, keyboard access, login errors, sample-
   await N.page.focus('.nav-item:has-text("Grade Level Breakdown")'); await N.page.keyboard.press('Enter');
   await settled(N.page);
   ok((await N.page.evaluate(() => currentView)) === 'grade-view', 'nav item works from the keyboard (Enter)');
-  ok(await N.page.evaluate(() => document.querySelectorAll('.nav-item[role=button][tabindex="0"]').length === 9), 'all 9 nav items have role=button and tabindex=0');
+  ok(await N.page.evaluate(() => document.querySelectorAll('.nav-item[role=button][tabindex="0"]').length === 10), 'all 10 nav items have role=button and tabindex=0');
   ok(await N.page.evaluate(() => !document.getElementById('env-banner').hidden), 'test-environment banner is visible');
   await N.page.emulateMedia({ media: 'print' });
   ok(await N.page.evaluate(() => getComputedStyle(document.getElementById('print-sample-line')).display === 'block' && getComputedStyle(document.getElementById('env-banner')).display === 'none'), 'print: "SAMPLE DATA" line shown when sample rows are in view; banner not printed');
@@ -433,7 +440,7 @@ console.log('\n[10] Print output: PDFs of the original and the ported app for di
       const f = `${OUT}/print-${label}-${tag}.pdf`;
       await pg.pdf({ path: f, format: 'A4', printBackground: true }); files.push(f);
     }
-    const txt = f => execSync(`pdftotext -layout ${f} -`).toString().replace(/\s+/g, ' ').trim();
+    const txt = f => execSync(`pdftotext -layout ${f} -`).toString().replace(/\s+/g, ' ').trim().replace(/\(Music & Arts \+ PE & Health\)/g, '(Overall MAPEH)').replace(/\(Music & Arts \+ PE\)/g, '(Overall MAPEH)');
     ok(/SAMPLE DATA/.test(txt(files[1])), `print ${label}/${view}: ported report carries the SAMPLE DATA line (sample rows in view)`);
     ok(!/SAMPLE DATA/.test(txt(files[2])), `print ${label}/${view}: flag off removes the line`);
     ok(txt(files[0]) === txt(files[2]), `print ${label}/${view}: printed text identical to the original (same filters)`);
@@ -561,7 +568,7 @@ console.log('\n[12] Elementary and Secondary coordinators: 22 accounts, separati
       out.createOwn = !!(mine && mine.length === 1);
       out.moveLevel = (await sb().from('assessment_records').update({ grade_level: og }).eq('id', mine[0].id)).error?.code;
       out.moveDistrict = (await sb().from('assessment_records').update({ district_id: other }).eq('id', mine[0].id)).error?.code;
-      out.deleteOwn = (await sb().from('assessment_records').delete({ count: 'exact' }).eq('id', mine[0].id)).count;
+      out.deleteOwn = (await sb().from('assessment_records').delete({ count: 'exact' }).eq('id', mine[0].id)).error?.code;
       out.readOtherLevel = (await sb().from('assessment_records').select('id').eq('education_level', og === 'Grade 8' ? 'secondary' : 'elementary')).data.length;
       out.addRecordHelper = await addRecord({ sy: '2025-2026', term: 'Term 1', district: 'Asuncion', school: '', keyStage: 'Key Stage 1', gradeLevel: og, learningArea: 'X', baselineMps: 65, mps: 80, pct75: 70, proficiencyLevel: 'x', leastLearned: [] }).then(() => 'saved', e => e.code);
       return out;
@@ -569,7 +576,7 @@ console.log('\n[12] Elementary and Secondary coordinators: 22 accounts, separati
     ok(att.createOther === '42501' && att.createOtherDistrict === '42501', `${user}: cannot create ${LABEL[otherLevel]} records in its own district, nor anything in another district`);
     ok(att.createUnknownGrade === '23502' || att.createUnknownGrade === '42501', `${user}: an unknown grade level is refused (education level cannot be determined)`);
     ok(att.createOwn && att.moveLevel === '42501' && att.moveDistrict === '42501', `${user}: can create its own, but cannot move a record to the other level or another district`);
-    ok(att.deleteOwn === 0 && att.readOtherLevel === 0, `${user}: cannot delete, and reads 0 ${LABEL[otherLevel]} rows even though they exist in the same district`);
+    ok(att.deleteOwn === '42501' && att.readOtherLevel === 0, `${user}: cannot hard delete through the API, and reads 0 ${LABEL[otherLevel]} rows even though they exist in the same district`);
     ok(att.addRecordHelper === '42501', `${user}: the app's own save path surfaces the refusal`);
     // the forms only offer this level
     await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page);
@@ -578,7 +585,7 @@ console.log('\n[12] Elementary and Secondary coordinators: 22 accounts, separati
     ok(JSON.stringify(grades) === JSON.stringify(LV[own]), `${user}: manual entry offers only ${LABEL[own]} grades`);
     // Excel import: one row of the wrong level rejects the whole file, naming the rows
     const xl = rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
-    const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'S', 'Key Stage': 'Key Stage 1', 'Grade Level': ownGrade, 'Learning Area': 'MAPEH - Music & Arts', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'x' };
+    const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'S', 'Key Stage': 'Key Stage 1', 'Grade Level': ownGrade, 'Learning Area': 'MAPEH - Overall', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'x' };
     const before = await N.page.evaluate(() => window.__STUB.records.length);
     const upload = async rows => { await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page); await N.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
       await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xl(rows)) }); };
