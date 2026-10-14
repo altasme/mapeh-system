@@ -143,6 +143,7 @@ async function openNew(username, records, extra = {}, viewport) {
   return { ctx, page, errors };
 }
 async function settled(page) {
+  await page.evaluate(() => { const h = document.getElementById('qa-hide'); if (h) h.remove(); });  // text() hides .screen-only; screen-only views must be visible to be 'settled'
   await page.waitForFunction(() => !document.querySelector('#view-container .view-loading') && document.getElementById('view-container').innerText.length > 0, null, { timeout: 15000 });
 }
 async function legacyReady(page) {
@@ -801,7 +802,7 @@ console.log('\n[16] MAPEH components, grade rules, and record edit / delete');
     const total = withLegacy.length;
     await N.page.evaluate(() => switchView('manage-records')); await settled(N.page);
     ok(await N.page.locator('#mr-tab-deleted').count() === 1 && /of 1[0-9]{3}/.test(await N.page.textContent('#mr-pager')), 'Manage Records: admin sees every record and the Deleted records tab');
-    await N.page.fill('#mr-search', 'Music & Arts');
+    await N.page.fill('#mr-search', 'MAPEH - Music &');
     const flagged = await N.page.textContent('#mr-table');
     ok(/Needs correction/.test(flagged) && /of 1\b/.test(await N.page.textContent('#mr-pager')), 'search narrows the list; a Grade 2 legacy record is flagged "Needs correction"');
     // edit legacy record: score only (old area stays allowed because grade and area did not change)
