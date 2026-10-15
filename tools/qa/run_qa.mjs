@@ -1004,6 +1004,7 @@ console.log('\n[18] Chart colours, and editing least learned competencies');
   ok(nEdit > 0 && nEdit === await A.page.evaluate(() => document.querySelectorAll('#view-container tbody tr td.screen-only').length), 'every logged competency row has an Edit button (coordinator, not only the Supervisor): ' + nEdit);
   const before = await A.page.evaluate(id => ({ count: window.__STUB.records.length, rec: JSON.parse(JSON.stringify(window.__STUB.records.find(r => r.id === id))) }), rid);
   const oldDesc = demoNew[ownIdx].leastLearned[1].desc, occ = t => t.split(oldDesc).length - 1; const occBefore = occ(await text(A.page));
+  await A.page.evaluate(() => { const h = document.getElementById('qa-hide'); if (h) h.remove(); });
   await A.page.evaluate(([id, i]) => openCompetencyEditor(id, i), [rid, 1]);
   const form = await A.page.evaluate(() => [document.getElementById('comp-code').value, document.getElementById('comp-desc').value]);
   ok(form[0] === demoNew[ownIdx].leastLearned[1].code && form[1] === demoNew[ownIdx].leastLearned[1].desc, 'the form loads the existing entry');
