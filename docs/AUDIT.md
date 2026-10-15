@@ -85,3 +85,5 @@ Supabase shim), and a final browser run against the real project is part of depl
 | N21 | High | Direct API writes could set any column of a record in scope, including `is_demo` and `created_by`. | FIX: column-level INSERT/UPDATE privileges limit writes to the business columns; delete/restore only through scope-checked, all-or-nothing functions. |
 | N22 | Low | The old app sends `is_demo` on insert, which the new privileges refuse. | DOC: deploy 0005 and the matching app together (HANDOVER section 12). |
 | N23 | Info | Division Summary averages component figures as a mean of term means (same method as its matrix); Grade Level Breakdown uses flat means like its existing table. | DOC (AUDIT M3 applies to the new tables as well). |
+
+| N24 | Info | N15 (one "Prepared by" name per district although two coordinators exist) | RESOLVED by migration 0006: coordinator name and position are stored per level and reports use the level in view. With both levels in view and different details, both names print. |

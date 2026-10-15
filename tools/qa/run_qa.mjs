@@ -37,7 +37,7 @@ const BASE = `http://127.0.0.1:${server.address().port}`;
 // ---------- data for the stand-in ----------
 const seedSql = fs.readFileSync(path.join(ROOT, 'supabase/seed/districts.sql'), 'utf8');
 const seedRows = [...seedSql.matchAll(/\('([^']+)',\s*'([^']+)',\s*'([^']+)',\s*(\d+)\)/g)];
-const districts = seedRows.map(m => ({ id: Number(m[4]), name: m[1], coordinator_name: m[2], coordinator_position: m[3], sort_order: Number(m[4]) }));
+const districts = seedRows.map(m => ({ id: Number(m[4]), name: m[1], coordinator_name: m[2], coordinator_position: m[3], elem_coordinator_name: m[2], elem_coordinator_position: m[3], sec_coordinator_name: m[2], sec_coordinator_position: m[3], sort_order: Number(m[4]) }));
 const ACCOUNTS = [
   ['admin', 'System Administrator', 'admin', null], ['supervisor', 'Education Program Supervisor', 'supervisor', null],
   ['asuncion_coord', 'Asuncion District Coordinator', 'district_coordinator', 'Asuncion'],
@@ -905,6 +905,56 @@ console.log('\n[16] MAPEH components, grade rules, and record edit / delete');
     await S.page.click('#mr-tab-deleted'); await S.page.waitForFunction(() => /Deleted Assessment Records/.test(document.getElementById('mr-title').textContent));
     ok(await S.page.locator('#mr-table button:has-text("Restore")').count() === 1, 'supervisor sees deleted records and can restore them');
     await S.ctx.close();
+  }
+}
+
+
+console.log('\n[17] Settings: coordinators grouped by district, one Elementary and one Secondary each');
+{
+  const N = await openNew('admin', demo.slice(0, 40));
+  await N.page.evaluate(() => switchView('settings')); await settled(N.page);
+  const cards = await N.page.evaluate(() => Array.from(document.querySelectorAll('.coord-card')).map(c => ({
+    h: c.querySelector('h5').textContent.trim(),
+    subs: Array.from(c.querySelectorAll('.coord-sub')).map(x => ({ t: x.querySelector('h6').textContent.trim(), n: x.querySelectorAll('input').length, v: Array.from(x.querySelectorAll('input')).map(i => i.value) }))
+  })));
+  ok(cards.length === 11 && cards.every((c, i) => c.h === `${i + 1}. ${districts[i].name} District`), 'one card per district, in the existing district order (11)');
+  ok(cards.every(c => c.subs.length === 2 && c.subs[0].t === 'Elementary Coordinator' && c.subs[1].t === 'Secondary Coordinator' && c.subs.every(x => x.n === 2)), 'each district holds an Elementary and a Secondary subsection directly beneath it, two fields each');
+  ok(cards.every((c, i) => c.subs.every(x => x.v[0] === districts[i].coordinator_name && x.v[1] === districts[i].coordinator_position)), 'existing coordinator information is preserved in both subsections');
+  ok(await N.page.evaluate(() => document.querySelectorAll('label[for^="coord-"]').length === 44 && Array.from(document.querySelectorAll('label[for^="coord-"]')).every(l => document.getElementById(l.htmlFor))), 'all 44 fields are labelled');
+  // edit Asuncion: different details per level; Carmen untouched
+  await N.page.fill('#coord-e-name-Asuncion', 'Elena Elementary'); await N.page.fill('#coord-e-pos-Asuncion', 'Elementary Supervisor');
+  await N.page.fill('#coord-s-name-Asuncion', 'Sam Secondary'); await N.page.fill('#coord-s-pos-Asuncion', 'Secondary Principal');
+  await N.page.click('text=Save District Coordinators'); await N.page.waitForSelector('.toast-success');
+  const st = await N.page.evaluate(() => window.__STUB.districts.map(d => [d.name, d.elem_coordinator_name, d.elem_coordinator_position, d.sec_coordinator_name, d.sec_coordinator_position]));
+  ok(JSON.stringify(st[0]) === JSON.stringify(['Asuncion', 'Elena Elementary', 'Elementary Supervisor', 'Sam Secondary', 'Secondary Principal']) && st[2][1] === districts[2].coordinator_name && st[2][3] === districts[2].coordinator_name, 'each level is stored separately (four columns); other districts unchanged');
+  ok(await N.page.evaluate(() => document.getElementById('coord-e-name-Asuncion').value === 'Elena Elementary' && document.getElementById('coord-s-name-Asuncion').value === 'Sam Secondary'), 'the form reloads what the database holds');
+
+  // reports use the coordinator of the level shown
+  const sig = async () => N.page.evaluate(() => [document.getElementById('sig-p-name').textContent, document.getElementById('sig-p-pos').textContent]);
+  await N.page.evaluate(() => { resetFilters(); switchView('district-view'); }); await settled(N.page);
+  await N.page.selectOption('#flt-district', 'Asuncion'); await settled(N.page);
+  await N.page.selectOption('#flt-level', 'elementary'); await settled(N.page);
+  ok(JSON.stringify(await sig()) === JSON.stringify(['Elena Elementary', 'Asuncion Elementary Supervisor']), 'report signatory (Elementary view) = the Elementary coordinator');
+  ok((await N.page.textContent('#view-container')).includes('Elena Elementary') && !(await N.page.textContent('#view-container')).includes('Sam Secondary'), 'District Profile shows the Elementary coordinator only');
+  await N.page.selectOption('#flt-level', 'secondary'); await settled(N.page);
+  ok(JSON.stringify(await sig()) === JSON.stringify(['Sam Secondary', 'Asuncion Secondary Principal']), 'report signatory (Secondary view) = the Secondary coordinator');
+  await N.page.selectOption('#flt-level', 'ALL'); await settled(N.page);
+  ok(JSON.stringify(await sig()) === JSON.stringify(['Elena Elementary / Sam Secondary', 'Asuncion Elementary Supervisor / Secondary Principal']), 'both levels in view and the details differ: both coordinators are named');
+  await N.page.evaluate(() => { resetFilters(); switchView('division'); }); await settled(N.page);
+  await N.page.selectOption('#flt-level', 'secondary'); await settled(N.page);
+  const row = await N.page.evaluate(() => Array.from(document.querySelectorAll('#view-container tbody tr')).find(r => r.children[1].textContent.trim() === 'Asuncion').children[2].innerText.replace(/\s+/g, ' ').trim());
+  ok(row === 'Sam Secondary Secondary Principal', 'Division Summary lists the coordinator of the level in view (Secondary)');
+  ok(N.errors.length === 0, 'no page errors' + (N.errors[0] ? ': ' + N.errors[0] : ''));
+  await N.ctx.close();
+
+  for (const [user, name, pos] of [['asuncion_elemcoord', 'Elena Elementary', 'Elementary Supervisor'], ['asuncion_seccoord', 'Sam Secondary', 'Secondary Principal']]) {
+    const C = await openNew(user, demo.slice(0, 40));
+    await C.page.evaluate(() => { window.__STUB.districts[0].elem_coordinator_name = 'Elena Elementary'; window.__STUB.districts[0].elem_coordinator_position = 'Elementary Supervisor'; window.__STUB.districts[0].sec_coordinator_name = 'Sam Secondary'; window.__STUB.districts[0].sec_coordinator_position = 'Secondary Principal'; });
+    await C.page.evaluate(() => initDB().then(() => { switchView('district-view'); })); await settled(C.page);
+    ok(await C.page.evaluate(() => [document.getElementById('sig-p-name').textContent, document.getElementById('sig-p-pos').textContent].join('|')) === `${name}|Asuncion ${pos}`, `${user}: the printed "Prepared by" is their own level's coordinator`);
+    const w = await C.page.evaluate(async () => (await sb().from('districts').update({ elem_coordinator_name: 'hacked' }).eq('id', 1).select('id')).data.length);
+    ok(w === 0 && await C.page.evaluate(() => window.__STUB.districts[0].elem_coordinator_name === 'Elena Elementary'), `${user}: cannot change coordinator details through the API`);
+    await C.ctx.close();
   }
 }
 

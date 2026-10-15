@@ -1,5 +1,5 @@
 -- setup_all.sql: paste into the Supabase SQL editor and run once, on a NEW project (schema, access rules, audit log,
--- education levels, MAPEH rules and record controls, districts, settings). An existing project that already ran 0001 to 0003 needs only 0004 and 0005.
+-- education levels, MAPEH rules and record controls, coordinators by level, districts, settings). An existing project that already ran 0001 to 0003 needs only 0004 to 0006.
 -- Sample records are loaded later by tools/load-demo-records.mjs.
 
 -- ===== supabase/migrations/0001_schema.sql =====
@@ -554,6 +554,28 @@ begin
   end if;
 end $$;
 
+-- ===== supabase/migrations/0006_coordinators_by_level.sql =====
+-- 0006_coordinators_by_level.sql: one Elementary and one Secondary coordinator (name and position) per district.
+-- Safe to run once on a project that already has 0001 to 0005. Run it BEFORE deploying the matching app version
+-- (the previous app version keeps working, it reads the old columns).
+--
+-- Each level's details are stored separately. Existing coordinator information is preserved: both levels start with
+-- the district's current name and position, which an Admin or Supervisor can then edit per level in Settings.
+-- The original columns (coordinator_name, coordinator_position) are kept untouched and are no longer read by the app.
+-- Who may change them is unchanged: districts are updatable by Admin and Supervisor only (policy from 0002).
+alter table public.districts
+  add column elem_coordinator_name text not null default '',
+  add column elem_coordinator_position text not null default '',
+  add column sec_coordinator_name text not null default '',
+  add column sec_coordinator_position text not null default '';
+
+update public.districts set
+  elem_coordinator_name = coordinator_name, elem_coordinator_position = coordinator_position,
+  sec_coordinator_name = coordinator_name, sec_coordinator_position = coordinator_position;
+
+comment on column public.districts.coordinator_name is 'Legacy, superseded by elem_/sec_coordinator_name (0006). Not read by the app.';
+comment on column public.districts.coordinator_position is 'Legacy, superseded by elem_/sec_coordinator_position (0006). Not read by the app.';
+
 -- ===== supabase/seed/districts.sql =====
 -- districts.sql: 11 districts and the client's existing coordinator defaults, verbatim (stars 5 and 6)
 insert into public.districts (name, coordinator_name, coordinator_position, sort_order) values
@@ -568,6 +590,17 @@ insert into public.districts (name, coordinator_name, coordinator_position, sort
   ('Sto. Tomas West', 'Ramon Magsaysay Jr.',       'District Assessment Coordinator',    9),
   ('Talaingod',       'Bayanihan Datu',            'Principal In-Charge',                10),
   ('Langilan',        'Luzviminda Salcedo',        'Public Schools District Supervisor', 11);
+
+-- When migration 0006 (coordinators by level) is already applied, give both levels the same starting details.
+do $$ begin
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'districts' and column_name = 'elem_coordinator_name') then
+    update public.districts set
+      elem_coordinator_name = coordinator_name, elem_coordinator_position = coordinator_position,
+      sec_coordinator_name = coordinator_name, sec_coordinator_position = coordinator_position
+    where elem_coordinator_name = '' and sec_coordinator_name = '';
+  end if;
+end $$;
+
 
 -- ===== supabase/seed/settings.sql =====
 -- settings.sql: app_settings row from the client's current defaults

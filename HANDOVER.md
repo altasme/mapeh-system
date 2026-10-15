@@ -166,3 +166,13 @@ District codes are the ones the original usernames already used: asuncion, dujal
 - Whether old combined records should be corrected by the districts (use Manage Records: change the area, or the grade) or left as history.
 - Coordinators can now delete (recoverably) within their scope. Say if deletion should be limited to Admin and Supervisor; it is one policy and one function check.
 - Hard deletion is not available from the app. Permanent removal is done by Altaventures in the SQL editor if ever needed.
+
+## 13. Coordinators by education level (added 2026-10-15)
+
+**What changed.** Settings & Branding, "District Coordinator & Position Management": each district (existing order) is now one card with the district name as its heading and two subsections beneath it, **Elementary Coordinator** and **Secondary Coordinator**, each with Coordinator Name and Designated Position / Title. Save works as before (one Save button, checked per district, success only when the database confirms).
+
+**Storage.** `districts` has four new columns: `elem_coordinator_name`, `elem_coordinator_position`, `sec_coordinator_name`, `sec_coordinator_position` (migration `0006_coordinators_by_level.sql`). Existing information is preserved: both levels start with the district's current name and position. The old columns stay in the table, untouched and no longer read by the app. Only Admin and Supervisor can change them (existing policy; checked in `rls_matrix.sql`).
+
+**Reports.** The printed "Prepared by" (name and position), the District Profile header, the Division Summary coordinator column and the per-district notes use the coordinator of the level being shown (a coordinator's own level, or the Education Level filter). With both levels in view: one name if both levels have identical details (so nothing changes until the two are edited apart), otherwise both, e.g. "Elena Elementary / Sam Secondary".
+
+**To deploy.** 1) Run `supabase/migrations/0006_coordinators_by_level.sql` in the SQL editor (the current live app keeps working after it). 2) Merge `feature/coordinators-by-level` into `main`. Doing it in the other order makes the new Settings page and every view fail to load, because the new app reads the new columns. 3) Open Settings and enter the Elementary and Secondary names.

@@ -1,5 +1,5 @@
 -- rls_matrix.sql: access rules after 0005 (levels, MAPEH rules, edit and soft delete). Run in the Supabase SQL editor
--- AFTER migrations 0001 to 0005 and seed/districts.sql. One transaction, rolled back: it creates throwaway users and
+-- AFTER migrations 0001 to 0006 and seed/districts.sql. One transaction, rolled back: it creates throwaway users and
 -- never touches real accounts. A failed check raises an exception; passes print NOTICE lines.
 begin;
 
@@ -66,6 +66,7 @@ begin
     insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
       values ('2025-2026','Term 2',car,'Key Stage 3','Grade 9','X',65,80,70,'x') returning id into rid;
     update public.assessment_records set grade_level = 'Grade 2', district_id = asu where id = rid; get diagnostics n = row_count; assert n = 1, code || ' can move a record across level and district';
+    update public.districts set elem_coordinator_name = elem_coordinator_name, sec_coordinator_position = sec_coordinator_position where id = asu; get diagnostics n = row_count; assert n = 1, code || ' can edit the per-level coordinator details';
     assert public.app_delete_records(array[rid], 'test') = 1, code || ' soft deletes';
     select count(*) into n from public.assessment_records where id = rid; assert n = 1, code || ' still sees the deleted row (recoverable)';
     assert public.app_restore_records(array[rid]) = 1, code || ' restores';
@@ -167,6 +168,7 @@ begin
         values ('2025-2026', (select name from public.districts where id = dist), lvl, 'ALL','T9','x','x');
       -- everything else
       update public.districts set coordinator_name = 'x' where id = dist; get diagnostics n = row_count; assert n = 0, who || ' cannot update districts';
+      update public.districts set elem_coordinator_name = 'x', sec_coordinator_name = 'x' where id = dist; get diagnostics n = row_count; assert n = 0, who || ' cannot update the per-level coordinator details';
       update public.app_settings set data = data; get diagnostics n = row_count; assert n = 0, who || ' cannot update settings';
       select count(*) into n from public.audit_log; assert n = 0, who || ' cannot read audit log';
       select count(*) into n from public.profiles; assert n = 1, who || ' sees only their own profile';
