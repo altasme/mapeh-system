@@ -194,6 +194,19 @@
               const rows = T2.filter(r => !isDel(r) && (name === 'app_delete_all_records' || r.sy === a.p_sy));
               return { data: mark(rows, name === 'app_delete_all_records' ? 'Bulk delete: all records' : 'Bulk delete: school year ' + a.p_sy), error: null };
             }
+            if (name === 'app_edit_competency') {
+              const code = String(a.p_code || '').trim(), desc = String(a.p_desc || '').trim();
+              if (!desc) return { data: null, error: err('P0001', 'The competency description cannot be empty.') };
+              if (desc.length > 500) return { data: null, error: err('P0001', 'The competency description is too long (500 characters at most).') };
+              if (!code) return { data: null, error: err('P0001', 'Enter a competency code.') };
+              const r = T2.find(x => x.id === a.p_id && !isDel(x) && canSeeRecord(x));
+              const ll = r && Array.isArray(r.least_learned) ? r.least_learned : null;
+              if (!ll || a.p_index < 0 || a.p_index >= ll.length) return { data: null, error: err('P0001', 'That competency could not be found. Reload the page and try again.') };
+              const el = ll[a.p_index], cur = typeof el === 'string' ? el : (el.desc || el.description || el.competency || '');
+              if (cur.trim() !== String(a.p_old_desc || '').trim()) return { data: null, error: err('P0001', 'This competency was changed by someone else. Reload the page and try again.') };
+              ll[a.p_index] = { code, desc }; r.updated_by = me().id;
+              return { data: 1, error: null };
+            }
             return { data: null, error: err('42883', 'function does not exist') };
           });
         },
