@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
 """Generate the demo records (the legacy seedDemoData() shape, but with a fixed seed).
-11 districts x 3 terms x 4 grades x 11 subjects = 1,452 rows, every row is_demo = true.
+11 districts x 3 terms x 4 grades (47 subject rows per district and term) = 1,551 rows, every row is_demo = true.
 
   python3 tools/gen_demo_records.py > supabase/seed/demo_records.sql
   python3 tools/gen_demo_records.py --json > demo_records.json     (QA: same rows as app-shaped objects)
+
+Default: the current MAPEH structure (Grade 1: overall only; Grades 4-10: overall + Music, Arts, PE, Health; Grade 11: none),
+1,551 rows. With --legacy: the original combined-area structure (1,452 rows), used only by the QA parity tests against the
+original app, because the database now refuses the combined areas on new rows.
 """
 import json, random, re, sys
 
 DISTRICTS = ["Asuncion", "B.E. Dujali", "Carmen", "Kapalong East", "Kapalong West", "New Corella",
              "San Isidro", "Sto. Tomas East", "Sto. Tomas West", "Talaingod", "Langilan"]
 GRADES = [("Grade 1", "Key Stage 1"), ("Grade 4", "Key Stage 2"), ("Grade 8", "Key Stage 3"), ("Grade 11", "Key Stage 4")]
-SUBJECTS = ["MAPEH - Music & Arts", "MAPEH - PE & Health", "SPA - Vocal Arts", "SPA - Dance Arts",
+LEGACY_MAPEH = ["MAPEH - Music & Arts", "MAPEH - PE & Health"]
+MAPEH_BY_GRADE = {"Grade 1": ["MAPEH - Overall"],
+                  "Grade 4": ["MAPEH - Overall", "MAPEH - Music", "MAPEH - Arts", "MAPEH - PE", "MAPEH - Health"],
+                  "Grade 8": ["MAPEH - Overall", "MAPEH - Music", "MAPEH - Arts", "MAPEH - PE", "MAPEH - Health"],
+                  "Grade 11": []}
+SUBJECTS = ["SPA - Vocal Arts", "SPA - Dance Arts",
             "SPS - Basketball", "SPS - Volleyball", "SPFL - Spanish", "SPFL - Japanese (Nihongo)",
             "IPED - English", "IPED - Mathematics", "IPED - MAPEH (Music & Arts)"]
 LC_TEXT = ["Core performance and foundational skill mastery in %s",
@@ -22,13 +31,14 @@ def pl(m):
     return "Advanced" if m >= 90 else "Proficient" if m >= 85 else "Approaching Proficiency" if m >= 80 else "Developing" if m >= 75 else "Beginning"
 
 
-def build():
+def build(legacy=False):
     random.seed(20251001)
     rows = []
     for dist in DISTRICTS:
         for term in ("Term 1", "Term 2", "Term 3"):
             for grade, ks in GRADES:
-                for sub in SUBJECTS:
+                subjects = (LEGACY_MAPEH + SUBJECTS) if legacy else (MAPEH_BY_GRADE[grade] + SUBJECTS)
+                for sub in subjects:
                     mps = round(65 + random.random() * 25, 2)
                     base = round(60 + random.random() * 25, 2)
                     p75 = round(min(98, mps + random.random() * 6), 2)
@@ -65,7 +75,7 @@ def emit_sql(rows):
 
 
 if __name__ == "__main__":
-    data = build()
+    data = build("--legacy" in sys.argv)
     if "--json" in sys.argv:
         json.dump(data, sys.stdout)
     else:

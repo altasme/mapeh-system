@@ -335,11 +335,13 @@ table.excel-table tr.mapeh-row { background-color: #EBF8FF; font-weight: bold; }
 .toast-success { background: var(--success); }
 .toast-error { background: var(--danger); }
 .toast-info { background: var(--deped-blue); }
-#reauth-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10500; display: none; align-items: center; justify-content: center; padding: 20px; }
+#reauth-modal, #pw-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10500; display: none; align-items: center; justify-content: center; padding: 20px; }
 .modal-card { background: #fff; width: 100%; max-width: 380px; padding: 24px; border-radius: 10px; }
 .modal-card h3 { color: var(--deped-dark); margin-bottom: 8px; font-size: 1.05rem; }
 .modal-card p { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px; }
 .modal-card input { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.9rem; }
+.modal-card label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--ink-2, #3a4764); margin: 12px 0 6px; }
+.pw-rules { font-size: 0.78rem !important; margin: 10px 0 0 !important; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 #nav-toggle, #nav-backdrop, #filters-toggle { display: none; }
 #print-sample-line { display: none; }
@@ -362,7 +364,7 @@ table.excel-table tr.mapeh-row { background-color: #EBF8FF; font-weight: bold; }
     .filter-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
     .filter-item { min-width: 0; }
     .filter-item select { width: 100%; }
-    .filter-item:nth-child(5) { grid-column: 1 / -1; }
+    .filter-item:nth-child(6) { grid-column: 1 / -1; }
     .filter-bar > div[style*="margin-left"] { grid-column: 1 / -1; margin-left: 0 !important; }
     .top-header > div[style*="display: flex"] { width: 100%; }
     .user-profile-badge { flex: 1 1 auto; min-width: 0; }
@@ -372,7 +374,7 @@ table.excel-table tr.mapeh-row { background-color: #EBF8FF; font-weight: bold; }
 
 /* PRINT: rules for the new elements only (the original print block above is unchanged) */
 @media print {
-    #env-banner, #toast-host, #reauth-modal, #nav-toggle, #nav-backdrop, .screen-only { display: none !important; }
+    #env-banner, #toast-host, #reauth-modal, #pw-modal, #nav-toggle, #nav-backdrop, .screen-only { display: none !important; }
     .table-scroll { overflow: visible !important; }
     body.sample-in-view #print-sample-line { display: block !important; font-weight: bold; letter-spacing: 1px; margin-top: 4px; }
 }
@@ -626,6 +628,24 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
 }
 
 .print-only-header, .print-only-footer, .print-signatories { display: none; }
+/* Record management and MAPEH components (record modal hidden by default and in print) */
+#record-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10400; display: none; align-items: center; justify-content: center; padding: 20px; }
+@media screen {
+    #record-modal .modal-card { max-width: 640px; max-height: calc(100vh - 40px); overflow-y: auto; }
+    #record-modal .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+    #record-modal .form-grid label { margin: 0 0 4px; }
+    #record-modal select, #record-modal input, #record-modal textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--rule-strong, #c3ccdf); border-radius: 4px; font: inherit; font-size: 0.9rem; background: #fff; }
+    #record-modal textarea { min-height: 64px; resize: vertical; }
+    #record-modal .span-2 { grid-column: span 2; }
+    #record-modal .rec-summary { background: #f4f7fd; border: 1px solid var(--rule, #dde3f0); border-radius: 6px; padding: 10px 12px; font-size: 0.85rem; color: var(--ink, #101b33); margin-bottom: 8px; }
+    .mr-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .mr-tools input[type="search"] { padding: 7px 10px; border: 1px solid var(--rule-strong, #c3ccdf); border-radius: 4px; font: inherit; font-size: 0.88rem; min-width: min(280px, 100%); }
+    .mr-actions { display: flex; gap: 6px; white-space: nowrap; }
+    .mr-pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 4px 2px; font-size: 0.82rem; color: var(--text-muted); flex-wrap: wrap; }
+    .mr-flag { display: inline-block; margin-top: 3px; font-size: 0.72rem; }
+    .comp-note { font-size: 0.8rem; color: var(--text-muted); margin-top: 10px; }
+    @media (max-width: 640px) { #record-modal .form-grid { grid-template-columns: 1fr; } #record-modal .span-2 { grid-column: span 1; } }
+}
 </style>
 </head>
 <body>
@@ -688,6 +708,24 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
         </div>
     </div>
 </div>
+<div id="pw-modal" role="dialog" aria-modal="true" aria-labelledby="pw-title">
+    <div class="modal-card">
+        <h3 id="pw-title">Set a new password</h3>
+        <p id="pw-text"></p>
+        <form id="pw-form" autocomplete="off">
+            <div id="pw-current-row"><label for="pw-current">Current password</label><input type="password" id="pw-current" autocomplete="current-password"></div>
+            <label for="pw-new">New password</label><input type="password" id="pw-new" autocomplete="new-password">
+            <label for="pw-confirm">Confirm new password</label><input type="password" id="pw-confirm" autocomplete="new-password">
+            <p class="pw-rules">At least 10 characters, with a letter and a number. Do not use your username or district name.</p>
+            <div class="login-error" id="pw-error" role="alert"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" id="pw-cancel">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="pw-ok">Change password</button>
+            </div>
+        </form>
+    </div>
+</div>
+<div id="record-modal" class="screen-only" role="dialog" aria-modal="true" aria-labelledby="rec-title"><div class="modal-card" id="record-modal-card"></div></div>
 <div id="nav-backdrop" onclick="document.body.classList.remove('nav-open')"></div>
 
 <!-- SIDEBAR -->
@@ -704,6 +742,7 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
         <li role="button" tabindex="0" class="nav-item" onclick="switchView('dashboard')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Performance Dashboard</li>
         <li class="nav-group" aria-hidden="true">Records</li>
         <li role="button" tabindex="0" class="nav-item" id="nav-data-input" onclick="switchView('data-input')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>Fast Data Entry & Upload</li>
+        <li role="button" tabindex="0" class="nav-item" id="nav-manage" onclick="switchView('manage-records')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>Manage Records</li>
         <li role="button" tabindex="0" class="nav-item" onclick="switchView('least-learned')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h14v16l-7-4-7 4z"/></svg>Least Learned Competencies</li>
         <li role="button" tabindex="0" class="nav-item" onclick="switchView('grade-view')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h4v-5H3zM10 20h4V10h-4zM17 20h4V4h-4z"/></svg>Grade Level Breakdown</li>
         <li class="nav-group" aria-hidden="true">Output</li>
@@ -733,6 +772,7 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
                     <strong style="font-size: 0.85rem; color: var(--ink);" id="u-name">Guest User</strong><br>
                     <span style="font-size: 0.75rem; color: var(--muted);" id="u-role">View Only</span>
                 </div>
+                <button class="btn btn-secondary btn-sm" onclick="requestPasswordChange({ forced: false })">Password</button>
                 <button class="btn btn-secondary btn-sm" onclick="handleLogout()">Logout</button>
             </div>
         </div>
@@ -759,6 +799,14 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
             <label>District Filter</label>
             <select id="flt-district" onchange="applyFilters()">
                 <option value="ALL">All Districts</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>Education Level</label>
+            <select id="flt-level" onchange="applyFilters()">
+                <option value="ALL">All Levels</option>
+                <option value="elementary">Elementary</option>
+                <option value="secondary">Secondary</option>
             </select>
         </div>
         <div class="filter-item">
@@ -878,12 +926,14 @@ function friendlyError(err) {
     if (/failed to fetch|networkerror|load failed|fetch failed/i.test(msg) || err.name === "AuthRetryableFetchError") {
         return "Could not reach the server. Your changes were not saved.";
     }
+    if (code === "42501" && /^(Only the division|You do not have access to one or more|Not allowed)/.test(msg)) return msg;
     if (code === "42501" || /row-level security|permission denied/i.test(msg)) {
-        return "You do not have access to that district's data.";
+        return "You do not have access to that district or education level.";
     }
     if (code === "PGRST301" || /jwt expired|jwt/i.test(msg)) {
         return "Your session expired. Please log in again.";
     }
+    if (code === "23514" && /^(Grades? \d|MAPEH)/.test(msg)) return msg;
     if (code === "23514") {
         if (/_mps_check/.test(msg) && !/baseline/.test(msg)) return "MPS must be between 0 and 100.";
         if (/baseline_mps_check/.test(msg)) return "Baseline MPS must be between 0 and 100.";
@@ -893,6 +943,7 @@ function friendlyError(err) {
         return "A value is outside the allowed range.";
     }
     if (code === "23503") return "Unknown district.";
+    if (code === "23502" && /education_level/.test(msg)) return "Grade level must be one of Grade 1 to Grade 12.";
     if (code === "23502") return "A required value is missing or is not a valid number.";
     if (code === "22P02" || code === "22003") return "A number is missing or is not valid.";
     return msg || "Something went wrong. Your changes were not saved.";
@@ -949,8 +1000,114 @@ function requireReauth(promptText) {
     });
 }
 
+/* PASSWORD CHANGE: used for the forced change of an initial password and for voluntary changes */
+function validateNewPassword(pw) {
+    if (pw.length < 10) return "Use at least 10 characters.";
+    if (!/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)) return "Use at least one letter and at least one number.";
+    const low = pw.toLowerCase();
+    if (currentUser) {
+        const name = currentUser.username.toLowerCase();
+        const code = name.split("_")[0];
+        if (low.includes(name) || (code.length >= 3 && low.includes(code))) return "Do not use your username or district name in the password.";
+    }
+    if (low.includes("password") || low.includes("123456")) return "That password is too easy to guess.";
+    return "";
+}
+
+function passwordErrorMessage(error) {
+    const msg = String(error.message || "");
+    if (error.code === "same_password" || /different from the old/i.test(msg)) return "Choose a password you have not used before.";
+    if (error.code === "weak_password" || /password.*(weak|short|characters)/i.test(msg)) return "That password does not meet the server's rules. Use a longer, less predictable one.";
+    return friendlyError(error);
+}
+
+function requestPasswordChange(opts) {
+    const forced = !!(opts && opts.forced);
+    return new Promise(resolve => {
+        const overlay = document.getElementById("pw-modal");
+        const form = document.getElementById("pw-form");
+        const err = document.getElementById("pw-error");
+        const cur = document.getElementById("pw-current"), nw = document.getElementById("pw-new"), cf = document.getElementById("pw-confirm");
+        const ok = document.getElementById("pw-ok"), cancel = document.getElementById("pw-cancel");
+        document.getElementById("pw-title").textContent = forced ? "Set a new password" : "Change password";
+        document.getElementById("pw-text").textContent = forced
+            ? "Your account was issued with an initial password. Choose your own password to continue. Until you do, no data can be opened."
+            : "Choose a new password for your account.";
+        document.getElementById("pw-current-row").style.display = forced ? "none" : "block";
+        cancel.textContent = forced ? "Log out" : "Cancel";
+        [cur, nw, cf].forEach(i => { i.value = ""; });
+        err.textContent = "";
+        overlay.style.display = "flex";
+        (forced ? nw : cur).focus();
+        const done = v => {
+            overlay.style.display = "none";
+            form.onsubmit = null; cancel.onclick = null;
+            [cur, nw, cf].forEach(i => { i.value = ""; });
+            resolve(v);
+        };
+        cancel.onclick = async () => {
+            if (forced) { await sb().auth.signOut().catch(() => {}); location.reload(); return; }
+            done(false);
+        };
+        form.onsubmit = async (ev) => {
+            ev.preventDefault();
+            err.textContent = "";
+            const problem = validateNewPassword(nw.value) || (nw.value !== cf.value ? "The two new passwords do not match." : "");
+            if (problem) { err.textContent = problem; return; }
+            ok.disabled = true;
+            try {
+                if (!forced) {
+                    const { error: e1 } = await sb().auth.signInWithPassword({ email: currentUser.email, password: cur.value });
+                    if (e1) { err.textContent = e1.status === 400 ? "Your current password is incorrect." : friendlyError(e1); return; }
+                }
+                const { error } = await sb().auth.updateUser({ password: nw.value });
+                if (error) { err.textContent = passwordErrorMessage(error); return; }
+                await loadProfile(); // the server clears the initial-password flag when the password really changes
+                if (currentUser.mustChangePassword) { err.textContent = "The password was changed, but the account is still locked. Please contact the administrator."; return; }
+                if (!forced) toast("Password changed.");
+                done(true);
+            } catch (e2) {
+                err.textContent = friendlyError(e2);
+            } finally {
+                ok.disabled = false;
+            }
+        };
+    });
+}
+
 /* 1. AUTHENTICATION (Supabase Auth; accounts live in the database) */
 const ROLE_LABELS = { admin: "Admin", supervisor: "Supervisor", district_coordinator: "District Coordinator" };
+
+/* EDUCATION LEVELS. Elementary is Grade 1 to 6 and Secondary is Grade 7 to 12: the same rule as
+   public.app_education_level() in the database, which row level security enforces. This copy only shapes the screen. */
+const LEVELS = {
+    elementary: { label: "Elementary", grades: ["Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6"], keyStages: ["Key Stage 1", "Key Stage 2"] },
+    secondary: { label: "Secondary", grades: ["Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"], keyStages: ["Key Stage 3", "Key Stage 4"] }
+};
+function levelOfGrade(g) {
+    return LEVELS.elementary.grades.includes(g) ? "elementary" : LEVELS.secondary.grades.includes(g) ? "secondary" : null;
+}
+// The level a screen should show: a coordinator's own level, otherwise whatever the Education Level filter says.
+function effectiveLevel() {
+    const own = currentUser ? currentUser.educationLevel : "ALL";
+    return own !== "ALL" ? own : filters.level;
+}
+function levelOk(r) {
+    const L = effectiveLevel();
+    return L === "ALL" || r.educationLevel === L;
+}
+function gradesForLevel() {
+    const L = effectiveLevel();
+    return L === "ALL" ? ALL_GRADES : LEVELS[L].grades;
+}
+function keyStagesForLevel() {
+    const L = effectiveLevel();
+    return L === "ALL" ? KEY_STAGES : KEY_STAGES.filter(k => LEVELS[L].keyStages.includes(k.code));
+}
+function levelTitleWord() {
+    const L = effectiveLevel();
+    return L === "ALL" ? "" : ` ${LEVELS[L].label.toUpperCase()}`;
+}
 let currentUser = null;
 
 // Only Admin and Supervisor can access Settings & Branding
@@ -972,15 +1129,23 @@ async function loadProfile() {
     const { data: { session } } = await sb().auth.getSession();
     if (!session) throw new Error("No session");
     const { data, error } = await sb().from("profiles")
-        .select("username, display_name, role, districts(name)")
+        .select("username, display_name, role, education_level, active, must_change_password, districts(name)")
         .eq("id", session.user.id).maybeSingle();
     if (error) throw error;
     if (!data) { const e = new Error("NO_PROFILE"); e.userMessage = "This account has no profile. Please contact the administrator."; throw e; }
+    if (!data.active) {
+        const e = new Error("RETIRED");
+        e.userMessage = "This account has been retired. Please sign in with the Elementary or Secondary account issued for your district.";
+        throw e;
+    }
+    const level = data.education_level && LEVELS[data.education_level] ? data.education_level : "ALL";
     currentUser = {
         name: data.display_name,
-        role: ROLE_LABELS[data.role] || data.role,
+        role: level !== "ALL" ? `${LEVELS[level].label} Coordinator` : (ROLE_LABELS[data.role] || data.role),
         username: data.username,
         district: data.districts ? data.districts.name : "ALL",
+        educationLevel: level,
+        mustChangePassword: !!data.must_change_password,
         email: session.user.email
     };
 }
@@ -994,9 +1159,12 @@ function showLoginError(message) {
 async function enterApp() {
     try {
         await loadProfile();
+        // An initial password must be replaced before anything else happens. The database also refuses all data
+        // to such a session, so this screen is a courtesy and not the control.
+        if (currentUser.mustChangePassword) await requestPasswordChange({ forced: true });
         await initDB();
     } catch (err) {
-        if (err && err.message === "NO_PROFILE") await sb().auth.signOut().catch(() => {});
+        if (err && (err.message === "NO_PROFILE" || err.message === "RETIRED")) await sb().auth.signOut().catch(() => {});
         currentUser = null;
         showLoginError(friendlyError(err));
         throw err;
@@ -1004,6 +1172,7 @@ async function enterApp() {
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("login-error").textContent = "";
     if (currentUser.district !== "ALL") filters.district = currentUser.district;
+    if (currentUser.educationLevel !== "ALL") filters.level = currentUser.educationLevel;
     applyUserPermissionsUI();
     applyPrintBrandingUI();
     updateEnvBanner();
@@ -1042,6 +1211,7 @@ function applyUserPermissionsUI() {
     if (!currentUser) return;
     document.getElementById("u-name").textContent = currentUser.name;
     document.getElementById("u-role").textContent = currentUser.district !== "ALL" ? `${currentUser.role} (${currentUser.district})` : currentUser.role;
+    populateLevelFilter();
     document.getElementById("u-avatar").textContent = currentUser.name.charAt(0).toUpperCase();
 
     const navSettings = document.getElementById("nav-settings");
@@ -1084,9 +1254,39 @@ const IPED_OFFERS = [
     "IPED - GMRC / EsP / Values Education", "IPED - MAPEH (Music & Arts)", "IPED - MAPEH (PE & Health)"
 ];
 
+/* MAPEH STRUCTURE. Overall MAPEH is its own official record and is never calculated from the four components.
+   Grades 1 to 3: overall only. Grades 4 to 10: overall plus Music, Arts, PE and Health. Grades 11 to 12: no MAPEH.
+   The two combined areas are legacy: kept, shown and editable, but no longer accepted for new or changed rows. */
+const MAPEH_OVERALL = "MAPEH - Overall";
+const MAPEH_COMPONENTS = [
+    { area: "MAPEH - Music", label: "Music" }, { area: "MAPEH - Arts", label: "Arts" },
+    { area: "MAPEH - PE", label: "Physical Education (PE)" }, { area: "MAPEH - Health", label: "Health" }
+];
+const MAPEH_LEGACY = ["MAPEH - Music & Arts", "MAPEH - PE & Health"];
+const isMapehComponent = a => MAPEH_COMPONENTS.some(c => c.area === a);
+const isMapehLegacy = a => MAPEH_LEGACY.includes(a);
+const isMapehFamily = a => a === MAPEH_OVERALL || isMapehComponent(a) || isMapehLegacy(a);
+// What the "MAPEH total" figures count: official overall records plus the legacy combined records (unchanged totals).
+const isMapehConsolidated = a => a === MAPEH_OVERALL || isMapehLegacy(a);
+// Mirror of public.app_mapeh_rule_problem() in the database, which is the enforcement. Returns "" when the pair is allowed.
+function mapehRuleProblem(grade, area) {
+    if (!isMapehFamily(area)) return "";
+    if (["Grade 1", "Grade 2", "Grade 3"].includes(grade) && area !== MAPEH_OVERALL)
+        return "Grades 1 to 3 are recorded as overall MAPEH only. Music, Arts, PE and Health are not recorded separately for these grades.";
+    if (["Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10"].includes(grade) && isMapehLegacy(area))
+        return "Grades 4 to 10 are recorded as overall MAPEH plus Music, Arts, PE and Health. The combined Music & Arts and PE & Health areas are no longer used.";
+    if (["Grade 11", "Grade 12"].includes(grade)) return "MAPEH is not assessed in Grades 11 and 12.";
+    return "";
+}
+function mapehAreasForGrade(grade) {
+    return [MAPEH_OVERALL, ...MAPEH_COMPONENTS.map(c => c.area)].filter(a => !mapehRuleProblem(grade, a));
+}
+const meanMps = list => list.length ? list.reduce((a, c) => a + c.mps, 0) / list.length : 0;
+const hasMapehNew = recs => recs.some(r => r.learningArea === MAPEH_OVERALL || isMapehComponent(r.learningArea));
+
 /* ALL TRACKED SUBJECTS AND SPECIALIZATIONS */
 const SUBJECTS = [
-    "MAPEH - Music & Arts", "MAPEH - PE & Health", "SPA - Vocal Arts", "SPA - Instrumental Arts",
+    MAPEH_OVERALL, ...MAPEH_COMPONENTS.map(c => c.area), ...MAPEH_LEGACY, "SPA - Vocal Arts", "SPA - Instrumental Arts",
     "SPA - Dance Arts", "SPA - Theater Arts", "SPA - Visual Arts", "SPA - Media Arts", "SPA - Creative Writing",
     ...SPS_OFFERS, ...SPFL_OFFERS, ...IPED_OFFERS
 ];
@@ -1128,7 +1328,7 @@ let settings = {
 };
 
 let currentView = "division";
-let filters = { sy: "ALL", term: "ALL", district: "ALL", keystage: "ALL", subject: "ALL" };
+let filters = { sy: "ALL", term: "ALL", district: "ALL", level: "ALL", keystage: "ALL", subject: "ALL" };
 let activeCharts = {};
 
 /* 3. DB HELPERS (Supabase). Names and return shapes match the old IndexedDB helpers. */
@@ -1153,7 +1353,11 @@ function fromRow(row) {
         proficiencyLevel: row.proficiency_level,
         leastLearned: Array.isArray(row.least_learned) ? row.least_learned : [],
         isDemo: !!row.is_demo,
-        createdAt: row.created_at || ""
+        educationLevel: row.education_level || levelOfGrade(row.grade_level) || "",
+        createdAt: row.created_at || "",
+        updatedAt: row.updated_at || "",
+        deletedAt: row.deleted_at || "",
+        deleteReason: row.delete_reason || ""
     };
 }
 
@@ -1176,8 +1380,7 @@ function toRow(r) {
         mps: r.mps,
         pct75: r.pct75,
         proficiency_level: r.proficiencyLevel,
-        least_learned: r.leastLearned || [],
-        is_demo: false
+        least_learned: r.leastLearned || []
     };
 }
 
@@ -1207,13 +1410,49 @@ async function getAllRecords() {
     const out = [];
     for (let from = 0; ; from += PAGE_SIZE) {
         const { data, error } = await sb().from("assessment_records").select("*")
-            .order("id").range(from, from + PAGE_SIZE - 1);
+            .is("deleted_at", null).order("id").range(from, from + PAGE_SIZE - 1);
         if (error) throw error;
         data.forEach(row => out.push(fromRow(row)));
         if (data.length < PAGE_SIZE) break;
     }
     _anyDemoLoaded = out.some(r => r.isDemo);
     return out;
+}
+
+// Deleted (recoverable) records. Row level security only lets the division team see them.
+async function getDeletedRecords() {
+    const out = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+        const { data, error } = await sb().from("assessment_records").select("*")
+            .not("deleted_at", "is", null).order("id").range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+        data.forEach(row => out.push(fromRow(row)));
+        if (data.length < PAGE_SIZE) break;
+    }
+    return out;
+}
+
+// Edit one record. The database re-checks the MAPEH rules, the ranges and the caller's district and level.
+async function updateRecord(id, record) {
+    const { data, error } = await sb().from("assessment_records").update(toRow(record)).eq("id", id).select("id");
+    if (error) throw error;
+    if (!data || !data.length) {
+        const e = new Error("Record not found");
+        e.userMessage = "That record could not be updated. It may have been deleted or is outside your scope. Reload and try again.";
+        throw e;
+    }
+}
+
+async function deleteRecordsById(ids, reason) {
+    const { data, error } = await sb().rpc("app_delete_records", { p_ids: ids, p_reason: reason || null });
+    if (error) throw error;
+    return Number(data) || 0;
+}
+
+async function restoreRecords(ids) {
+    const { data, error } = await sb().rpc("app_restore_records", { p_ids: ids });
+    if (error) throw error;
+    return Number(data) || 0;
 }
 
 async function addRecord(record) {
@@ -1231,23 +1470,25 @@ async function bulkInsert(records) {
 }
 
 async function deleteRecordsBySY(syToDelete) {
-    const { error, count } = await sb().from("assessment_records").delete({ count: "exact" }).eq("sy", syToDelete);
+    const { data, error } = await sb().rpc("app_delete_records_by_sy", { p_sy: syToDelete });
     if (error) throw error;
-    return count || 0;
+    return Number(data) || 0;
 }
 
 async function clearDatabase() {
-    const { error, count } = await sb().from("assessment_records").delete({ count: "exact" }).gt("id", 0);
+    const { data, error } = await sb().rpc("app_delete_all_records");
     if (error) throw error;
-    return count || 0;
+    return Number(data) || 0;
 }
 
 function applyBaselineFilters(q, ksObj, effectiveDistrict) {
+    q = q.is("deleted_at", null);
     if (filters.sy !== "ALL") q = q.eq("sy", filters.sy);
     if (effectiveDistrict !== "ALL") q = q.eq("district_id", districtIdByName[effectiveDistrict]);
     if (filters.subject !== "ALL") q = q.eq("learning_area", filters.subject);
     if (filters.term !== "ALL") q = q.eq("term", filters.term);
-    return q.in("grade_level", ksObj.grades);
+    const inLevel = gradesForLevel();
+    return q.in("grade_level", ksObj.grades.filter(g => inLevel.includes(g)));
 }
 
 async function updateBaselineMpsForStage(ksCode, val) {
@@ -1315,7 +1556,7 @@ function profRuler(mps, compact) {
 const VIEW_TITLES = {
     "division": "Division Summary View", "district-view": "District Profile View", "comparative": "Termly Comparative Analysis",
     "dashboard": "Performance Dashboard", "data-input": "Fast Data Entry & Upload", "least-learned": "Least Learned Competencies",
-    "grade-view": "Grade Level Breakdown", "reports": "Reports & Signatories", "settings": "Settings & Branding"
+    "grade-view": "Grade Level Breakdown", "manage-records": "Manage Records", "reports": "Reports & Signatories", "settings": "Settings & Branding"
 };
 
 // On-screen letterhead of the sheet: mirrors the printed header so the screen reads as the report.
@@ -1354,6 +1595,7 @@ async function getFilteredData() {
         if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
         if (filters.term !== "ALL" && r.term !== filters.term) return false;
         if (effectiveDistrict !== "ALL" && r.district !== effectiveDistrict) return false;
+        if (!levelOk(r)) return false;
         if (filters.keystage !== "ALL" && r.keyStage !== filters.keystage) return false;
         if (filters.subject !== "ALL" && r.learningArea !== filters.subject) return false;
         return true;
@@ -1409,16 +1651,27 @@ function extractCompetencyItems(records) {
     return list;
 }
 
-function buildSubjectOptionsHTML(includeAllOption = true) {
+// MAPEH options. Filters list everything (legacy areas marked); a grade-aware list offers only what that grade allows,
+// plus the record's current area when editing so an old record can be saved unchanged.
+function mapehOptgroupHTML(forGrade, keepArea) {
+    const opt = (a, note) => `<option value="${esc(a)}">${esc(a)}${note || ""}</option>`;
+    let areas;
+    if (forGrade) {
+        areas = mapehAreasForGrade(forGrade).map(a => opt(a));
+        if (keepArea && isMapehFamily(keepArea) && !mapehAreasForGrade(forGrade).includes(keepArea)) areas.push(opt(keepArea, " (existing, needs correction)"));
+    } else {
+        areas = [MAPEH_OVERALL, ...MAPEH_COMPONENTS.map(c => c.area)].map(a => opt(a)).concat(MAPEH_LEGACY.map(a => opt(a, " (legacy)")));
+    }
+    return areas.length ? `<optgroup label="MAPEH Learning Components">${areas.join("")}</optgroup>` : "";
+}
+
+function buildSubjectOptionsHTML(includeAllOption = true, forGrade = null, keepArea = "") {
     const spsOptionsHTML = SPS_OFFERS.map(s => `<option value="${s}">${s}</option>`).join('');
     const spflOptionsHTML = SPFL_OFFERS.map(s => `<option value="${s}">${s}</option>`).join('');
     const ipedOptionsHTML = IPED_OFFERS.map(s => `<option value="${s}">${s}</option>`).join('');
 
     return `${includeAllOption ? '<option value="ALL">All Learning Areas / Specializations</option>' : ''}
-    <optgroup label="MAPEH Learning Components">
-        <option value="MAPEH - Music & Arts">MAPEH - Music & Arts</option>
-        <option value="MAPEH - PE & Health">MAPEH - PE & Health</option>
-    </optgroup>
+    ${mapehOptgroupHTML(forGrade, keepArea)}
     <optgroup label="SPA Disciplines (Special Program in the Arts)">
         <option value="SPA - Vocal Arts">SPA - Vocal Arts</option>
         <option value="SPA - Instrumental Arts">SPA - Instrumental Arts</option>
@@ -1483,6 +1736,7 @@ function restoreFilterControls() {
     document.getElementById("flt-sy").value = filters.sy;
     document.getElementById("flt-term").value = filters.term;
     document.getElementById("flt-district").value = filters.district;
+    document.getElementById("flt-level").value = filters.level;
     document.getElementById("flt-keystage").value = filters.keystage;
     document.getElementById("flt-subject").value = filters.subject;
 }
@@ -1511,14 +1765,14 @@ function switchView(view) {
         "comparative": renderComparativeView, "dashboard": renderDashboard,
         "data-input": renderDataInputView, "least-learned": renderLeastLearnedView,
         "grade-view": renderGradeConsolidation, "reports": renderReportsView,
-        "settings": renderSettingsView
+        "settings": renderSettingsView, "manage-records": renderManageRecords
     };
     const fn = renderers[view];
     Promise.resolve().then(() => fn ? fn(slot) : null).then(() => {
         if (token !== renderToken) return;
         const loading = root.querySelector(".view-loading");
         if (loading) loading.remove();
-        if (view === "data-input" || view === "settings") slot.classList.add("no-head");
+        if (view === "data-input" || view === "settings" || view === "manage-records") slot.classList.add("no-head");
         else slot.insertAdjacentHTML("afterbegin", `<div class="sheet-head screen-only"><div><span class="sh-title"></span><span class="sh-org"></span></div><div class="sh-right"><span class="sh-sy"></span><span class="chip-sample">Sample data</span></div></div>`);
         updateSheetHead();
     }).catch(err => {
@@ -1564,6 +1818,27 @@ function populateDistrictFilter() {
     }
 }
 
+// Locks the level for coordinators and shows only the key stages that exist in the level in scope.
+function syncKeyStageOptions() {
+    const L = effectiveLevel();
+    const sel = document.getElementById("flt-keystage");
+    if (!sel) return;
+    Array.from(sel.options).forEach(o => {
+        const allowed = o.value === "ALL" || L === "ALL" || LEVELS[L].keyStages.includes(o.value);
+        o.hidden = !allowed; o.disabled = !allowed;
+    });
+    if (sel.selectedOptions[0] && sel.selectedOptions[0].disabled) { sel.value = "ALL"; filters.keystage = "ALL"; }
+}
+
+function populateLevelFilter() {
+    const sel = document.getElementById("flt-level");
+    if (!sel) return;
+    const own = currentUser ? currentUser.educationLevel : "ALL";
+    if (own !== "ALL") { sel.value = own; sel.disabled = true; filters.level = own; }
+    else { sel.disabled = false; sel.value = filters.level; }
+    syncKeyStageOptions();
+}
+
 function populateSubjectFilter() {
     const sel = document.getElementById("flt-subject");
     sel.innerHTML = buildSubjectOptionsHTML(true);
@@ -1577,6 +1852,9 @@ function applyFilters() {
     const userDist = currentUser ? currentUser.district : "ALL";
     filters.district = userDist !== "ALL" ? userDist : document.getElementById("flt-district").value;
     
+    const ownLevel = currentUser ? currentUser.educationLevel : "ALL";
+    filters.level = ownLevel !== "ALL" ? ownLevel : document.getElementById("flt-level").value;
+    syncKeyStageOptions();
     filters.keystage = document.getElementById("flt-keystage").value;
     filters.subject = document.getElementById("flt-subject").value;
 
@@ -1592,7 +1870,8 @@ function updateFilterBadge() {
     const btn = document.getElementById("filters-toggle");
     if (!btn) return;
     const userDist = currentUser ? currentUser.district : "ALL";
-    const active = Object.entries(filters).filter(([k, v]) => v !== "ALL" && !(k === "district" && userDist !== "ALL")).length;
+    const ownLevel = currentUser ? currentUser.educationLevel : "ALL";
+    const active = Object.entries(filters).filter(([k, v]) => v !== "ALL" && !(k === "district" && userDist !== "ALL") && !(k === "level" && ownLevel !== "ALL")).length;
     btn.textContent = active ? `Filters (${active})` : "Filters";
 }
 
@@ -1605,6 +1884,7 @@ function resetFilters() {
         document.getElementById("flt-district").value = "ALL";
     }
     
+    if ((currentUser ? currentUser.educationLevel : "ALL") === "ALL") document.getElementById("flt-level").value = "ALL";
     document.getElementById("flt-keystage").value = "ALL";
     document.getElementById("flt-subject").value = "ALL";
     applyFilters();
@@ -1676,8 +1956,8 @@ async function renderDivisionSummaryView(container) {
         </div>
         <div class="kpi-card" style="border-top-color: var(--warning);">
             <div class="kpi-title">Tracked Specializations</div>
-            <div class="kpi-value">${SUBJECTS.length}</div>
-            <div class="kpi-sub" style="color:var(--text-muted);">2 MAPEH, 7 SPA, 30 SPS, 10 SPFL & 8 IPED Subjects</div>
+            <div class="kpi-value">${SUBJECTS.length - MAPEH_LEGACY.length}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">5 MAPEH, 7 SPA, 30 SPS, 10 SPFL & 8 IPED Subjects</div>
         </div>
     </div>
     <div class="card-box">
@@ -1699,7 +1979,8 @@ async function renderDivisionSummaryView(container) {
             </thead>
             <tbody>${matrixRows}</tbody>
         </table></div>
-    </div>`;
+    </div>
+    ${mapehComponentsByDistrictCard(data, districtsToDisplay, userDist !== "ALL" ? `${esc(userDist)} District` : 'Division')}`;
 }
 
 async function renderDistrictProfileView(container) {
@@ -1709,6 +1990,7 @@ async function renderDistrictProfileView(container) {
     const allRecords = await getAllRecords();
     const distRecords = allRecords.filter(r => {
         if (r.district !== selectedDistrict) return false;
+        if (!levelOk(r)) return false;
         if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
         if (filters.term !== "ALL" && r.term !== filters.term) return false;
         if (filters.keystage !== "ALL" && r.keyStage !== filters.keystage) return false;
@@ -1726,7 +2008,7 @@ async function renderDistrictProfileView(container) {
         .map(d => `<option value="${esc(d)}" ${d === selectedDistrict ? 'selected' : ''}>${esc(d)}</option>`).join('');
 
     const activeSubjectsInDistrict = SUBJECTS.filter(s => distRecords.some(r => r.learningArea === s));
-    const subjectsToDisplay = activeSubjectsInDistrict.length > 0 ? activeSubjectsInDistrict : SUBJECTS.slice(0, 15);
+    const subjectsToDisplay = activeSubjectsInDistrict.length > 0 ? activeSubjectsInDistrict : SUBJECTS.filter(x => !isMapehLegacy(x)).slice(0, 15);
 
     const subjMatrixRows = subjectsToDisplay.map(s => {
         const sRecs = distRecords.filter(r => r.learningArea === s);
@@ -1812,7 +2094,7 @@ function changeDistrictView(dist) {
 }
 
 async function renderComparativeView(container) {
-    const records = await getAllRecords();
+    const records = (await getAllRecords()).filter(levelOk);
     const userDist = currentUser ? currentUser.district : "ALL";
     const currentScope = userDist !== "ALL" ? userDist : filters.district;
     
@@ -1831,7 +2113,7 @@ async function renderComparativeView(container) {
     markSample(activeRecords);
     const isUserEditable = canEditData();
 
-    const stageRows = KEY_STAGES.map(ks => {
+    const stageRows = keyStagesForLevel().map(ks => {
         const ksRecs = activeRecords.filter(r => ks.grades.includes(r.gradeLevel));
         const baselineMps = ksRecs.length ? (ksRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / ksRecs.length) : 65.0;
         const currentMps = ksRecs.length ? (ksRecs.reduce((a, c) => a + c.mps, 0) / ksRecs.length) : 0;
@@ -1856,7 +2138,7 @@ async function renderComparativeView(container) {
     }).join('');
 
     /* CONSOLIDATED TOTALS */
-    const mapehRecs = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && (r.learningArea === "MAPEH - Music & Arts" || r.learningArea === "MAPEH - PE & Health"));
+    const mapehRecs = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && isMapehConsolidated(r.learningArea));
     const mapehBaseline = mapehRecs.length ? (mapehRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / mapehRecs.length) : 0;
     const mapehCurrent = mapehRecs.length ? (mapehRecs.reduce((a, c) => a + c.mps, 0) / mapehRecs.length) : 0;
     const mapehVariance = mapehCurrent - mapehBaseline;
@@ -1864,13 +2146,31 @@ async function renderComparativeView(container) {
 
     const mapehSummaryRow = (currentSubject === "ALL" || currentSubject.startsWith("MAPEH")) ? `
     <tr class="mapeh-row">
-        <td colspan="3" class="text-left" style="color: var(--deped-blue);">CONSOLIDATED MAPEH TOTAL (Music & Arts + PE & Health)</td>
+        <td colspan="3" class="text-left" style="color: var(--deped-blue);">CONSOLIDATED MAPEH TOTAL (Overall MAPEH)</td>
         <td>${mapehRecs.length ? mapehBaseline.toFixed(2) + '%' : '-'}</td>
         <td>${mapehRecs.length ? mapehCurrent.toFixed(2) + '%' : '-'}</td>
         <td>${mapehRecs.length ? `${mapehVariance > 0 ? '+' : ''}${mapehVariance.toFixed(2)}%` : '-'}</td>
         <td>${mapehRecs.length ? mapehStatusBadge : '-'}</td>
         <td>${mapehRecs.length ? `<span class="badge ${getBadgeClass(getPL(mapehCurrent))}">${getPL(mapehCurrent)}</span>` : '-'}</td>
     </tr>` : '';
+
+    // Component rows (Music, Arts, PE, Health): shown only when such records exist, same columns as the stage rows.
+    const compRowsHTML = (currentSubject === "ALL" || currentSubject.startsWith("MAPEH")) ? MAPEH_COMPONENTS.map(c => {
+        const cr = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && r.learningArea === c.area);
+        if (!cr.length) return "";
+        const b = cr.reduce((a, x) => a + (x.baselineMps !== undefined ? x.baselineMps : 65.0), 0) / cr.length;
+        const cur = meanMps(cr);
+        const v = cur - b;
+        const st = v > 0 ? '<span class="badge badge-advanced">Increased</span>' : v < 0 ? '<span class="badge badge-critical">Decreased</span>' : '<span class="badge badge-proficient">Maintained</span>';
+        return `<tr class="mapeh-comp-row">
+        <td colspan="3" class="text-left">&nbsp;&nbsp;MAPEH component: ${esc(c.label)}</td>
+        <td>${b.toFixed(2)}%</td>
+        <td>${cur.toFixed(2)}%</td>
+        <td>${v > 0 ? '+' : ''}${v.toFixed(2)}%</td>
+        <td>${st}</td>
+        <td><span class="badge ${getBadgeClass(getPL(cur))}">${getPL(cur)}</span></td>
+    </tr>`;
+    }).join('') : '';
 
     const spaRecs = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && r.learningArea.startsWith("SPA"));
     const spaBaseline = spaRecs.length ? (spaRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / spaRecs.length) : 0;
@@ -2004,6 +2304,7 @@ async function renderComparativeView(container) {
                 <tbody>
                     ${stageRows}
                     ${mapehSummaryRow}
+                    ${compRowsHTML}
                     ${spaSummaryRow}
                     ${spsSummaryRow}
                     ${spflSummaryRow}
@@ -2030,6 +2331,11 @@ async function renderComparativeView(container) {
 }
 
 // Notes are keyed exactly as before: school year, district scope, subject, term ("ALL" allowed in each).
+function comparativeLevel() {
+    const L = effectiveLevel();
+    return L === "ALL" ? "all" : L;
+}
+
 function comparativeScope() {
     const userDist = currentUser ? currentUser.district : "ALL";
     return userDist !== "ALL" ? userDist : filters.district;
@@ -2038,7 +2344,7 @@ function comparativeScope() {
 async function loadComparativeNotes() {
     const scope = comparativeScope();
     let q = sb().from("comparative_notes").select("district_scope, analysis, interventions")
-        .eq("sy", filters.sy).eq("subject", filters.subject).eq("term", filters.term);
+        .eq("sy", filters.sy).eq("subject", filters.subject).eq("term", filters.term).eq("education_level", comparativeLevel());
     if (scope !== "ALL") q = q.eq("district_scope", scope);
     const { data, error } = await q;
     if (error) throw error;
@@ -2054,14 +2360,14 @@ async function saveComparativeNotes(ev) {
     }
     const btn = ev && ev.currentTarget;
     const row = {
-        sy: filters.sy, district_scope: comparativeScope(), subject: filters.subject, term: filters.term,
+        sy: filters.sy, district_scope: comparativeScope(), education_level: comparativeLevel(), subject: filters.subject, term: filters.term,
         analysis: document.getElementById("comp-analysis-input").value,
         interventions: document.getElementById("comp-interventions-input").value
     };
     setBusy(btn, true);
     try {
         const { data, error } = await sb().from("comparative_notes")
-            .upsert(row, { onConflict: "sy,district_scope,subject,term" }).select("id");
+            .upsert(row, { onConflict: "sy,district_scope,education_level,subject,term" }).select("id");
         if (error) throw error;
         if (!data || data.length !== 1) { const e = new Error("denied"); e.code = "42501"; throw e; }
         formDirty = false;
@@ -2081,7 +2387,7 @@ async function renderDashboard(container) {
     const avgPct75 = data.length ? parseFloat((data.reduce((a, c) => a + c.pct75, 0) / data.length).toFixed(2)) : 0;
     const overallPL = getPL(avgMPS);
 
-    const mapehData = data.filter(r => r.learningArea === "MAPEH - Music & Arts" || r.learningArea === "MAPEH - PE & Health");
+    const mapehData = data.filter(r => isMapehConsolidated(r.learningArea));
     const mapehAvgMPS = mapehData.length ? (mapehData.reduce((a, c) => a + c.mps, 0) / mapehData.length).toFixed(2) : "0.00";
     const mapehPL = getPL(parseFloat(mapehAvgMPS));
 
@@ -2112,7 +2418,7 @@ async function renderDashboard(container) {
         <div class="kpi-card" style="border-top-color: #0038A8;">
             <div class="kpi-title">MAPEH Consolidated Total MPS</div>
             <div class="kpi-value">${mapehData.length ? mapehAvgMPS + '%' : '<span class="no-data">No data</span>'}</div>
-            <div class="kpi-sub">${mapehData.length ? `<span class="badge ${getBadgeClass(mapehPL)}">${mapehPL}</span>` : ''} (Music & Arts + PE)</div>
+            <div class="kpi-sub">${mapehData.length ? `<span class="badge ${getBadgeClass(mapehPL)}">${mapehPL}</span>` : ''} (Overall MAPEH)</div>
             ${mapehData.length ? profRuler(parseFloat(mapehAvgMPS), true) : ''}
         </div>
         <div class="kpi-card" style="border-top-color: #800080;">
@@ -2159,6 +2465,10 @@ async function renderDashboard(container) {
             <h4>Program Track Consolidated Comparison (MPS %)</h4>
             <div class="chart-container"><canvas id="c-subj-mps"></canvas></div>
         </div>
+        ${hasMapehNew(data) ? `<div class="chart-card">
+            <h4>MAPEH Components and Overall MAPEH (MPS %)</h4>
+            <div class="chart-container"><canvas id="c-mapeh-comp"></canvas></div>
+        </div>` : ''}
     </div>`;
 
     const distMap = {};
@@ -2216,14 +2526,49 @@ async function renderDashboard(container) {
         options: chartOptions,
         plugins: [cutoffLines]
     });
+
+    if (hasMapehNew(data)) {
+        const compLabels = [...MAPEH_COMPONENTS.map(c => c.label), "Overall MAPEH"];
+        const compVals = [...MAPEH_COMPONENTS.map(c => mapehMeanFor(data, c.area)), mapehMeanFor(data, MAPEH_OVERALL)];
+        activeCharts['mapehComp'] = new Chart(document.getElementById('c-mapeh-comp'), {
+            type: 'bar',
+            data: { labels: compLabels, datasets: [{ label: 'MPS (%)', data: compVals, backgroundColor: '#0038A8', borderRadius: 3, maxBarThickness: 56 }] },
+            options: chartOptions,
+            plugins: [cutoffLines]
+        });
+    }
 }
 
 function downloadExcelTemplate() {
     const userDist = currentUser && currentUser.district !== "ALL" ? currentUser.district : "Asuncion";
-    const templateData = [
+    const secondary = currentUser && currentUser.educationLevel === "secondary";
+    const templateData = secondary ? [
+        {
+            "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} National High School`,
+            "Key Stage": "Key Stage 3", "Grade Level": "Grade 8", "Learning Area": "MAPEH - PE",
+            "SY Baseline MPS": 65.00, "Mean Percentage Score (MPS%)": 78.50, "% Learners Scoring >= 75%": 82.00,
+            "Least Learned Competency 1 Code": "LC-1",
+            "Least Learned Competency 1 Description": "Demonstrates fitness routines and safe movement practices.",
+            "Least Learned Competency 2 Code": "LC-2",
+            "Least Learned Competency 2 Description": "Explains health risks and responsible decision making.",
+            "Least Learned Competency 3 Code": "LC-3",
+            "Least Learned Competency 3 Description": "Applies basic game strategy in team activities."
+        },
+        {
+            "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} National High School (SPA Campus)`,
+            "Key Stage": "Key Stage 4", "Grade Level": "Grade 11", "Learning Area": "SPA - Vocal Arts",
+            "SY Baseline MPS": 66.00, "Mean Percentage Score (MPS%)": 80.20, "% Learners Scoring >= 75%": 83.50,
+            "Least Learned Competency 1 Code": "LC-1",
+            "Least Learned Competency 1 Description": "Performs vocal pieces with correct pitch and phrasing.",
+            "Least Learned Competency 2 Code": "LC-2",
+            "Least Learned Competency 2 Description": "Interprets musical notation in ensemble singing.",
+            "Least Learned Competency 3 Code": "LC-3",
+            "Least Learned Competency 3 Description": "Evaluates own performance using given criteria."
+        }
+    ] : [
         {
             "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} Central Elementary School`,
-            "Key Stage": "Key Stage 1", "Grade Level": "Grade 1", "Learning Area": "MAPEH - Music & Arts",
+            "Key Stage": "Key Stage 1", "Grade Level": "Grade 1", "Learning Area": "MAPEH - Overall",
             "SY Baseline MPS": 65.00, "Mean Percentage Score (MPS%)": 78.50, "% Learners Scoring >= 75%": 82.00,
             "Least Learned Competency 1 Code": "LC-1",
             "Least Learned Competency 1 Description": "Demonstrates pitch awareness and rhythmic movement patterns.",
@@ -2248,7 +2593,232 @@ function downloadExcelTemplate() {
     const ws = XLSX.utils.json_to_sheet(templateData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "MAPEH SPA SPS SPFL IPED");
-    XLSX.writeFile(wb, `DepEd_MAPEH_SPA_SPS_SPFL_IPED_Template_${userDist}.xlsx`);
+    XLSX.writeFile(wb, `DepEd_MAPEH_SPA_SPS_SPFL_IPED_Template_${userDist}${currentUser && currentUser.educationLevel !== "ALL" ? "_" + LEVELS[currentUser.educationLevel].label : ""}.xlsx`);
+}
+
+/* MANAGE RECORDS: edit, soft delete and restore. The database enforces scope and rules; this screen only shapes them. */
+const MR = { tab: "live", page: 0, pageSize: 25, search: "", rows: [], busy: false };
+
+function openRecordModal(html) {
+    const host = document.getElementById("record-modal");
+    document.getElementById("record-modal-card").innerHTML = html;
+    host.style.display = "flex";
+    const first = host.querySelector("select, input, textarea, button");
+    if (first) first.focus();
+}
+function closeRecordModal() {
+    document.getElementById("record-modal").style.display = "none";
+    document.getElementById("record-modal-card").innerHTML = "";
+}
+document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && document.getElementById("record-modal").style.display === "flex") closeRecordModal();
+});
+
+async function renderManageRecords(container) {
+    if (!canEditData()) {
+        container.innerHTML = `<div class="card-box" style="padding: 40px; text-align: center;"><h3 style="color: var(--danger); margin-bottom: 10px;">Access Restricted</h3><p style="color: var(--text-muted);">Please log in to manage records.</p></div>`;
+        return;
+    }
+    MR.tab = "live"; MR.page = 0; MR.search = "";
+    container.innerHTML = `
+    <div class="screen-only">
+        <div class="tab-menu">
+            <button class="tab-btn active" id="mr-tab-live" onclick="mrSetTab('live')">Records</button>
+            ${canAccessSettings() ? `<button class="tab-btn" id="mr-tab-deleted" onclick="mrSetTab('deleted')">Deleted records</button>` : ''}
+        </div>
+        <div class="card-box">
+            <div class="card-box-header">
+                <h3 id="mr-title"></h3>
+                <div class="mr-tools"><input type="search" id="mr-search" placeholder="Search school, grade, learning area" aria-label="Search records" oninput="mrSearch(this.value)"></div>
+            </div>
+            <div class="table-scroll" id="mr-table"></div>
+            <div class="mr-pager" id="mr-pager"></div>
+        </div>
+        <p class="comp-note">Edits and deletions apply to every view right away. Deleted records are hidden, not destroyed${canAccessSettings() ? ', and can be restored from the Deleted records tab' : '; the Division team can restore them'}. The list follows the filters above.</p>
+    </div>`;
+    await mrReload();
+}
+
+async function mrReload() {
+    try {
+        MR.rows = MR.tab === "deleted" ? await getDeletedRecords() : await getFilteredData();
+        mrDraw();
+    } catch (err) {
+        toast(friendlyError(err), "error");
+    }
+}
+
+function mrSetTab(tab) {
+    MR.tab = tab; MR.page = 0;
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    const t = document.getElementById("mr-tab-" + tab);
+    if (t) t.classList.add("active");
+    mrReload();
+}
+function mrSearch(v) { MR.search = String(v || "").toLowerCase().trim(); MR.page = 0; mrDraw(); }
+function mrGo(delta) { MR.page = Math.max(0, MR.page + delta); mrDraw(); }
+
+function mrFlag(r) {
+    const prob = mapehRuleProblem(r.gradeLevel, r.learningArea);
+    if (!prob) return "";
+    const early = ["Grade 1", "Grade 2", "Grade 3", "Grade 11", "Grade 12"].includes(r.gradeLevel);
+    return `<br><span class="badge ${early ? 'badge-critical' : 'badge-developing'} mr-flag" title="${esc(prob)}">${early ? 'Needs correction' : 'Legacy area'}</span>`;
+}
+
+function mrDraw() {
+    const tableEl = document.getElementById("mr-table");
+    if (!tableEl) return;
+    const deleted = MR.tab === "deleted";
+    document.getElementById("mr-title").textContent = deleted ? "Deleted Assessment Records" : "Assessment Records";
+    let list = MR.rows.slice().sort((a, b) => b.id - a.id);
+    if (MR.search) {
+        list = list.filter(r => [r.sy, r.term, r.district, r.school, r.gradeLevel, r.learningArea].join(" ").toLowerCase().includes(MR.search));
+    }
+    const pages = Math.max(1, Math.ceil(list.length / MR.pageSize));
+    if (MR.page >= pages) MR.page = pages - 1;
+    const slice = list.slice(MR.page * MR.pageSize, (MR.page + 1) * MR.pageSize);
+    const head = deleted
+        ? `<th>SY</th><th>Term</th><th>District</th><th>School</th><th>Grade</th><th>Learning Area</th><th class="num">MPS</th><th>Deleted on</th><th>Reason</th><th>Action</th>`
+        : `<th>SY</th><th>Term</th><th>District</th><th>School</th><th>Grade</th><th>Learning Area</th><th class="num">Baseline</th><th class="num">MPS</th><th class="num">% at 75+</th><th>Actions</th>`;
+    const body = slice.map(r => deleted
+        ? `<tr><td>${esc(r.sy)}</td><td>${esc(r.term)}</td><td>${esc(r.district)}</td><td>${esc(r.school) || '-'}</td><td>${esc(r.gradeLevel)}</td><td>${esc(r.learningArea)}</td><td class="num">${r.mps.toFixed(2)}%</td><td>${esc(String(r.deletedAt).slice(0, 10))}</td><td>${esc(r.deleteReason) || '-'}</td>
+            <td class="mr-actions"><button class="btn btn-secondary btn-sm" onclick="mrRestore(${r.id})">Restore</button></td></tr>`
+        : `<tr><td>${esc(r.sy)}</td><td>${esc(r.term)}</td><td>${esc(r.district)}</td><td>${esc(r.school) || '-'}</td><td>${esc(r.gradeLevel)}</td><td>${esc(r.learningArea)}${mrFlag(r)}</td><td class="num">${r.baselineMps.toFixed(2)}%</td><td class="num">${r.mps.toFixed(2)}%</td><td class="num">${r.pct75.toFixed(2)}%</td>
+            <td class="mr-actions"><button class="btn btn-secondary btn-sm" onclick="openRecordEditor(${r.id})">Edit</button><button class="btn btn-danger btn-sm" onclick="openRecordDelete(${r.id})">Delete</button></td></tr>`
+    ).join("");
+    tableEl.innerHTML = `<table class="data-table"><thead><tr>${head}</tr></thead><tbody>${body || `<tr><td colspan="10" class="no-data">${deleted ? 'No deleted records.' : 'No records match the current filters.'}</td></tr>`}</tbody></table>`;
+    const from = list.length ? MR.page * MR.pageSize + 1 : 0;
+    document.getElementById("mr-pager").innerHTML = `<span>Showing ${from} to ${Math.min(list.length, (MR.page + 1) * MR.pageSize)} of ${list.length}</span>
+        <span><button class="btn btn-secondary btn-sm" ${MR.page === 0 ? 'disabled' : ''} onclick="mrGo(-1)">Previous</button> <button class="btn btn-secondary btn-sm" ${MR.page >= pages - 1 ? 'disabled' : ''} onclick="mrGo(1)">Next</button></span>`;
+}
+
+function mrFind(id) { return MR.rows.find(r => r.id === id); }
+const keyStageOfGrade = g => (KEY_STAGES.find(k => k.grades.includes(g)) || {}).code || "";
+
+function openRecordEditor(id) {
+    const r = mrFind(id);
+    if (!r) return;
+    const own = currentUser ? currentUser.educationLevel : "ALL";
+    const grades = own !== "ALL" ? LEVELS[own].grades : ALL_GRADES;
+    const userDist = currentUser ? currentUser.district : "ALL";
+    const dists = userDist !== "ALL" ? [userDist] : DEFAULT_DISTRICTS;
+    const sel = (id2, opts, cur, attrs) => `<select id="${id2}" ${attrs || ""}>${opts.map(o => `<option value="${esc(o)}" ${o === cur ? 'selected' : ''}>${esc(o)}</option>`).join("")}</select>`;
+    const lc = (i) => { const c = r.leastLearned[i]; return c ? esc(typeof c === "string" ? c : (c.desc || c.description || "")) : ""; };
+    openRecordModal(`
+        <h3 id="rec-title">Edit record</h3>
+        <div class="rec-summary">${esc(r.district)} - ${esc(r.sy)} ${esc(r.term)} - record ${r.id}</div>
+        <form id="rec-form" onsubmit="saveRecordEdit(event, ${r.id})">
+            <div class="form-grid">
+                <div class="form-group"><label for="e-sy">School year</label>${sel("e-sy", Array.from(new Set([...SCHOOL_YEARS, r.sy])), r.sy)}</div>
+                <div class="form-group"><label for="e-term">Term</label>${sel("e-term", ["Term 1", "Term 2", "Term 3"], r.term)}</div>
+                <div class="form-group"><label for="e-district">District</label>${sel("e-district", dists, r.district, userDist !== "ALL" ? "disabled" : "")}</div>
+                <div class="form-group"><label for="e-grade">Grade level</label>${sel("e-grade", grades, r.gradeLevel, 'onchange="refreshEditSubjects()"')}</div>
+                <div class="form-group span-2"><label for="e-subject">Learning area</label><select id="e-subject" data-orig="${esc(r.learningArea)}"></select></div>
+                <div class="form-group span-2"><label for="e-school">Implementing school</label><input type="text" id="e-school" value="${esc(r.school)}"></div>
+                <div class="form-group"><label for="e-baseline">Baseline MPS (%)</label><input type="number" step="0.01" id="e-baseline" value="${r.baselineMps}" required></div>
+                <div class="form-group"><label for="e-mps">Current MPS (%)</label><input type="number" step="0.01" id="e-mps" value="${r.mps}" required></div>
+                <div class="form-group"><label for="e-pct75">% learners at 75% or above</label><input type="number" step="0.01" id="e-pct75" value="${r.pct75}" required></div>
+                <div class="form-group span-2"><label for="e-lc1">Least learned competency 1</label><input type="text" id="e-lc1" value="${lc(0)}"></div>
+                <div class="form-group span-2"><label for="e-lc2">Least learned competency 2</label><input type="text" id="e-lc2" value="${lc(1)}"></div>
+                <div class="form-group span-2"><label for="e-lc3">Least learned competency 3</label><input type="text" id="e-lc3" value="${lc(2)}"></div>
+            </div>
+            <div class="login-error" id="rec-error" role="alert" style="margin-top:8px;"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeRecordModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="rec-save">Save changes</button>
+            </div>
+        </form>`);
+    refreshEditSubjects(r.learningArea);
+}
+
+function refreshEditSubjects(preferred) {
+    const sel = document.getElementById("e-subject");
+    const grade = document.getElementById("e-grade");
+    if (!sel || !grade) return;
+    const prev = preferred || sel.value;
+    sel.innerHTML = buildSubjectOptionsHTML(false, grade.value, sel.dataset.orig);
+    if (Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
+}
+
+async function saveRecordEdit(ev, id) {
+    ev.preventDefault();
+    const orig = mrFind(id);
+    const err = document.getElementById("rec-error");
+    const btn = document.getElementById("rec-save");
+    const v = x => document.getElementById(x).value;
+    const userDist = currentUser ? currentUser.district : "ALL";
+    const grade = v("e-grade");
+    const entered = [v("e-lc1"), v("e-lc2"), v("e-lc3")].map(t => t.trim());
+    const ll = entered.map((d, i) => {
+        const o = orig.leastLearned[i];
+        return d ? { code: (o && typeof o === "object" && o.code) ? o.code : `LC-${i + 1}`, desc: d } : null;
+    }).filter(Boolean).concat(orig.leastLearned.slice(3));
+    const rec = {
+        sy: v("e-sy"), term: v("e-term"), district: userDist !== "ALL" ? userDist : v("e-district"),
+        school: v("e-school").trim(), keyStage: keyStageOfGrade(grade), gradeLevel: grade, learningArea: v("e-subject"),
+        baselineMps: parseFloat(v("e-baseline")), mps: parseFloat(v("e-mps")), pct75: parseFloat(v("e-pct75")),
+        leastLearned: ll
+    };
+    rec.proficiencyLevel = getPL(rec.mps);
+    const problems = validateRecordInput(rec, orig);
+    if (/^(SPA|SPS|SPFL|IPED)/.test(rec.learningArea) && !rec.school) problems.push("Implementing school is required for special programs.");
+    if (problems.length) { err.textContent = problems.join(" "); return; }
+    err.textContent = "";
+    setBusy(btn, true);
+    try {
+        await updateRecord(id, rec);
+        closeRecordModal();
+        toast("Record updated.");
+        await mrReload();
+    } catch (e) {
+        err.textContent = friendlyError(e);
+    } finally {
+        setBusy(btn, false);
+    }
+}
+
+function openRecordDelete(id) {
+    const r = mrFind(id);
+    if (!r) return;
+    openRecordModal(`
+        <h3 id="rec-title">Delete this record?</h3>
+        <div class="rec-summary">${esc(r.district)} - ${esc(r.sy)} ${esc(r.term)}<br>${esc(r.gradeLevel)} - ${esc(r.learningArea)}${r.school ? '<br>' + esc(r.school) : ''}<br>MPS ${r.mps.toFixed(2)}%</div>
+        <p>The record disappears from every view, summary and report. It is kept in the database and the Division team can restore it.</p>
+        <label for="del-reason">Reason (optional)</label>
+        <textarea id="del-reason" maxlength="200" placeholder="For example: entered by mistake"></textarea>
+        <div class="login-error" id="rec-error" role="alert" style="margin-top:8px;"></div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeRecordModal()">Cancel</button>
+            <button type="button" class="btn btn-danger" id="rec-confirm-delete" onclick="confirmRecordDelete(${r.id})">Delete record</button>
+        </div>`);
+}
+
+async function confirmRecordDelete(id) {
+    const btn = document.getElementById("rec-confirm-delete");
+    setBusy(btn, true);
+    try {
+        const n = await deleteRecordsById([id], document.getElementById("del-reason").value);
+        closeRecordModal();
+        toast(n ? "Record deleted. The Division team can restore it if needed." : "That record was already deleted.", n ? "success" : "info");
+        await mrReload();
+    } catch (e) {
+        document.getElementById("rec-error").textContent = friendlyError(e);
+    } finally {
+        setBusy(btn, false);
+    }
+}
+
+async function mrRestore(id) {
+    if (!canAccessSettings()) { toast("Only the Division team can restore records.", "error"); return; }
+    const r = mrFind(id);
+    if (!r || !confirm(`Restore this record?\n${r.district} - ${r.sy} ${r.term} - ${r.gradeLevel} - ${r.learningArea}`)) return;
+    try {
+        await restoreRecords([id]);
+        toast("Record restored.");
+        await mrReload();
+    } catch (e) {
+        toast(friendlyError(e), "error");
+    }
 }
 
 function renderDataInputView(container) {
@@ -2262,9 +2832,11 @@ function renderDataInputView(container) {
     }
 
     const userDist = currentUser ? currentUser.district : "ALL";
-    const gradeOptionsHTML = ALL_GRADES.map(g => `<option value="${g}">${g}</option>`).join('');
+    const levelGrades = gradesForLevel();
+    const gradeOptionsHTML = levelGrades.map(g => `<option value="${g}">${g}</option>`).join('');
+    const keyStageOptionsHTML = keyStagesForLevel().map(ks => `<option value="${ks.code}">${ks.code} (Grades ${ks.grades[0].replace("Grade ", "")}-${ks.grades[ks.grades.length - 1].replace("Grade ", "")})</option>`).join('');
     const syOptionsHTML = SCHOOL_YEARS.map(sy => `<option value="${sy}">${sy}</option>`).join('');
-    const manualSubjectOptionsHTML = buildSubjectOptionsHTML(false);
+    const manualSubjectOptionsHTML = buildSubjectOptionsHTML(false, levelGrades[0]);
 
     container.innerHTML = `
     <div class="tab-menu">
@@ -2275,7 +2847,7 @@ function renderDataInputView(container) {
         <div class="ctx-bar" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; background: white; padding: 12px 18px; border-radius: 6px; border: 1px solid var(--border-color);">
             <div>
                 <strong style="color: var(--deped-dark); font-size: 0.9rem;">Excel Data Import Workflow ${userDist !== "ALL" ? `(${esc(userDist)} District Scope)` : ''}</strong>
-                <p style="font-size: 0.78rem; color: var(--text-muted);">Download the pre-formatted Excel template for MAPEH, 7 SPA Disciplines, 30 SPS Sports Tracks, 10 SPFL Foreign Languages, and 8 IPED Subjects, fill in district data, and upload it below.</p>
+                <p style="font-size: 0.78rem; color: var(--text-muted);">MAPEH rule: Grades 1 to 3 use "MAPEH - Overall" only; Grades 4 to 10 use "MAPEH - Overall" plus Music, Arts, PE and Health; Grades 11 to 12 have no MAPEH. Download the pre-formatted Excel template for MAPEH, 7 SPA Disciplines, 30 SPS Sports Tracks, 10 SPFL Foreign Languages, and 8 IPED Subjects, fill in district data, and upload it below.</p>
             </div>
             <button class="btn btn-success" type="button" onclick="downloadExcelTemplate()">
                 Download Excel Template (.XLSX)
@@ -2296,8 +2868,8 @@ function renderDataInputView(container) {
                     <div class="form-group"><label>School Year</label><select id="m-sy">${syOptionsHTML}</select></div>
                     <div class="form-group"><label>Term</label><select id="m-term"><option value="Term 1">Term 1</option><option value="Term 2">Term 2</option><option value="Term 3">Term 3</option></select></div>
                     <div class="form-group"><label>District</label><select id="m-district"></select></div>
-                    <div class="form-group"><label>Key Stage</label><select id="m-keystage" onchange="syncGradeWithKeyStage(this.value)"><option value="Key Stage 1">Key Stage 1 (Grades 1-3)</option><option value="Key Stage 2">Key Stage 2 (Grades 4-6)</option><option value="Key Stage 3">Key Stage 3 (Grades 7-10)</option><option value="Key Stage 4">Key Stage 4 (Grades 11-12)</option></select></div>
-                    <div class="form-group"><label>Grade Level (Grade 1 to 12)</label><select id="m-grade">${gradeOptionsHTML}</select></div>
+                    <div class="form-group"><label>Key Stage</label><select id="m-keystage" onchange="syncGradeWithKeyStage(this.value)">${keyStageOptionsHTML}</select></div>
+                    <div class="form-group"><label>Grade Level (${levelGrades[0]} to ${levelGrades[levelGrades.length - 1]})</label><select id="m-grade" onchange="refreshManualSubjects()">${gradeOptionsHTML}</select></div>
                     <div class="form-group">
                         <label>Learning Area / Program Track</label>
                         <select id="m-subject" onchange="toggleSchoolField(this.value)">
@@ -2362,7 +2934,19 @@ function syncGradeWithKeyStage(ksCode) {
     const ksObj = KEY_STAGES.find(k => k.code === ksCode);
     if (ksObj && ksObj.grades.length) {
         gradeSel.value = ksObj.grades[0];
+        refreshManualSubjects();
     }
+}
+
+// Learning-area choices follow the grade (Grades 1 to 3 offer overall MAPEH only; Grades 11 to 12 offer no MAPEH).
+function refreshManualSubjects() {
+    const sel = document.getElementById("m-subject");
+    const grade = document.getElementById("m-grade");
+    if (!sel || !grade) return;
+    const prev = sel.value;
+    sel.innerHTML = buildSubjectOptionsHTML(false, grade.value);
+    if (Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
+    toggleSchoolField(sel.value);
 }
 
 function switchInputTab(tab) {
@@ -2378,6 +2962,28 @@ function switchInputTab(tab) {
         const currentSubj = document.getElementById("m-subject").value;
         toggleSchoolField(currentSubj);
     }
+}
+
+// One validation for manual entry and the edit form. The database repeats every one of these checks.
+function validateRecordInput(rec, orig) {
+    const p = [];
+    if (!/^[0-9]{4}-[0-9]{4}$/.test(String(rec.sy))) p.push("School year must look like 2025-2026.");
+    if (!["Term 1", "Term 2", "Term 3"].includes(rec.term)) p.push("Term must be Term 1, Term 2 or Term 3.");
+    if (districtIdByName[rec.district] === undefined) p.push(`Unknown district "${rec.district}".`);
+    const lv = levelOfGrade(rec.gradeLevel);
+    const own = currentUser ? currentUser.educationLevel : "ALL";
+    if (!lv) p.push("Grade level must be one of Grade 1 to Grade 12.");
+    else if (own !== "ALL" && lv !== own) p.push(`This account can only work with ${LEVELS[own].label} records.`);
+    if (!rec.learningArea) p.push("Choose a learning area.");
+    [["MPS", rec.mps], ["Baseline MPS", rec.baselineMps], ["% of learners at 75% or above", rec.pct75]].forEach(([n, v]) => {
+        if (typeof v !== "number" || !isFinite(v) || v < 0 || v > 100) p.push(`${n} must be between 0 and 100.`);
+    });
+    // The MAPEH rules apply to new records and when the grade or learning area changes; an untouched old record stays editable.
+    if (!orig || orig.gradeLevel !== rec.gradeLevel || orig.learningArea !== rec.learningArea) {
+        const rp = mapehRuleProblem(rec.gradeLevel, rec.learningArea);
+        if (rp) p.push(rp);
+    }
+    return p;
 }
 
 async function handleManualSave(e) {
@@ -2401,6 +3007,12 @@ async function handleManualSave(e) {
     if (lc2Desc) leastLearned.push({ code: 'LC-2', desc: lc2Desc });
     if (lc3Desc) leastLearned.push({ code: 'LC-3', desc: lc3Desc });
 
+    const own = currentUser ? currentUser.educationLevel : "ALL";
+    const chosenLevel = levelOfGrade(document.getElementById('m-grade').value);
+    if (!chosenLevel || (own !== "ALL" && chosenLevel !== own)) {
+        toast(own !== "ALL" ? `This account can only enter ${LEVELS[own].label} records (${LEVELS[own].grades[0]} to ${LEVELS[own].grades[5]}).` : "Choose a grade level from Grade 1 to Grade 12.", "error");
+        return;
+    }
     const record = {
         sy: document.getElementById('m-sy').value || "",
         term: document.getElementById('m-term').value,
@@ -2415,6 +3027,8 @@ async function handleManualSave(e) {
         pct75: parseFloat(document.getElementById('m-pct75').value),
         leastLearned: leastLearned
     };
+    const problems = validateRecordInput(record, null);
+    if (problems.length) { toast(problems.join(" "), "error"); return; }
 
     setBusy(btn, true);
     try {
@@ -2523,7 +3137,7 @@ function handleExcelImport(e) {
                 school: r["School Name"] || r["Implementing School"] || r["School"] || "",
                 keyStage: r["Key Stage"] || "Key Stage 1",
                 gradeLevel: r["Grade Level"] || "Grade 1",
-                learningArea: r["Learning Area"] || "MAPEH - Music & Arts",
+                learningArea: r["Learning Area"] || MAPEH_OVERALL,
                 baselineMps: baselineMps,
                 proficiencyLevel: getPL(mps),
                 mps: mps,
@@ -2532,7 +3146,30 @@ function handleExcelImport(e) {
             });
         });
 
-        // Districts are a fixed list now: reject unknown names before anything is sent (spreadsheet row 1 is the header).
+        // Districts are a fixed list and every grade must belong to a level this account may import
+        // (spreadsheet row 1 is the header). Nothing is sent unless every row passes.
+        const own = currentUser ? currentUser.educationLevel : "ALL";
+        const levelRows = [];
+        recordsToInsert.forEach((rec, i) => {
+            const lv = levelOfGrade(rec.gradeLevel);
+            if (!lv) levelRows.push(`row ${i + 2}: unknown grade level "${rec.gradeLevel}"`);
+            else if (own !== "ALL" && lv !== own) levelRows.push(`row ${i + 2}: ${rec.gradeLevel} is ${LEVELS[lv].label}`);
+        });
+        if (levelRows.length) {
+            toast(`Nothing was saved. ${own !== "ALL" ? `This account can only import ${LEVELS[own].label} records. ` : ""}${levelRows.length} row(s) cannot be imported: ${levelRows.slice(0, 5).join("; ")}${levelRows.length > 5 ? "; ..." : ""}`, "error");
+            e.target.value = "";
+            return;
+        }
+        const ruleRows = [];
+        recordsToInsert.forEach((rec, i) => {
+            const probs = validateRecordInput(rec, null).filter(t => !/^(Unknown district|This account can only|Grade level must)/.test(t));
+            if (probs.length) ruleRows.push(`row ${i + 2}: ${probs[0]}`);
+        });
+        if (ruleRows.length) {
+            toast(`Nothing was saved. ${ruleRows.length} row(s) cannot be imported: ${ruleRows.slice(0, 4).join(" | ")}${ruleRows.length > 4 ? " | ..." : ""}`, "error");
+            e.target.value = "";
+            return;
+        }
         const badRows = [];
         recordsToInsert.forEach((rec, i) => {
             if (districtIdByName[rec.district] === undefined) badRows.push(`row ${i + 2}: "${rec.district}"`);
@@ -2685,12 +3322,87 @@ async function renderLeastLearnedView(container) {
     </div>`;
 }
 
+/* MAPEH component figures. Plain unweighted means of record MPS (the same method as every other figure here).
+   Overall MAPEH is the official record "MAPEH - Overall"; it is never derived from the four components. */
+function mapehMeanFor(recs, area) {
+    const list = recs.filter(r => r.learningArea === area);
+    return list.length ? parseFloat(meanMps(list).toFixed(2)) : null;
+}
+const pctCell = v => v ? `${v.toFixed(2)}%` : '<span class="no-data">No data</span>';
+const COMP_NOTE = `<p class="comp-note">Overall MAPEH is the official figure reported by the district. It is not calculated from the four components. Records filed under the older combined areas (Music & Arts, PE & Health) are counted in the MAPEH totals elsewhere but are not shown here.</p>`;
+
+function mapehComponentsByGradeCard(data, grades, scopeLabel) {
+    if (!hasMapehNew(data)) {
+        return `<p class="comp-note screen-only">MAPEH component figures (Music, Arts, PE, Health and Overall MAPEH) appear here once records are entered under the new MAPEH structure.</p>`;
+    }
+    const cell = (recs, g, area) => {
+        if (g && mapehRuleProblem(g, area)) return '<span class="no-data">Not recorded</span>';
+        const v = mapehMeanFor(recs, area);
+        return v === null ? '<span class="no-data">No data</span>' : `${v.toFixed(2)}%`;
+    };
+    const row = (label, recs, g) => {
+        const ov = mapehMeanFor(recs, MAPEH_OVERALL);
+        return `<tr>
+            <td><strong>${label}</strong></td>
+            ${MAPEH_COMPONENTS.map(c => `<td class="num">${cell(recs, g, c.area)}</td>`).join('')}
+            <td class="num">${g && mapehRuleProblem(g, MAPEH_OVERALL) ? '<span class="no-data">Not recorded</span>' : ov === null ? '<span class="no-data">No data</span>' : `<div class="ruler-cell"><strong>${ov.toFixed(2)}%</strong>${profRuler(ov, true)}</div>`}</td>
+            <td>${ov === null ? '<span class="no-data">No data</span>' : `<span class="badge ${getBadgeClass(getPL(ov))}">${getPL(ov)}</span>`}</td>
+        </tr>`;
+    };
+    const rows = grades.map(g => row(g, data.filter(r => r.gradeLevel === g), g)).join('');
+    return `
+    <div class="card-box">
+        <div class="card-box-header"><h3>MAPEH Components by Grade Level - ${scopeLabel}</h3></div>
+        <div class="table-scroll"><table class="data-table">
+            <thead><tr><th>Grade Level</th>${MAPEH_COMPONENTS.map(c => `<th class="num">${c.label} MPS (%)</th>`).join('')}<th class="num">Overall MAPEH MPS (%)</th><th>Overall Proficiency</th></tr></thead>
+            <tbody>${rows}${row('All grades in view', data.filter(r => grades.includes(r.gradeLevel)), null)}</tbody>
+        </table></div>
+        ${COMP_NOTE}
+    </div>`;
+}
+
+// Division / district summary: per district, mean of term means (the method of the matrix above it).
+function mapehComponentsByDistrictCard(data, districts, scopeLabel) {
+    if (!hasMapehNew(data)) return "";
+    const areas = [...MAPEH_COMPONENTS.map(c => c.area), MAPEH_OVERALL];
+    const termMean = (recs) => {
+        const tm = ["Term 1", "Term 2", "Term 3"].map(t => meanMps(recs.filter(r => r.term === t))).filter(v => v > 0);
+        return tm.length ? tm.reduce((a, b) => a + b, 0) / tm.length : 0;
+    };
+    const vals = districts.map(d => areas.map(a => termMean(data.filter(r => r.district === d && r.learningArea === a))));
+    const rows = districts.map((d, i) => {
+        const ov = vals[i][4];
+        return `<tr>
+            <td><strong>${i + 1}</strong></td><td><strong>${esc(d)}</strong></td>
+            ${vals[i].slice(0, 4).map(v => `<td class="num">${pctCell(v)}</td>`).join('')}
+            <td class="num">${ov ? `<strong>${ov.toFixed(2)}%</strong>` : '<span class="no-data">No data</span>'}</td>
+            <td>${ov ? `<span class="badge ${getBadgeClass(getPL(ov))}">${getPL(ov)}</span>` : '<span class="no-data">No data</span>'}</td>
+        </tr>`;
+    }).join('');
+    const tot = areas.map((a, j) => { const nz = vals.map(v => v[j]).filter(v => v > 0); return nz.length ? nz.reduce((x, y) => x + y, 0) / nz.length : 0; });
+    const totRow = districts.length > 1 ? `<tr class="mapeh-row">
+        <td colspan="2"><strong>${scopeLabel}</strong></td>
+        ${tot.slice(0, 4).map(v => `<td class="num">${pctCell(v)}</td>`).join('')}
+        <td class="num">${tot[4] ? `<strong>${tot[4].toFixed(2)}%</strong>` : '<span class="no-data">No data</span>'}</td>
+        <td>${tot[4] ? `<span class="badge ${getBadgeClass(getPL(tot[4]))}">${getPL(tot[4])}</span>` : '<span class="no-data">No data</span>'}</td>
+    </tr>` : '';
+    return `
+    <div class="card-box">
+        <div class="card-box-header"><h3>MAPEH Components by District - ${scopeLabel}</h3></div>
+        <div class="table-scroll"><table class="data-table">
+            <thead><tr><th>#</th><th>District Name</th>${MAPEH_COMPONENTS.map(c => `<th class="num">${c.label} MPS (%)</th>`).join('')}<th class="num">Overall MAPEH MPS (%)</th><th>Overall Proficiency</th></tr></thead>
+            <tbody>${rows}${totRow}</tbody>
+        </table></div>
+        ${COMP_NOTE}
+    </div>`;
+}
+
 async function renderGradeConsolidation(container) {
     const data = await getFilteredData();
     const userDist = currentUser ? currentUser.district : "ALL";
 
     const gradeMap = {};
-    ALL_GRADES.forEach(g => gradeMap[g] = { mpsSum: 0, count: 0 });
+    gradesForLevel().forEach(g => gradeMap[g] = { mpsSum: 0, count: 0 });
 
     data.forEach(r => {
         if (gradeMap[r.gradeLevel]) {
@@ -2699,7 +3411,7 @@ async function renderGradeConsolidation(container) {
         }
     });
 
-    const rows = ALL_GRADES.map(g => {
+    const rows = gradesForLevel().map(g => {
         const item = gradeMap[g];
         const avgMPS = item.count ? parseFloat((item.mpsSum / item.count).toFixed(2)) : 0;
         return `<tr>
@@ -2716,7 +3428,8 @@ async function renderGradeConsolidation(container) {
             <thead><tr><th>Grade Level</th><th class="num">District MPS (%)</th><th>Proficiency Level</th></tr></thead>
             <tbody>${rows}</tbody>
         </table></div>
-    </div>`;
+    </div>
+    ${mapehComponentsByGradeCard(data, gradesForLevel(), userDist !== "ALL" ? `${esc(userDist)} District` : 'Division')}`;
 }
 
 function renderReportsView(container) {
@@ -2982,11 +3695,11 @@ function updateSignatoriesUI() {
         const coord = districtCoordinators[activeDist];
         document.getElementById("sig-p-name").textContent = coord.name;
         document.getElementById("sig-p-pos").textContent = `${activeDist} ${coord.position}`;
-        document.getElementById("print-title").textContent = `${activeDist.toUpperCase()} DISTRICT PROFICIENCY CONSOLIDATION REPORT`;
+        document.getElementById("print-title").textContent = `${activeDist.toUpperCase()} DISTRICT${levelTitleWord()} PROFICIENCY CONSOLIDATION REPORT`;
     } else {
         document.getElementById("sig-p-name").textContent = settings.sigPrepName;
         document.getElementById("sig-p-pos").textContent = settings.sigPrepPos;
-        document.getElementById("print-title").textContent = "DIVISION DISTRICT & TERM PROFICIENCY CONSOLIDATION REPORT";
+        document.getElementById("print-title").textContent = `DIVISION DISTRICT & TERM${levelTitleWord()} PROFICIENCY CONSOLIDATION REPORT`;
     }
     document.getElementById("sig-c-name").textContent = settings.sigCheckName;
     document.getElementById("sig-c-pos").textContent = settings.sigCheckPos;
@@ -3019,13 +3732,13 @@ async function downloadCsv(ev) {
             rank(SUBJECTS, a.learningArea) - rank(SUBJECTS, b.learningArea) || a.id - b.id);
         const maxLc = Math.max(3, ...recs.map(r => r.leastLearned.length));
         const head = ["School Year", "Term", "District", "School Name", "Key Stage", "Grade Level", "Learning Area",
-            "SY Baseline MPS", "Mean Percentage Score (MPS%)", "% Learners Scoring >= 75%", "Proficiency Level"];
+            "SY Baseline MPS", "Mean Percentage Score (MPS%)", "% Learners Scoring >= 75%", "Proficiency Level", "Education Level"];
         for (let i = 1; i <= maxLc; i++) head.push(`Least Learned Competency ${i} Code`, `Least Learned Competency ${i} Description`);
         head.push("Sample Data", "Record ID", "Date Added");
         const lines = [head.map(csvCell).join(",")];
         recs.forEach(r => {
             const row = [r.sy, r.term, r.district, r.school, r.keyStage, r.gradeLevel, r.learningArea,
-                r.baselineMps.toFixed(2), r.mps.toFixed(2), r.pct75.toFixed(2), r.proficiencyLevel];
+                r.baselineMps.toFixed(2), r.mps.toFixed(2), r.pct75.toFixed(2), r.proficiencyLevel, LEVELS[r.educationLevel] ? LEVELS[r.educationLevel].label : ""];
             for (let i = 0; i < maxLc; i++) {
                 const c = r.leastLearned[i];
                 row.push(c ? (typeof c === "string" ? `LC-${i + 1}` : (c.code || `LC-${i + 1}`)) : "", c ? (typeof c === "string" ? c : (c.desc || c.description || "")) : "");
@@ -3052,7 +3765,7 @@ async function clearSpecificSYData() {
     if (!canAccessSettings()) { toast("Access Denied: Admin or Supervisor authorization required.", "error"); return; }
     const selectedSY = document.getElementById("clear-sy-select").value;
     if (!(await requireReauth(`Enter your password to clear stored records for SY ${selectedSY}.`))) return;
-    if (confirm(`Password verified. Are you sure you want to delete all stored assessment records for SY ${selectedSY}? This action cannot be undone.`)) {
+    if (confirm(`Password verified. Are you sure you want to delete all stored assessment records for SY ${selectedSY}? They disappear from every view. The Division team can restore them from Manage Records.`)) {
         try {
             const n = await deleteRecordsBySY(selectedSY);
             toast(`${n} assessment record(s) for SY ${selectedSY} cleared.`);
@@ -3066,10 +3779,10 @@ async function clearSpecificSYData() {
 async function clearAllData() {
     if (!canAccessSettings()) { toast("Access Denied: Admin or Supervisor authorization required.", "error"); return; }
     if (!(await requireReauth("Enter your password to clear all stored database records."))) return;
-    if (confirm("Password verified. Are you sure you want to clear all stored database records? This action cannot be undone.")) {
+    if (confirm("Password verified. Are you sure you want to clear all stored database records? They disappear from every view. The Division team can restore them from Manage Records.")) {
         try {
             const n = await clearDatabase();
-            toast(`Database cleared: ${n} record(s) removed.`);
+            toast(`Database cleared: ${n} record(s) removed from view (recoverable).`);
             switchView("division");
         } catch (err) {
             toast(friendlyError(err), "error");

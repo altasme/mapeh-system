@@ -18,7 +18,7 @@ for (const user of ['admin', 'supervisor', 'carmen_coord']) {
   await page.goto(LIVE); await page.fill('#login-username', user); await page.fill('#login-password', pw[user]); await page.click('#login-screen button[type=submit]');
   await page.waitForFunction(() => document.getElementById('login-screen').style.display === 'none', null, { timeout: 30000 });
   await page.waitForFunction(() => !document.querySelector('.view-loading') && document.getElementById('view-container').innerText.length > 20);
-  if (user === 'carmen_coord') { ok(!(await page.locator('#csv-btn').isVisible()), 'coordinator: no Download CSV button on the deployed site'); await ctx.close(); continue; }
+  if (user === 'carmen_elemcoord') { ok(!(await page.locator('#csv-btn').isVisible()), 'coordinator: no Download CSV button on the deployed site'); await ctx.close(); continue; }
   const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.click('#csv-btn')]);
   const f = `/tmp/claude-0/live-${user}.csv`; await dl.saveAs(f); const lines = fs.readFileSync(f, 'utf8').trim().split(/\r?\n/);
   ok(dl.suggestedFilename().startsWith('mapeh-assessment-records-'), `${user}: downloaded ${dl.suggestedFilename()}`);

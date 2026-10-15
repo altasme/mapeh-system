@@ -14,7 +14,10 @@ const CDN = process.env.CDN_DIR || '/tmp/claude-0/cdn';
 const OUT = process.env.QA_OUT || '/tmp/claude-0/qa-out';
 fs.mkdirSync(OUT, { recursive: true });
 const stubJs = fs.readFileSync(path.join(ROOT, 'tools/qa/stub-supabase.js'), 'utf8');
-const demo = JSON.parse(execSync(`python3 ${ROOT}/tools/gen_demo_records.py --json`, { maxBuffer: 1 << 26 }).toString());
+// `demo` is the original combined-area structure: it is what the original app understands, so parity tests use it.
+// `demoNew` is the current MAPEH structure (overall + components), used by the component, rule and edit/delete tests.
+const demo = JSON.parse(execSync(`python3 ${ROOT}/tools/gen_demo_records.py --legacy --json`, { maxBuffer: 1 << 26 }).toString());
+const demoNew = JSON.parse(execSync(`python3 ${ROOT}/tools/gen_demo_records.py --json`, { maxBuffer: 1 << 26 }).toString());
 const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, 'fixtures/regression.json'), 'utf8'));
 
 let pass = 0, fail = 0;
@@ -49,14 +52,24 @@ const ACCOUNTS = [
   ['talaingod_coord', 'Talaingod District Coordinator', 'district_coordinator', 'Talaingod'],
   ['langilan_coord', 'Langilan District Coordinator', 'district_coordinator', 'Langilan'],
 ];
-const profiles = ACCOUNTS.map(([username, display_name, role, dn], i) => ({
-  id: `00000000-0000-0000-0000-${String(i + 1).padStart(12, '0')}`, username, display_name, role,
-  district_id: dn ? districts.find(d => d.name === dn).id : null }));
+const CODES = { 'Asuncion': 'asuncion', 'B.E. Dujali': 'dujali', 'Carmen': 'carmen', 'Kapalong East': 'kapalonge', 'Kapalong West': 'kapalongw', 'New Corella': 'newcorella', 'San Isidro': 'sanisidro', 'Sto. Tomas East': 'stotomase', 'Sto. Tomas West': 'stotomasw', 'Talaingod': 'talaingod', 'Langilan': 'langilan' };
+const LEVEL_ACCOUNTS = []; // 22 level coordinators: {district_code}_elemcoord / _seccoord, initial password {district_code}@elem / @sec
+for (const [district, code] of Object.entries(CODES)) for (const [level, user, pwTag, label] of [['elementary', 'elemcoord', 'elem', 'Elementary'], ['secondary', 'seccoord', 'sec', 'Secondary']])
+  LEVEL_ACCOUNTS.push({ username: `${code}_${user}`, password: `${code}@${pwTag}`, district, level, name: `${district} ${label} Coordinator` });
+const DIVISION = ACCOUNTS.filter(a => a[2] !== 'district_coordinator');
+const profiles = [
+  ...DIVISION.map(([username, display_name, role], i) => ({ id: `00000000-0000-0000-0000-${String(i + 1).padStart(12, '0')}`, username, display_name, role, district_id: null, education_level: null, active: true, must_change_password: false })),
+  ...LEVEL_ACCOUNTS.map((a, i) => ({ id: `00000000-0000-0000-0001-${String(i + 1).padStart(12, '0')}`, username: a.username, display_name: a.name, role: 'district_coordinator',
+    district_id: districts.find(d => d.name === a.district).id, education_level: a.level, active: true, must_change_password: false })),
+  // one of the original district-wide coordinators, retired by the migration
+  { id: '00000000-0000-0000-0002-000000000001', username: 'carmen_coord', display_name: 'Carmen District Coordinator', role: 'district_coordinator', district_id: 3, education_level: null, active: false, must_change_password: false }
+];
 const settingsSeed = (() => { // parse supabase/seed/settings.sql json
   const s = fs.readFileSync(path.join(ROOT, 'supabase/seed/settings.sql'), 'utf8');
   return JSON.parse(s.slice(s.indexOf("'{") + 1, s.lastIndexOf("}'") + 1));
 })();
-const toRowish = r => ({ sy: r.sy, term: r.term, district_id: districts.find(d => d.name === r.district).id, school: r.school,
+const gradeLevelOf = g => ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'].includes(g) ? 'elementary' : 'secondary';
+const toRowish = r => ({ education_level: gradeLevelOf(r.gradeLevel), sy: r.sy, term: r.term, district_id: districts.find(d => d.name === r.district).id, school: r.school,
   key_stage: r.keyStage, grade_level: r.gradeLevel, learning_area: r.learningArea, baseline_mps: r.baselineMps, mps: r.mps,
   pct75: r.pct75, proficiency_level: r.proficiencyLevel, least_learned: r.leastLearned, is_demo: r.isDemo !== false });
 
@@ -111,10 +124,13 @@ async function openLegacy(username, records, viewport) {
   return { ctx, page };
 }
 async function openNew(username, records, extra = {}, viewport) {
-  const { passwords: pw } = await readPasswords();
+  let { passwords: pw } = await readPasswords();
   const ctx = await context('new', viewport); const page = await ctx.newPage();
   const errors = []; page.on('pageerror', e => errors.push(String(e)));
-  const stub = { districts: JSON.parse(JSON.stringify(districts)), profiles, passwords: pw, records: records.map((r, i) => Object.assign({ id: i + 1 }, toRowish(r))),
+  const allPw = Object.assign({}, pw, Object.fromEntries(LEVEL_ACCOUNTS.map(a => [a.username, a.password])));
+  const profs = JSON.parse(JSON.stringify(profiles)).map(p => Object.assign(p, { must_change_password: p.must_change_password || (extra.mustChange || []).includes(p.username) }));
+  pw = allPw;
+  const stub = { districts: JSON.parse(JSON.stringify(districts)), profiles: profs, passwords: allPw, records: records.map((r, i) => Object.assign({ id: i + 1 }, toRowish(r))),
     notes: extra.notes || [], settings: JSON.parse(JSON.stringify(settingsSeed)) };
   await page.addInitScript(s => { window.__STUB = s; }, stub);
   await page.goto(`${BASE}/public/index.html`);
@@ -127,6 +143,7 @@ async function openNew(username, records, extra = {}, viewport) {
   return { ctx, page, errors };
 }
 async function settled(page) {
+  await page.evaluate(() => { const h = document.getElementById('qa-hide'); if (h) h.remove(); });  // text() hides .screen-only; screen-only views must be visible to be 'settled'
   await page.waitForFunction(() => !document.querySelector('#view-container .view-loading') && document.getElementById('view-container').innerText.length > 0, null, { timeout: 15000 });
 }
 async function legacyReady(page) {
@@ -138,7 +155,7 @@ const text = async page => norm(await page.evaluate(() => {
   if (!document.getElementById('qa-hide')) { const st = document.createElement('style'); st.id = 'qa-hide'; st.textContent = '.screen-only{display:none!important}'; document.head.appendChild(st); }
   return document.getElementById('view-container').innerText;
 }));
-const charts = async page => page.evaluate(() => Object.values(activeCharts).map(c => c.data.datasets[0].data.map(Number)));
+const charts = async page => page.evaluate(() => Object.values(activeCharts).slice(0, 2).map(c => c.data.datasets[0].data.map(Number)));
 
 async function goView(L, N, view, filt) {
   for (const [p, isNew] of [[L.page, false], [N.page, true]]) {
@@ -156,9 +173,13 @@ function canonLegacy(t) {
   return t.toLowerCase().replace(/\s+/g, ' ').trim()
     .replace(/(?<![\d.])0\.00% (?<![\d.])0\.00% \+?0\.00% maintained beginning/g, '- - - - -')
     .replace(/-65\.00% decreased beginning/g, '- - -')
-    .replace(/(?<![\d.])(?:0\.00%|0%) beginning/g, 'nd');
+    .replace(/(?<![\d.])(?:0\.00%|0%) beginning/g, 'nd')
+    // intended label changes of the MAPEH restructure (the legacy records are still counted exactly as before)
+    .replace(/\(music & arts \+ pe\)/g, '(overall mapeh)')
+    .replace(/consolidated mapeh total \(music & arts \+ pe & health\)/g, 'consolidated mapeh total (overall mapeh)')
+    .replace(/tracked specializations \d+ \d+ mapeh,/g, 'tracked specializations N N mapeh,');
 }
-function canonPorted(t) { return t.toLowerCase().replace(/\s+/g, ' ').trim().replace(/no data no data/g, 'nd').replace(/no data/g, 'nd'); }
+function canonPorted(t) { return t.toLowerCase().replace(/\s+/g, ' ').trim().replace(/no data no data/g, 'nd').replace(/no data/g, 'nd').replace(/tracked specializations \d+ \d+ mapeh,/g, 'tracked specializations N N mapeh,'); }
 function firstDiff(a, b) {
   const A = a.split(' '), B = b.split(' ');
   for (let i = 0; i < Math.max(A.length, B.length); i++) if (A[i] !== B[i]) return `    legacy: ...${A.slice(Math.max(0, i - 6), i + 8).join(' ')}\n    ported: ...${B.slice(Math.max(0, i - 6), i + 8).join(' ')}`;
@@ -181,7 +202,7 @@ console.log('\n[1] Seed fidelity: districts, coordinators, settings and constant
   ok(JSON.stringify(districts.map(d => d.name)) === JSON.stringify(legacyDistricts), 'district list and order identical');
   ok(districts.every(d => legacyCoords[d.name].name === d.coordinator_name && legacyCoords[d.name].position === d.coordinator_position), 'coordinator defaults identical (seed vs original)');
   ok(JSON.stringify(settingsSeed) === JSON.stringify(legacySettings), 'settings defaults identical (seed vs original)');
-  ok(profiles.length === 13, '13 accounts provisioned per Appendix D');
+  ok(profiles.filter(p => p.role !== 'district_coordinator').length === 2 && profiles.filter(p => p.education_level).length === 22 && profiles.filter(p => !p.active).length === 1, 'accounts: Admin and Supervisor kept, 22 level coordinators, the original district-wide coordinators retired');
 }
 
 console.log('\n[2] Parity on the 1,452-row sample set (admin): every view, 5 filter combinations');
@@ -259,13 +280,13 @@ console.log('\n[4] Security: stored XSS is neutralised (and was live in the orig
 
 console.log('\n[5] Roles: coordinator scope, settings access, destructive actions');
 {
-  const N = await openNew('carmen_coord', demo);
+  const N = await openNew('carmen_elemcoord', demo);
   await N.page.evaluate(() => switchView('division')); await settled(N.page);
   let t = await text(N.page);
   ok(t.includes('Carmen') && !t.includes('Asuncion'), 'coordinator sees only own district (Division Summary)');
   ok(await N.page.evaluate(() => document.getElementById('nav-settings').style.display === 'none'), 'Settings & Branding hidden for coordinator');
   await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
-  ok(/TOTAL DISTRICT RECORDS\s+132/i.test(await text(N.page)), 'coordinator sees 132 own-district records only (database filtered)');
+  ok(/TOTAL DISTRICT RECORDS\s+66/i.test(await text(N.page)), 'elementary coordinator sees 66 records: own district and own level only (database filtered)');
   await N.page.evaluate(() => switchView('settings')); await settled(N.page);
   ok((await text(N.page)).includes('Access Restricted'), 'Settings view refuses a coordinator');
   await N.ctx.close();
@@ -284,7 +305,7 @@ console.log('\n[5] Roles: coordinator scope, settings access, destructive action
   await A.page.fill('#reauth-password', (await readPasswords()).passwords.admin); await A.page.click('#reauth-ok');
   await A.page.waitForSelector('.toast-success');
   ok(/1452 assessment record/.test(await A.page.textContent('#toast-host')), 'correct password: delete succeeds and the confirmed count (1452) is reported');
-  ok(await A.page.evaluate(() => window.__STUB.records.length === 0), 'records are gone');
+  ok(await A.page.evaluate(() => window.__STUB.records.filter(r => !r.deleted_at).length === 0 && window.__STUB.records.length === 1452), 'records are hidden from every view but kept in the database (soft delete, recoverable)');
   await A.ctx.close();
 }
 
@@ -294,7 +315,7 @@ console.log('\n[6] Writes: confirmed saves, constraint errors, all-or-nothing im
   const xlsx = async rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
   const upload = async rows => { await N.page.evaluate(() => switchView('data-input')); await settled(N.page);
     await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xlsx(rows)) }); };
-  const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'X', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 1', 'Learning Area': 'MAPEH - Music & Arts', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'lc one' };
+  const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'X', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 1', 'Learning Area': 'MAPEH - Overall', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'lc one' };
   const count = () => N.page.evaluate(() => window.__STUB.records.length);
   await upload([base, Object.assign({}, base, { District: 'Atlantis' }), Object.assign({}, base, { District: 'Nowhere' })]);
   await N.page.waitForSelector('.toast-error');
@@ -304,7 +325,7 @@ console.log('\n[6] Writes: confirmed saves, constraint errors, all-or-nothing im
   await N.page.evaluate(() => document.getElementById('toast-host').innerHTML = '');
   await upload([base, Object.assign({}, base, { 'Mean Percentage Score (MPS%)': 150 })]);
   await N.page.waitForSelector('.toast-error'); tmsg = await N.page.textContent('#toast-host');
-  ok(/Nothing was saved\. MPS must be between 0 and 100/.test(tmsg), 'MPS 150: plain-English database error, no partial save');
+  ok(/Nothing was saved\..*row 3: MPS must be between 0 and 100/.test(tmsg), 'MPS 150: plain-English database error, no partial save');
   ok(await count() === 20, 'MPS 150: nothing saved (one bad row rejects the file)');
   await N.page.evaluate(() => document.getElementById('toast-host').innerHTML = '');
   await upload([base, Object.assign({}, base, { Term: 'Term 2' })]);
@@ -348,7 +369,7 @@ console.log('\n[7] Unsaved-changes guard, keyboard access, login errors, sample-
   await N.page.focus('.nav-item:has-text("Grade Level Breakdown")'); await N.page.keyboard.press('Enter');
   await settled(N.page);
   ok((await N.page.evaluate(() => currentView)) === 'grade-view', 'nav item works from the keyboard (Enter)');
-  ok(await N.page.evaluate(() => document.querySelectorAll('.nav-item[role=button][tabindex="0"]').length === 9), 'all 9 nav items have role=button and tabindex=0');
+  ok(await N.page.evaluate(() => document.querySelectorAll('.nav-item[role=button][tabindex="0"]').length === 10), 'all 10 nav items have role=button and tabindex=0');
   ok(await N.page.evaluate(() => !document.getElementById('env-banner').hidden), 'test-environment banner is visible');
   await N.page.emulateMedia({ media: 'print' });
   ok(await N.page.evaluate(() => getComputedStyle(document.getElementById('print-sample-line')).display === 'block' && getComputedStyle(document.getElementById('env-banner')).display === 'none'), 'print: "SAMPLE DATA" line shown when sample rows are in view; banner not printed');
@@ -407,10 +428,10 @@ console.log('\n[9] Print CSS: the original @media print block is byte-identical'
 
 console.log('\n[10] Print output: PDFs of the original and the ported app for division and district scope');
 {
-  for (const [user, label, view] of [['admin', 'division', 'comparative'], ['carmen_coord', 'district', 'comparative'], ['admin', 'division-dashboard', 'dashboard']]) {
+  for (const [user, label, view, filt] of [['admin', 'division', 'comparative', null], ['admin', 'district', 'comparative', { 'flt-district': 'Carmen' }], ['admin', 'division-dashboard', 'dashboard', null]]) {
     const L = await openLegacy(user, demo); const N = await openNew(user, demo);
     await legacyReady(L.page);
-    await goView(L, N, view, null);
+    await goView(L, N, view, filt);
     // hide only the QA-irrelevant banner difference: the ported page has no extra on-screen element in print
     const files = [];
     // ported is printed twice: as shipped (with the SAMPLE DATA line) and with the flag cleared (must equal the original)
@@ -420,7 +441,7 @@ console.log('\n[10] Print output: PDFs of the original and the ported app for di
       const f = `${OUT}/print-${label}-${tag}.pdf`;
       await pg.pdf({ path: f, format: 'A4', printBackground: true }); files.push(f);
     }
-    const txt = f => execSync(`pdftotext -layout ${f} -`).toString().replace(/\s+/g, ' ').trim();
+    const txt = f => execSync(`pdftotext -layout ${f} -`).toString().replace(/\s+/g, ' ').trim().replace(/\(Music & Arts \+ PE & Health\)/g, '(Overall MAPEH)').replace(/\(Music & Arts \+ PE\)/g, '(Overall MAPEH)');
     ok(/SAMPLE DATA/.test(txt(files[1])), `print ${label}/${view}: ported report carries the SAMPLE DATA line (sample rows in view)`);
     ok(!/SAMPLE DATA/.test(txt(files[2])), `print ${label}/${view}: flag off removes the line`);
     ok(txt(files[0]) === txt(files[2]), `print ${label}/${view}: printed text identical to the original (same filters)`);
@@ -475,7 +496,7 @@ console.log('\n[11] Download CSV (Admin and Supervisor) and the aligned signator
     ok(rows.length === 1 + demo.length, `exports the entire data (${rows.length - 1} rows) even while a district filter is active, including the 1,452-row set past the 1,000-row cap`);
     await N.ctx.close(); }
   // coordinators cannot see or use it
-  { const N = await openNew('carmen_coord', rowsIn);
+  { const N = await openNew('carmen_elemcoord', rowsIn);
     ok(!(await N.page.locator('#csv-btn').isVisible()), 'coordinator: no Download CSV button');
     let got = false; N.page.once('download', () => { got = true; });
     await N.page.evaluate(() => downloadCsv()); await N.page.waitForTimeout(500);
@@ -499,6 +520,392 @@ console.log('\n[11] Download CSV (Admin and Supervisor) and the aligned signator
   await A.page.click('button:has-text("Save Division Signatories")'); await A.page.waitForSelector('.toast-success');
   ok(await A.page.evaluate(() => document.getElementById('sig-c-name').textContent === 'CHECKER NAME' && document.getElementById('sig-c-pos').textContent === 'Checker Position'), 'signatories: saving still updates the printed signatory block');
   await A.ctx.close();
+}
+
+console.log('\n[12] Elementary and Secondary coordinators: 22 accounts, separation, password gate');
+{
+  const LV = { elementary: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'], secondary: ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'] };
+  const LABEL = { elementary: 'Elementary', secondary: 'Secondary' };
+  ok(LEVEL_ACCOUNTS.length === 22 && new Set(LEVEL_ACCOUNTS.map(a => a.username)).size === 22, '22 distinct accounts: one Elementary and one Secondary coordinator for each of the 11 districts');
+  ok(LEVEL_ACCOUNTS.every(a => /^[a-z]+_(elemcoord|seccoord)$/.test(a.username)), 'usernames follow {district_code}_elemcoord and {district_code}_seccoord');
+
+  // --- every one of the 22 accounts: own district and own level, nothing else
+  let allGood = true; const problems = [];
+  for (const a of LEVEL_ACCOUNTS) {
+    const N = await openNew(a.username, demo);
+    const r = await N.page.evaluate(async lvl => {
+      await switchView('dashboard');
+      const rows = (await sb().from('assessment_records').select('district_id, education_level, grade_level').range(0, 999)).data;
+      const own = districtIdByName[currentUser.district];
+      return {
+        role: document.getElementById('u-role').textContent, rowCount: rows.length,
+        onlyOwn: rows.every(x => x.district_id === own && x.education_level === lvl),
+        districtLocked: document.getElementById('flt-district').disabled && document.getElementById('flt-district').value === currentUser.district,
+        levelLocked: document.getElementById('flt-level').disabled && document.getElementById('flt-level').value === lvl,
+        keyStages: Array.from(document.querySelectorAll('#flt-keystage option')).filter(o => !o.disabled).map(o => o.value),
+        settingsHidden: document.getElementById('nav-settings').style.display === 'none',
+        csvHidden: document.getElementById('csv-btn').style.display === 'none'
+      };
+    }, a.level);
+    const want = a.level === 'elementary' ? ['ALL', 'Key Stage 1', 'Key Stage 2'] : ['ALL', 'Key Stage 3', 'Key Stage 4'];
+    const good = r.role === `${LABEL[a.level]} Coordinator (${a.district})` && r.rowCount === 66 && r.onlyOwn && r.districtLocked && r.levelLocked
+      && JSON.stringify(r.keyStages) === JSON.stringify(want) && r.settingsHidden && r.csvHidden;
+    if (!good) { allGood = false; problems.push(a.username + ' ' + JSON.stringify(r)); }
+    await N.ctx.close();
+  }
+  ok(allGood, 'all 22 accounts: correct label, 66 rows (own district AND level only), district and level locked, own key stages only, no Settings, no CSV' + (problems.length ? ' -> ' + problems[0] : ''));
+
+  // --- an Elementary and a Secondary coordinator of the same district try to cross over
+  for (const [user, own, otherLevel, otherGrade, ownGrade] of [['asuncion_elemcoord', 'elementary', 'secondary', 'Grade 8', 'Grade 3'], ['asuncion_seccoord', 'secondary', 'elementary', 'Grade 3', 'Grade 9']]) {
+    const N = await openNew(user, demo);
+    const att = await N.page.evaluate(async ([og, wg]) => {
+      const d = districtIdByName['Asuncion'], other = districtIdByName['Carmen'];
+      const row = (district, grade) => ({ sy: '2025-2026', term: 'Term 1', district_id: district, school: '', key_stage: 'Key Stage 1', grade_level: grade, learning_area: 'X', baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' });
+      const out = {};
+      out.createOther = (await sb().from('assessment_records').insert(row(d, og))).error?.code;
+      out.createOtherDistrict = (await sb().from('assessment_records').insert(row(other, wg))).error?.code;
+      out.createUnknownGrade = (await sb().from('assessment_records').insert(row(d, 'Grade 13'))).error?.code;
+      const mine = (await sb().from('assessment_records').insert(row(d, wg)).select('id')).data;
+      out.createOwn = !!(mine && mine.length === 1);
+      out.moveLevel = (await sb().from('assessment_records').update({ grade_level: og }).eq('id', mine[0].id)).error?.code;
+      out.moveDistrict = (await sb().from('assessment_records').update({ district_id: other }).eq('id', mine[0].id)).error?.code;
+      out.deleteOwn = (await sb().from('assessment_records').delete({ count: 'exact' }).eq('id', mine[0].id)).error?.code;
+      out.readOtherLevel = (await sb().from('assessment_records').select('id').eq('education_level', og === 'Grade 8' ? 'secondary' : 'elementary')).data.length;
+      out.addRecordHelper = await addRecord({ sy: '2025-2026', term: 'Term 1', district: 'Asuncion', school: '', keyStage: 'Key Stage 1', gradeLevel: og, learningArea: 'X', baselineMps: 65, mps: 80, pct75: 70, proficiencyLevel: 'x', leastLearned: [] }).then(() => 'saved', e => e.code);
+      return out;
+    }, [otherGrade, ownGrade]);
+    ok(att.createOther === '42501' && att.createOtherDistrict === '42501', `${user}: cannot create ${LABEL[otherLevel]} records in its own district, nor anything in another district`);
+    ok(att.createUnknownGrade === '23502' || att.createUnknownGrade === '42501', `${user}: an unknown grade level is refused (education level cannot be determined)`);
+    ok(att.createOwn && att.moveLevel === '42501' && att.moveDistrict === '42501', `${user}: can create its own, but cannot move a record to the other level or another district`);
+    ok(att.deleteOwn === '42501' && att.readOtherLevel === 0, `${user}: cannot hard delete through the API, and reads 0 ${LABEL[otherLevel]} rows even though they exist in the same district`);
+    ok(att.addRecordHelper === '42501', `${user}: the app's own save path surfaces the refusal`);
+    // the forms only offer this level
+    await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page);
+    await N.page.click('text=Method 2: Fast Manual Entry');
+    const grades = await N.page.evaluate(() => Array.from(document.querySelectorAll('#m-grade option')).map(o => o.value));
+    ok(JSON.stringify(grades) === JSON.stringify(LV[own]), `${user}: manual entry offers only ${LABEL[own]} grades`);
+    // Excel import: one row of the wrong level rejects the whole file, naming the rows
+    const xl = rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
+    const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'S', 'Key Stage': 'Key Stage 1', 'Grade Level': ownGrade, 'Learning Area': 'MAPEH - Overall', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'x' };
+    const before = await N.page.evaluate(() => window.__STUB.records.length);
+    const upload = async rows => { await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page); await N.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
+      await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xl(rows)) }); };
+    await upload([base, { ...base, 'Grade Level': otherGrade }, { ...base, 'Grade Level': 'Grade 99' }]);
+    await N.page.waitForSelector('.toast-error'); const msg = await N.page.textContent('#toast-host');
+    ok(new RegExp(`only import ${LABEL[own]} records`).test(msg) && /row 3/.test(msg) && /row 4/.test(msg) && (await N.page.evaluate(() => window.__STUB.records.length)) === before, `${user}: an import with other-level or unknown grades is rejected with row numbers and saves nothing`);
+    await upload([base, { ...base, Term: 'Term 2' }]); await N.page.waitForSelector('.toast-success');
+    ok((await N.page.evaluate(() => window.__STUB.records.length)) === before + 2, `${user}: an import of its own level is saved`);
+    await N.ctx.close();
+  }
+
+  // --- forced password change for an account that still has its initial password
+  {
+    const u = 'dujali_seccoord', init = LEVEL_ACCOUNTS.find(a => a.username === u).password;
+    const N = await openNew(u, demo, { noLogin: true, mustChange: [u] });
+    await N.page.fill('#login-username', u); await N.page.fill('#login-password', init); await N.page.click('#login-screen button[type=submit]');
+    await N.page.waitForSelector('#pw-modal', { state: 'visible' });
+    ok(true, 'initial password: the change-password screen opens before anything else');
+    ok((await N.page.textContent('#pw-title')) === 'Set a new password' && !(await N.page.locator('#pw-current').isVisible()), 'forced change does not ask for the current password again and cannot be cancelled (only Log out)');
+    ok((await N.page.textContent('#pw-cancel')) === 'Log out', 'the only alternative is Log out');
+    ok(await N.page.evaluate(() => document.getElementById('login-screen').style.display !== 'none' && !document.querySelector('#view-container .kpi-grid')), 'no data screen is reachable while the password is still initial');
+    const direct = await N.page.evaluate(async () => (await sb().from('assessment_records').select('id').range(0, 5)).data.length);
+    ok(direct === 0, 'initial password: even a direct data request returns nothing (enforced by the access rules)');
+    const tryPw = async (pw, conf) => { await N.page.fill('#pw-new', pw); await N.page.fill('#pw-confirm', conf ?? pw); await N.page.click('#pw-ok'); await N.page.waitForFunction(() => document.getElementById('pw-error').textContent.length > 0 || document.getElementById('pw-modal').style.display === 'none'); return N.page.textContent('#pw-error'); };
+    ok(/at least 10/i.test(await tryPw('Short1')), 'rule: at least 10 characters');
+    ok(/letter and at least one number/i.test(await tryPw('onlyletterslong')), 'rule: a letter and a number');
+    ok(/username or district/i.test(await tryPw(init + '12345')), 'rule: the initial pattern (district name) is refused');
+    ok(/username or district/i.test(await tryPw('Dujali_seccoord9')), 'rule: the username is refused');
+    ok(/too easy/i.test(await tryPw('Password-2026x')), 'rule: obvious passwords are refused');
+    ok(/do not match/i.test(await tryPw('Quiet-River-2026', 'Quiet-River-2027')), 'rule: both entries must match');
+    ok(await N.page.evaluate(u => window.__STUB.profiles.find(p => p.username === u).must_change_password === true, u), 'nothing was unlocked by the failed attempts');
+    await tryPw('Quiet-River-2026');
+    await N.page.waitForFunction(() => document.getElementById('login-screen').style.display === 'none'); await settled(N.page);
+    ok(true, 'a valid new password unlocks the account and loads the app');
+    ok(/TOTAL DISTRICT RECORDS\s+0/i.test(await text(N.page)) || await N.page.evaluate(() => currentUser.educationLevel === 'secondary'), 'the unlocked account is still limited to its own district and level');
+    ok(await N.page.evaluate(() => window.__STUB.passwords['dujali_seccoord'] === 'Quiet-River-2026' && window.__STUB.profiles.find(p => p.username === 'dujali_seccoord').must_change_password === false), 'the server holds the new password and has cleared the flag');
+    // voluntary change later needs the current password
+    await N.page.click('.user-profile-badge button:has-text("Password")'); await N.page.waitForSelector('#pw-modal', { state: 'visible' });
+    ok(await N.page.locator('#pw-current').isVisible(), 'voluntary change asks for the current password');
+    await N.page.fill('#pw-current', 'wrong-one-123'); await N.page.fill('#pw-new', 'Calm-Harbor-2026'); await N.page.fill('#pw-confirm', 'Calm-Harbor-2026'); await N.page.click('#pw-ok');
+    await N.page.waitForFunction(() => document.getElementById('pw-error').textContent.length > 0);
+    ok(/current password is incorrect/i.test(await N.page.textContent('#pw-error')), 'voluntary change: a wrong current password is refused');
+    await N.page.fill('#pw-current', 'Quiet-River-2026'); await N.page.fill('#pw-new', 'Quiet-River-2026'); await N.page.fill('#pw-confirm', 'Quiet-River-2026'); await N.page.click('#pw-ok');
+    await N.page.waitForFunction(() => document.getElementById('pw-error').textContent.length > 0);
+    ok(/not used before/i.test(await N.page.textContent('#pw-error')), 'voluntary change: re-using the same password is refused');
+    await N.page.fill('#pw-current', 'Quiet-River-2026'); await N.page.fill('#pw-new', 'Calm-Harbor-2026'); await N.page.fill('#pw-confirm', 'Calm-Harbor-2026'); await N.page.click('#pw-ok');
+    await N.page.waitForFunction(() => document.getElementById('pw-modal').style.display === 'none');
+    ok(await N.page.evaluate(() => window.__STUB.passwords['dujali_seccoord'] === 'Calm-Harbor-2026'), 'voluntary change: saved');
+    await N.ctx.close();
+    // log out from the forced screen, and the initial password stops working once replaced
+    const M = await openNew(u, demo, { noLogin: true, mustChange: [u] });
+    await M.page.fill('#login-username', u); await M.page.fill('#login-password', init); await M.page.click('#login-screen button[type=submit]');
+    await M.page.waitForSelector('#pw-modal', { state: 'visible' });
+    await Promise.all([M.page.waitForEvent('load'), M.page.click('#pw-cancel')]);
+    ok(await M.page.evaluate(() => !sessionStorage.getItem('stub_session')), 'Log out from the forced screen ends the session');
+    await M.ctx.close();
+  }
+
+  // --- the original district-wide coordinators are retired
+  {
+    const N = await openNew('carmen_coord', demo, { noLogin: true });
+    const { passwords: pw } = await readPasswords();
+    await N.page.fill('#login-username', 'carmen_coord'); await N.page.fill('#login-password', pw.carmen_coord); await N.page.click('#login-screen button[type=submit]');
+    await N.page.waitForFunction(() => /retired/i.test(document.getElementById('login-error').textContent));
+    ok(await N.page.evaluate(() => document.getElementById('login-screen').style.display !== 'none' && !sessionStorage.getItem('stub_session')), 'a retired district-wide coordinator account is signed out with a clear message and sees nothing');
+    await N.ctx.close();
+  }
+
+  // --- Admin and Supervisor: both levels, with an Education Level filter
+  for (const user of ['admin', 'supervisor']) {
+    const N = await openNew(user, demo);
+    ok(await N.page.evaluate(() => !document.getElementById('flt-level').disabled && document.getElementById('flt-level').value === 'ALL'), `${user}: Education Level filter is free (All Levels)`);
+    await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
+    ok(/TOTAL DISTRICT RECORDS\s+1452/i.test(await text(N.page)), `${user}: sees both levels (1452 records)`);
+    await N.page.selectOption('#flt-level', 'elementary'); await settled(N.page);
+    ok(/TOTAL DISTRICT RECORDS\s+726/i.test(await text(N.page)), `${user}: Elementary filter shows 726 records`);
+    ok(JSON.stringify(await N.page.evaluate(() => Array.from(document.querySelectorAll('#flt-keystage option')).filter(o => !o.disabled).map(o => o.value))) === JSON.stringify(['ALL', 'Key Stage 1', 'Key Stage 2']), `${user}: key stages narrow to the chosen level`);
+    ok(await N.page.evaluate(() => document.getElementById('print-title').textContent.includes('ELEMENTARY')), `${user}: the printed report title names the level`);
+    await N.page.evaluate(() => switchView('grade-view')); await settled(N.page);
+    ok((await N.page.locator('#view-container table.data-table tbody tr').count()) === 6, `${user}: grade level breakdown shows Grades 1 to 6 only`);
+    await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
+    ok((await N.page.locator('.editable-baseline-input').count()) === 2, `${user}: comparative analysis shows the two Elementary key stages`);
+    await N.page.selectOption('#flt-level', 'secondary'); await settled(N.page);
+    await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
+    ok(/TOTAL DISTRICT RECORDS\s+726/i.test(await text(N.page)), `${user}: Secondary filter shows the other 726`);
+    const [dl] = await Promise.all([N.page.waitForEvent('download'), N.page.click('#csv-btn')]);
+    await dl.saveAs(`${OUT}/levels-${user}.csv`); const lines = fs.readFileSync(`${OUT}/levels-${user}.csv`, 'utf8').replace(/^﻿/, '').trim().split(/\r?\n/);
+    const hdr = lines[0].split(','); const li = hdr.indexOf('Education Level');
+    const lv = new Set(lines.slice(1).map(l => l.split(',')[li]));
+    ok(li > 0 && lines.length === 1453 && lv.has('Elementary') && lv.has('Secondary'), `${user}: the CSV is the entire data (1452 rows, both levels) with an Education Level column`);
+    await N.ctx.close();
+  }
+
+  // --- notes are filed per district and level; the secondary template matches the level
+  {
+    const N = await openNew('asuncion_seccoord', demo);
+    await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
+    await N.page.fill('#comp-analysis-input', 'secondary note'); await N.page.click('text=Save Qualitative Notes'); await N.page.waitForSelector('.toast-success');
+    const n = await N.page.evaluate(() => window.__STUB.notes.map(x => [x.district_scope, x.education_level]));
+    ok(JSON.stringify(n) === JSON.stringify([['Asuncion', 'secondary']]), 'notes are saved under the coordinator\'s district AND level');
+    ok((await N.page.locator('.editable-baseline-input').count()) === 2, 'a Secondary coordinator sees only Key Stages 3 and 4 in the comparative table');
+    await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page);
+    const [dl] = await Promise.all([N.page.waitForEvent('download'), N.page.click('text=Download Excel Template')]);
+    ok(/_Secondary\.xlsx$/.test(dl.suggestedFilename()), 'the Excel template is the Secondary template (' + dl.suggestedFilename() + ')');
+    await N.ctx.close();
+  }
+}
+
+
+console.log('\n[16] MAPEH components, grade rules, and record edit / delete');
+{
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const f2 = v => v.toFixed(2) + '%';
+  const meanOf = f => mean(demoNew.filter(f).map(r => r.mps));
+  const termMean = (f) => { const tm = ['Term 1', 'Term 2', 'Term 3'].map(t => demoNew.filter(r => r.term === t && f(r)).map(r => r.mps)).filter(a => a.length).map(mean); return mean(tm); };
+  const cardRows = (page, title) => page.evaluate(t => {
+    const card = Array.from(document.querySelectorAll('#view-container .card-box')).find(c => (c.querySelector('h3') || {}).textContent.includes(t));
+    return card ? Array.from(card.querySelectorAll('tbody tr')).map(tr => Array.from(tr.children).map(td => td.innerText.replace(/\s+/g, ' ').trim())) : null;
+  }, title);
+
+  // ---- component breakdown
+  {
+    const N = await openNew('admin', demoNew);
+    await N.page.evaluate(() => switchView('grade-view')); await settled(N.page);
+    const g = await cardRows(N.page, 'MAPEH Components by Grade Level');
+    ok(!!g && g.length === 13, 'Grade Level Breakdown has the component table (12 grades + all-grades row)');
+    const g4 = g.find(r => r[0] === 'Grade 4'), g1 = g.find(r => r[0] === 'Grade 1'), g11 = g.find(r => r[0] === 'Grade 11');
+    ok(g4[1].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Music'))) && g4[2].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Arts')))
+      && g4[3].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - PE'))) && g4[4].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Health'))), 'Grade 4: Music, Arts, PE and Health MPS shown separately and correct');
+    const ov4 = meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Overall');
+    const avgParts = mean(['Music', 'Arts', 'PE', 'Health'].map(c => meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - ' + c)));
+    ok(g4[5].startsWith(f2(ov4)) && f2(ov4) !== f2(avgParts), 'Grade 4: Overall MAPEH is the official record (' + f2(ov4) + '), not the average of the components (' + f2(avgParts) + ')');
+    ok(g1[1].includes('Not recorded') && g1[4].includes('Not recorded') && g1[5].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 1' && r.learningArea === 'MAPEH - Overall'))), 'Grade 1: components not recorded, overall MAPEH only');
+    ok(g11.slice(1, 6).every(c => c.includes('Not recorded')), 'Grade 11: no MAPEH');
+    await N.page.evaluate(() => switchView('division')); await settled(N.page);
+    const d = await cardRows(N.page, 'MAPEH Components by District');
+    const asu = d.find(r => r[1] === 'Asuncion');
+    ok(!!d && asu[2].startsWith(f2(termMean(r => r.district === 'Asuncion' && r.learningArea === 'MAPEH - Music'))) && asu[6].startsWith(f2(termMean(r => r.district === 'Asuncion' && r.learningArea === 'MAPEH - Overall'))), 'Division Summary: district component table (mean of term means) matches');
+    await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
+    const ch = await N.page.evaluate(() => Object.values(activeCharts).map(c => [c.data.labels, c.data.datasets[0].data]));
+    ok(ch.length === 3 && JSON.stringify(ch[2][0]) === JSON.stringify(['Music', 'Arts', 'Physical Education (PE)', 'Health', 'Overall MAPEH']) && Math.abs(ch[2][1][4] - meanOf(r => r.learningArea === 'MAPEH - Overall')) < 0.006, 'Dashboard: MAPEH components chart with the overall as its own bar');
+    ok(new RegExp('MAPEH Consolidated Total MPS\\s+' + meanOf(r => r.learningArea === 'MAPEH - Overall').toFixed(2) + '%', 'i').test(await text(N.page)), 'Dashboard MAPEH total = official overall records only (components are not double counted)');
+    await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
+    const ct = await text(N.page);
+    ok(/MAPEH component: Music/.test(ct) && /MAPEH component: Physical Education \(PE\)/.test(ct) && /CONSOLIDATED MAPEH TOTAL \(Overall MAPEH\)/.test(ct), 'Comparative sheet: component rows under the MAPEH total');
+    await N.page.evaluate(() => { resetFilters(); switchView('district-view'); }); await settled(N.page);
+    ok(/MAPEH - Health/.test(await text(N.page)), 'District Profile lists the new MAPEH areas as subject rows');
+    ok(N.errors.length === 0, 'no page errors while rendering the component views' + (N.errors[0] ? ': ' + N.errors[0] : ''));
+    await N.ctx.close();
+  }
+
+  // ---- grade rules: forms, imports, and the backend
+  {
+    const N = await openNew('admin', demoNew.slice(0, 20));
+    await N.page.evaluate(() => switchView('data-input')); await settled(N.page);
+    await N.page.click('text=Method 2: Fast Manual Entry');
+    const opts = async g => { await N.page.selectOption('#m-grade', g); return N.page.evaluate(() => Array.from(document.querySelectorAll('#m-subject option')).map(o => o.value)); };
+    const o1 = await opts('Grade 2'), o5 = await opts('Grade 5'), o11 = await opts('Grade 11');
+    ok(o1.includes('MAPEH - Overall') && !o1.some(v => /MAPEH - (Music|Arts|PE|Health)/.test(v)) && o1.includes('IPED - English'), 'manual entry Grade 2: overall MAPEH only (no components, no combined areas); IPED untouched');
+    ok(['MAPEH - Overall', 'MAPEH - Music', 'MAPEH - Arts', 'MAPEH - PE', 'MAPEH - Health'].every(v => o5.includes(v)) && !o5.some(v => /&/.test(v) && /^MAPEH/.test(v)), 'manual entry Grade 5: overall plus four components, no combined areas');
+    ok(!o11.some(v => /^MAPEH/.test(v)) && o11.includes('SPA - Vocal Arts'), 'manual entry Grade 11: no MAPEH areas');
+    const filterOpts = await N.page.evaluate(() => Array.from(document.querySelectorAll('#flt-subject option')).map(o => o.value));
+    ok(filterOpts.includes('MAPEH - Music') && filterOpts.includes('MAPEH - Music & Arts'), 'the subject filter lists new areas and still lists the legacy ones');
+
+    const xlsx = async rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
+    const upload = async rows => { await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page); await N.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
+      await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xlsx(rows)) }); };
+    const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'X', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 1', 'Learning Area': 'MAPEH - Overall', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'lc' };
+    const count = () => N.page.evaluate(() => window.__STUB.records.length);
+    const bad = [['Grade 2', 'MAPEH - Music'], ['Grade 3', 'MAPEH - Health'], ['Grade 1', 'MAPEH - Music & Arts'], ['Grade 5', 'MAPEH - PE & Health'], ['Grade 11', 'MAPEH - Overall'], ['Grade 12', 'MAPEH - Arts']];
+    for (const [gr, area] of bad) {
+      await upload([base, Object.assign({}, base, { 'Grade Level': gr, 'Learning Area': area })]);
+      await N.page.waitForSelector('.toast-error');
+      const m = await N.page.textContent('#toast-host');
+      ok(/Nothing was saved/.test(m) && /row 3/.test(m) && await count() === 20, `import refuses ${gr} / ${area} with its row number, and saves nothing (the valid row 2 is not saved either)`);
+    }
+    await upload([Object.assign({}, base, { 'Grade Level': 'Grade 2', 'Learning Area': 'IPED - MAPEH (Music & Arts)' }), Object.assign({}, base, { 'Grade Level': 'Grade 5', 'Key Stage': 'Key Stage 2', 'Learning Area': 'MAPEH - Music' }), Object.assign({}, base, { 'Grade Level': 'Grade 9', 'Key Stage': 'Key Stage 3', 'Learning Area': 'MAPEH - Overall' })]);
+    await N.page.waitForSelector('.toast-success');
+    ok(await count() === 23, 'import accepts IPED in Grade 2 (unrestricted), Music in Grade 5 and Overall in Grade 9');
+    // the backend refuses the same combinations when the app is bypassed
+    const api = await N.page.evaluate(async () => {
+      const row = (g, a) => ({ sy: '2025-2026', term: 'Term 1', district_id: 1, school: '', key_stage: 'Key Stage 1', grade_level: g, learning_area: a, baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' });
+      const r = {};
+      r.g1music = (await sb().from('assessment_records').insert(row('Grade 1', 'MAPEH - Music'))).error;
+      r.g4legacy = (await sb().from('assessment_records').insert(row('Grade 4', 'MAPEH - Music & Arts'))).error;
+      r.g12 = (await sb().from('assessment_records').insert(row('Grade 12', 'MAPEH - Overall'))).error;
+      r.iped = (await sb().from('assessment_records').insert(row('Grade 1', 'IPED - MAPEH (PE & Health)'))).error;
+      const id = (await sb().from('assessment_records').insert(row('Grade 5', 'MAPEH - Music')).select('id')).data[0].id;
+      r.move = (await sb().from('assessment_records').update({ grade_level: 'Grade 2' }).eq('id', id)).error;
+      r.msg = friendlyError(r.g1music);
+      return r;
+    });
+    ok(api.g1music?.code === '23514' && api.g4legacy?.code === '23514' && api.g12?.code === '23514' && api.iped === null && api.move?.code === '23514', 'backend refuses Grade 1 Music, Grade 4 legacy, Grade 12 MAPEH and editing Music into Grade 2; IPED passes');
+    ok(/^Grades 1 to 3 are recorded as overall MAPEH only/.test(api.msg), 'the backend rule is shown in plain English');
+    await N.ctx.close();
+  }
+
+  // ---- templates follow the rules
+  for (const user of ['asuncion_elemcoord', 'asuncion_seccoord']) {
+    const N = await openNew(user, demoNew);
+    const rows = await N.page.evaluate(() => { let got = null; XLSX.writeFile = wb => { got = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]); }; downloadExcelTemplate(); return got.map(r => [r['Grade Level'], r['Learning Area'], mapehRuleProblem(r['Grade Level'], r['Learning Area'])]); });
+    ok(rows.length >= 2 && rows.every(r => r[2] === ''), `${user}: every template example row passes the MAPEH rules`);
+    await N.ctx.close();
+  }
+
+  // ---- Manage Records: edit
+  const asuG4 = demoNew.findIndex(r => r.district === 'Asuncion' && r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Music' && r.term === 'Term 1') + 1;
+  const legacyRec = Object.assign({}, demoNew[0], { district: 'Asuncion', gradeLevel: 'Grade 2', keyStage: 'Key Stage 1', learningArea: 'MAPEH - Music & Arts', school: '' });
+  const withLegacy = demoNew.concat([legacyRec]);
+  const legacyId = withLegacy.length;
+  {
+    const N = await openNew('admin', withLegacy);
+    const total = withLegacy.length;
+    await N.page.evaluate(() => switchView('manage-records')); await settled(N.page);
+    ok(await N.page.locator('#mr-tab-deleted').count() === 1 && /of 1[0-9]{3}/.test(await N.page.textContent('#mr-pager')), 'Manage Records: admin sees every record and the Deleted records tab');
+    await N.page.fill('#mr-search', 'MAPEH - Music &');
+    const flagged = await N.page.textContent('#mr-table');
+    ok(/Needs correction/.test(flagged) && /of 1\b/.test(await N.page.textContent('#mr-pager')), 'search narrows the list; a Grade 2 legacy record is flagged "Needs correction"');
+    // edit legacy record: score only (old area stays allowed because grade and area did not change)
+    await N.page.evaluate(id => openRecordEditor(id), legacyId);
+    await N.page.fill('#e-mps', '91.5'); await N.page.click('#rec-save');
+    await N.page.waitForSelector('.toast-success');
+    let rec = await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id), legacyId);
+    ok(rec.mps === 91.5 && rec.proficiency_level === 'Advanced' && rec.learning_area === 'MAPEH - Music & Arts' && !!rec.updated_by, 'editing only the score of a legacy Grade 2 record saves; proficiency is recomputed by the database; editor is stamped');
+    // edit into a forbidden combination: Grade 4 Music -> Grade 2
+    await N.page.evaluate(id => openRecordEditor(id), asuG4);
+    await N.page.selectOption('#e-grade', 'Grade 2'); await N.page.selectOption('#e-subject', 'MAPEH - Music'); await N.page.click('#rec-save');
+    ok(/Grades 1 to 3 are recorded as overall MAPEH only/.test(await N.page.textContent('#rec-error')) && (await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id).grade_level, asuG4)) === 'Grade 4', 'edit form refuses Music for Grade 2 before saving');
+    await N.page.selectOption('#e-grade', 'Grade 4'); await N.page.selectOption('#e-subject', 'MAPEH - Music');
+    await N.page.fill('#e-mps', '120'); await N.page.click('#rec-save');
+    ok(/MPS must be between 0 and 100/.test(await N.page.textContent('#rec-error')), 'edit form revalidates ranges');
+    await N.page.fill('#e-mps', '93.25'); await N.page.fill('#e-school', 'Edited School'); await N.page.click('#rec-save');
+    await N.page.waitForSelector('.toast-success');
+    rec = await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id), asuG4);
+    ok(rec.mps === 93.25 && rec.school === 'Edited School' && rec.proficiency_level === 'Advanced', 'a valid edit is saved and confirmed by the database');
+    // the edit is visible in the reports
+    await N.page.evaluate(() => { formDirty = false; switchView('grade-view'); }); await settled(N.page);
+    const g = await cardRows(N.page, 'MAPEH Components by Grade Level');
+    const newMean = mean(demoNew.map((r, i) => ({ r, mps: i + 1 === asuG4 ? 93.25 : r.mps })).filter(x => x.r.gradeLevel === 'Grade 4' && x.r.learningArea === 'MAPEH - Music').map(x => x.mps));
+    ok(g.find(r => r[0] === 'Grade 4')[1].startsWith(f2(newMean)), 'Grade Level Breakdown reflects the edited record (' + f2(newMean) + ')');
+    // backend: direct edit of an out-of-range value
+    const e = await N.page.evaluate(async id => (await sb().from('assessment_records').update({ mps: 101 }).eq('id', id)).error?.code, asuG4);
+    ok(e === '23514', 'backend refuses mps 101 on a direct edit');
+
+    // delete: cancel first, then confirm
+    await N.page.evaluate(() => switchView('manage-records')); await settled(N.page);
+    await N.page.evaluate(id => openRecordDelete(id), asuG4);
+    await N.page.click('#record-modal .btn-secondary');
+    ok(await N.page.evaluate(id => !window.__STUB.records.find(r => r.id === id).deleted_at, asuG4), 'cancelling the delete changes nothing');
+    await N.page.evaluate(id => openRecordDelete(id), asuG4);
+    await N.page.fill('#del-reason', 'entered by mistake'); await N.page.click('#rec-confirm-delete');
+    await N.page.waitForSelector('.toast-success');
+    rec = await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id), asuG4);
+    ok(!!rec.deleted_at && rec.delete_reason === 'entered by mistake' && !!rec.deleted_by && await N.page.evaluate(() => window.__STUB.records.length) === total, 'delete is soft: the row stays, with who, when and why');
+    await N.page.evaluate(() => { switchView('dashboard'); }); await settled(N.page);
+    ok(new RegExp('TOTAL DISTRICT RECORDS\\s+' + (total - 1) + '\\b', 'i').test(await text(N.page)), 'dashboards no longer count the deleted record');
+    await N.page.evaluate(() => switchView('grade-view')); await settled(N.page);
+    const g2 = await cardRows(N.page, 'MAPEH Components by Grade Level');
+    const afterMean = mean(demoNew.filter((r, i) => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Music' && i + 1 !== asuG4).map(r => r.mps));
+    ok(g2.find(r => r[0] === 'Grade 4')[1].startsWith(f2(afterMean)), 'reports exclude the deleted record');
+    await N.page.evaluate(() => switchView('manage-records')); await settled(N.page);
+    await N.page.click('#mr-tab-deleted'); await N.page.waitForFunction(() => /Deleted Assessment Records/.test(document.getElementById('mr-title').textContent));
+    ok(/entered by mistake/.test(await N.page.textContent('#mr-table')), 'Deleted records tab lists it with the reason');
+    N.page.on('dialog', d => d.accept());
+    await N.page.click('#mr-table button:has-text("Restore")'); await N.page.waitForSelector('.toast-success');
+    ok(await N.page.evaluate(id => !window.__STUB.records.find(r => r.id === id).deleted_at, asuG4), 'Restore brings the record back');
+    await N.ctx.close();
+  }
+
+  // ---- permissions: coordinators and direct API requests
+  {
+    const N = await openNew('asuncion_elemcoord', demoNew);
+    const ownN = demoNew.filter(r => r.district === 'Asuncion' && ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'].includes(r.gradeLevel)).length;
+    await N.page.evaluate(() => switchView('manage-records')); await settled(N.page);
+    ok(new RegExp('of ' + ownN + '\\b').test(await N.page.textContent('#mr-pager')) && await N.page.locator('#mr-tab-deleted').count() === 0, `coordinator: Manage Records lists only own district and level (${ownN}) and has no Deleted tab`);
+    const ids = {
+      own: demoNew.findIndex(r => r.district === 'Asuncion' && r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Arts' && r.term === 'Term 1') + 1,
+      ownB: demoNew.findIndex(r => r.district === 'Asuncion' && r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Health' && r.term === 'Term 1') + 1,
+      otherLevel: demoNew.findIndex(r => r.district === 'Asuncion' && r.gradeLevel === 'Grade 8' && r.term === 'Term 1') + 1,
+      otherDist: demoNew.findIndex(r => r.district === 'Carmen' && r.gradeLevel === 'Grade 4' && r.term === 'Term 1') + 1
+    };
+    await N.page.evaluate(id => openRecordEditor(id), ids.own);
+    ok(await N.page.evaluate(() => document.getElementById('e-district').disabled && Array.from(document.querySelectorAll('#e-grade option')).every(o => ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'].includes(o.value))), 'coordinator edit form: district locked, only own-level grades offered');
+    await N.page.fill('#e-mps', '82'); await N.page.click('#rec-save'); await N.page.waitForSelector('.toast-success');
+    ok(await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id).mps, ids.own) === 82, 'coordinator can edit a record in scope');
+    const a = await N.page.evaluate(async ids => {
+      const r = {}, T = () => window.__STUB.records;
+      r.editOther = (await sb().from('assessment_records').update({ mps: 1 }).eq('id', ids.otherDist).select('id')).data.length;
+      r.editOtherLevel = (await sb().from('assessment_records').update({ mps: 1 }).eq('id', ids.otherLevel).select('id')).data.length;
+      r.rpcOtherDist = (await sb().rpc('app_delete_records', { p_ids: [ids.otherDist] })).error?.code;
+      r.rpcOtherLevel = (await sb().rpc('app_delete_records', { p_ids: [ids.otherLevel] })).error?.code;
+      r.rpcMixed = (await sb().rpc('app_delete_records', { p_ids: [ids.own, ids.otherDist] })).error?.code;
+      r.mixedUntouched = !T().find(x => x.id === ids.own).deleted_at;
+      r.hardDelete = (await sb().from('assessment_records').delete().eq('id', ids.own)).error?.code;
+      r.setDeleted = (await sb().from('assessment_records').update({ deleted_at: '2020-01-01' }).eq('id', ids.own)).error?.code;
+      r.setDemo = (await sb().from('assessment_records').update({ is_demo: true }).eq('id', ids.own)).error?.code;
+      r.setOwner = (await sb().from('assessment_records').update({ created_by: '00000000-0000-0000-0000-000000000001' }).eq('id', ids.own)).error?.code;
+      r.bulkSy = (await sb().rpc('app_delete_records_by_sy', { p_sy: '2025-2026' })).error?.code;
+      r.bulkAll = (await sb().rpc('app_delete_all_records')).error?.code;
+      r.restore = (await sb().rpc('app_restore_records', { p_ids: [ids.own] })).error?.code;
+      r.delOwn = (await sb().rpc('app_delete_records', { p_ids: [ids.ownB], p_reason: 'api' })).data;
+      r.seeDeleted = (await sb().from('assessment_records').select('id').eq('id', ids.ownB)).data.length;
+      r.seeDeletedList = (await sb().from('assessment_records').select('id').not('deleted_at', 'is', null)).data.length;
+      r.editDeleted = (await sb().from('assessment_records').update({ mps: 5 }).eq('id', ids.ownB).select('id')).data.length;
+      r.unchanged = T().find(x => x.id === ids.otherDist).mps !== 1 && T().find(x => x.id === ids.otherLevel).mps !== 1;
+      return r;
+    }, ids);
+    ok(a.editOther === 0 && a.editOtherLevel === 0 && a.unchanged, 'coordinator direct edit of another district or the other level changes nothing');
+    ok(a.rpcOtherDist === '42501' && a.rpcOtherLevel === '42501' && a.rpcMixed === '42501' && a.mixedUntouched, 'coordinator delete outside scope is refused, and a batch with one bad id deletes nothing');
+    ok(a.hardDelete === '42501' && a.setDeleted === '42501' && a.setDemo === '42501' && a.setOwner === '42501', 'direct API cannot hard delete, set deleted_at, or rewrite is_demo / created_by');
+    ok(a.bulkSy === '42501' && a.bulkAll === '42501' && a.restore === '42501', 'coordinator cannot bulk delete or restore');
+    ok(a.delOwn === 1 && a.seeDeleted === 0 && a.seeDeletedList === 0 && a.editDeleted === 0, 'coordinator can delete in scope; the deleted record disappears for them and cannot be edited');
+    await N.ctx.close();
+    const S = await openNew('supervisor', demoNew);
+    await S.page.evaluate(() => { window.__STUB.records.find(r => r.id === 5).deleted_at = '2026-01-01T00:00:00Z'; switchView('manage-records'); }); await settled(S.page);
+    await S.page.click('#mr-tab-deleted'); await S.page.waitForFunction(() => /Deleted Assessment Records/.test(document.getElementById('mr-title').textContent));
+    ok(await S.page.locator('#mr-table button:has-text("Restore")').count() === 1, 'supervisor sees deleted records and can restore them');
+    await S.ctx.close();
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

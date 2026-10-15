@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-// Creates the 13 accounts of CLAUDE.md Appendix D in Supabase Auth and inserts their profiles rows.
+// Creates the Admin and Supervisor accounts of CLAUDE.md Appendix D in Supabase Auth and inserts their profiles rows.
+// The 11 original district-wide coordinators are NOT created any more: Elementary and Secondary coordinators come from
+// tools/provision-level-coordinators.mjs (see supabase/migrations/0004_education_levels.sql).
 // Passwords are read from legacy/mapehDavNor.original.html at run time (spec 8.4). They are never printed,
 // logged or written anywhere. The service-role key comes from the environment and is never printed either.
 //
@@ -21,11 +23,12 @@ const block = html.match(/const USER_ACCOUNTS = \[([\s\S]*?)\n\];/);
 if (!block) { console.error('USER_ACCOUNTS not found in legacy file'); process.exit(1); }
 const accounts = [...block[1].matchAll(/\{\s*username:\s*"([^"]+)",\s*password:\s*"([^"]+)",\s*name:\s*"([^"]+)",\s*role:\s*"([^"]+)",\s*district:\s*"([^"]+)"\s*\}/g)]
   .map(m => ({ username: m[1], password: m[2], name: m[3], role: { 'Admin': 'admin', 'Supervisor': 'supervisor', 'District Coordinator': 'district_coordinator' }[m[4]], district: m[5] === 'ALL' ? null : m[5] }));
-if (accounts.length !== 13 || accounts.some(a => !a.role)) { console.error(`Expected 13 valid accounts, found ${accounts.length}`); process.exit(1); }
+if (accounts.length !== 13 || accounts.some(a => !a.role)) { console.error(`Expected 13 valid accounts in the legacy file, found ${accounts.length}`); process.exit(1); }
+const division = accounts.filter(a => a.role !== 'district_coordinator');
 
 if (dry) {
-  console.log('Dry run: would provision', accounts.length, 'accounts');
-  accounts.forEach(a => console.log(`  ${a.username}@${DOMAIN}  ${a.role}  ${a.district || '(division)'}`));
+  console.log('Dry run: would provision', division.length, 'accounts');
+  division.forEach(a => console.log(`  ${a.username}@${DOMAIN}  ${a.role}  ${a.district || '(division)'}`));
   process.exit(0);
 }
 if (!URL_ || !KEY) { console.error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the environment.'); process.exit(1); }
@@ -43,7 +46,7 @@ if (d.status !== 200 || !d.json.length) { console.error('Could not read district
 const districtId = Object.fromEntries(d.json.map(x => [x.name, x.id]));
 
 let created = 0, kept = 0;
-for (const a of accounts) {
+for (const a of division) {
   const email = `${a.username}@${DOMAIN}`;
   let id = null;
   const c = await call('POST', '/auth/v1/admin/users', { email, password: a.password, email_confirm: true });
