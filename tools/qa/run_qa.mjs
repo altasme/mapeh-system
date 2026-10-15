@@ -1003,6 +1003,7 @@ console.log('\n[18] Chart colours, and editing least learned competencies');
   const nLog = await A.page.evaluate(() => Number(document.querySelector('.badge-proficient + *, .card-box-header .badge').textContent.match(/\d+/) ? 0 : 0));
   ok(nEdit > 0 && nEdit === await A.page.evaluate(() => document.querySelectorAll('#view-container tbody tr td.screen-only').length), 'every logged competency row has an Edit button (coordinator, not only the Supervisor): ' + nEdit);
   const before = await A.page.evaluate(id => ({ count: window.__STUB.records.length, rec: JSON.parse(JSON.stringify(window.__STUB.records.find(r => r.id === id))) }), rid);
+  const oldDesc = demoNew[ownIdx].leastLearned[1].desc, occ = t => t.split(oldDesc).length - 1; const occBefore = occ(await text(A.page));
   await A.page.evaluate(([id, i]) => openCompetencyEditor(id, i), [rid, 1]);
   const form = await A.page.evaluate(() => [document.getElementById('comp-code').value, document.getElementById('comp-desc').value]);
   ok(form[0] === demoNew[ownIdx].leastLearned[1].code && form[1] === demoNew[ownIdx].leastLearned[1].desc, 'the form loads the existing entry');
@@ -1016,7 +1017,7 @@ console.log('\n[18] Chart colours, and editing least learned competencies');
   ok(after.count === before.count && after.rec.least_learned.length === before.rec.least_learned.length && after.rec.least_learned[1].desc === 'Corrected competency text' && after.rec.least_learned[1].code === 'LC-2'
     && after.rec.least_learned[0].desc === before.rec.least_learned[0].desc, 'the existing entry is updated in place: no new record, no duplicate entry, neighbours untouched');
   ok(['district_id', 'grade_level', 'learning_area', 'sy', 'term', 'school', 'education_level', 'mps'].every(k => after.rec[k] === before.rec[k]), 'district, level, program, grade, school year, term and scores are unchanged');
-  ok(/Corrected competency text/.test(await text(A.page)) && !new RegExp(before.rec.least_learned[1].desc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(await text(A.page)), 'the Least Learned view shows the corrected text and no longer the old one');
+  { const t = await text(A.page); ok(/Corrected competency text/.test(t) && occ(t) === occBefore - 1, 'the Least Learned view shows the corrected text, and the old text appears exactly once less'); }
   // persists after a refresh (new page load reading the same data)
   await A.page.evaluate(() => { formDirty = false; return getAllRecords(); }).then(async rs => ok(rs.find(r => r.id === rid).leastLearned[1].desc === 'Corrected competency text', 'the change is read back from the database'));
   // stale edit and direct API attempts

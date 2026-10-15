@@ -3247,8 +3247,8 @@ async function openCompetencyEditor(recordId, index) {
         <div class="rec-summary">${esc(rec.district)}${rec.school ? ' - ' + esc(rec.school) : ''}<br>${esc(rec.sy)} ${esc(rec.term)} - ${esc(rec.gradeLevel)} - ${esc(rec.learningArea)}</div>
         <form id="comp-form" onsubmit="saveCompetencyEdit(event, ${rec.id}, ${index})">
             <input type="hidden" id="comp-old" value="${esc(desc)}">
-            <div class="form-group"><label for="comp-code">Competency code</label><input type="text" id="comp-code" maxlength="40" value="${esc(code)}" required></div>
-            <div class="form-group" style="margin-top:10px;"><label for="comp-desc">Competency description</label><textarea id="comp-desc" maxlength="500" required>${esc(desc)}</textarea></div>
+            <div class="form-group"><label for="comp-code">Competency code</label><input type="text" id="comp-code" maxlength="40" value="${esc(code)}"></div>
+            <div class="form-group" style="margin-top:10px;"><label for="comp-desc">Competency description</label><textarea id="comp-desc" maxlength="500">${esc(desc)}</textarea></div>
             <p class="comp-note">This corrects the existing entry. The district, school, grade level, program, school year and term stay as they are.</p>
             <div class="login-error" id="rec-error" role="alert" style="margin-top:8px;"></div>
             <div class="modal-actions">
