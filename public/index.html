@@ -644,6 +644,13 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
     .mr-pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 4px 2px; font-size: 0.82rem; color: var(--text-muted); flex-wrap: wrap; }
     .mr-flag { display: inline-block; margin-top: 3px; font-size: 0.72rem; }
     .comp-note { font-size: 0.8rem; color: var(--text-muted); margin-top: 10px; }
+    .coord-card { border-top: 1px solid var(--rule); padding: 16px 0 6px; }
+    .coord-card > h5 { color: var(--ink); font-size: 0.98rem; font-weight: 650; margin: 0 0 10px; }
+    .coord-sub { margin: 0 0 12px; padding: 10px 0 2px 14px; border-left: 3px solid var(--rule-strong, #c3ccdf); }
+    .coord-sub h6 { margin: 0 0 6px; font-size: 0.78rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2, #3a4764); }
+    .coord-sub.is-elem { border-left-color: var(--deped-blue); }
+    .coord-sub.is-sec { border-left-color: var(--deped-yellow); }
+    @media (max-width: 640px) { .coord-sub { padding-left: 10px; } }
     @media (max-width: 640px) { #record-modal .form-grid { grid-template-columns: 1fr; } #record-modal .span-2 { grid-column: span 1; } }
 }
 </style>
@@ -1281,6 +1288,13 @@ function mapehRuleProblem(grade, area) {
 function mapehAreasForGrade(grade) {
     return [MAPEH_OVERALL, ...MAPEH_COMPONENTS.map(c => c.area)].filter(a => !mapehRuleProblem(grade, a));
 }
+/* CHART COLOURS. One categorical palette for every chart. Districts keep the same colour whatever the filter shows
+   (colour follows the district's place in the list); program tracks use the colours of their dashboard cards;
+   MAPEH components and the overall MAPEH have fixed colours. All are at least 3:1 against the white chart background. */
+const DISTRICT_COLORS = ["#0038A8", "#D9480F", "#2F855A", "#7B2CBF", "#C2185B", "#0B7285", "#B7791F", "#4C6EF5", "#8D5524", "#6B8E00", "#495057"];
+const districtColor = d => DISTRICT_COLORS[Math.max(0, DEFAULT_DISTRICTS.indexOf(d)) % DISTRICT_COLORS.length];
+const TRACK_COLORS = ["#0038A8", "#800080", "#DD6B20", "#319795", "#B7791F"];   // MAPEH, SPA, SPS, SPFL, IPED
+const MAPEH_PART_COLORS = ["#8E44AD", "#D6336C", "#2F855A", "#E8590C", "#0038A8"]; // Music, Arts, PE, Health, Overall
 const meanMps = list => list.length ? list.reduce((a, c) => a + c.mps, 0) / list.length : 0;
 const hasMapehNew = recs => recs.some(r => r.learningArea === MAPEH_OVERALL || isMapehComponent(r.learningArea));
 
@@ -1302,6 +1316,22 @@ const ALL_GRADES = [
     "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"
 ];
 
+// The coordinator to show for a district on the current screen or report. A level view (a coordinator's own level, or
+// the Education Level filter) uses that level's coordinator. With both levels in view, one name is shown when both
+// levels have the same details (as before), otherwise both are shown ("Elementary name / Secondary name").
+function coordFor(district, fallbackPosition) {
+    const c = districtCoordinators[district];
+    if (!c || !c.elementary) return { name: "Unassigned", position: fallbackPosition || "District Coordinator" };
+    const L = effectiveLevel();
+    if (L !== "ALL") return c[L];
+    const e = c.elementary, sc = c.secondary;
+    if (e.name === sc.name && e.position === sc.position) return e;
+    const join = (a, b) => (a && b && a !== b) ? `${a} / ${b}` : (a || b);
+    return { name: join(e.name, sc.name), position: join(e.position, sc.position) };
+}
+
+// Per district and education level: { elementary: {name, position}, secondary: {name, position} }. Filled by initDB().
+// The seed below is only the pre-login placeholder; the database is the source of truth.
 let districtCoordinators = {
     "Asuncion": { name: "Dr. Juan Dela Cruz", position: "Public Schools District Supervisor" },
     "B.E. Dujali": { name: "Maria Clara Santos", position: "District Assessment Coordinator" },
@@ -1386,7 +1416,7 @@ function toRow(r) {
 
 async function initDB() {
     const [dRes, sRes] = await Promise.all([
-        sb().from("districts").select("id, name, coordinator_name, coordinator_position, sort_order").order("sort_order"),
+        sb().from("districts").select("id, name, elem_coordinator_name, elem_coordinator_position, sec_coordinator_name, sec_coordinator_position, sort_order").order("sort_order"),
         sb().from("app_settings").select("data").eq("id", 1).maybeSingle()
     ]);
     if (dRes.error) throw dRes.error;
@@ -1400,7 +1430,10 @@ async function initDB() {
     DEFAULT_DISTRICTS = dRes.data.map(d => {
         districtIdByName[d.name] = d.id;
         districtNameById[d.id] = d.name;
-        districtCoordinators[d.name] = { name: d.coordinator_name, position: d.coordinator_position };
+        districtCoordinators[d.name] = {
+            elementary: { name: d.elem_coordinator_name || "", position: d.elem_coordinator_position || "" },
+            secondary: { name: d.sec_coordinator_name || "", position: d.sec_coordinator_position || "" }
+        };
         return d.name;
     });
     if (sRes.data && sRes.data.data) Object.assign(settings, sRes.data.data);
@@ -1619,6 +1652,7 @@ function extractCompetencyItems(records) {
                 }
                 if (desc && desc.trim() !== "") {
                     list.push({
+                        recordId: r.id, index: idx,
                         sy: r.sy || "ALL",
                         district: r.district || "Unassigned",
                         school: r.school || "",
@@ -1925,7 +1959,7 @@ async function renderDivisionSummaryView(container) {
 
         if (districtOverallMPS > 0) { overallDivisionMPS += districtOverallMPS; totalEntriesCount++; }
         const pl = getPL(districtOverallMPS);
-        const coordInfo = districtCoordinators[d] || { name: "Unassigned", position: "District Coordinator" };
+        const coordInfo = coordFor(d, "District Coordinator");
 
         return `<tr>
             <td><strong>${index + 1}</strong></td>
@@ -1999,7 +2033,7 @@ async function renderDistrictProfileView(container) {
     });
 
     markSample(distRecords);
-    const coordInfo = districtCoordinators[selectedDistrict] || { name: "Unassigned", position: "District Supervisor" };
+    const coordInfo = coordFor(selectedDistrict, "District Supervisor");
     const avgMPS = distRecords.length ? (distRecords.reduce((a,c) => a + c.mps, 0) / distRecords.length).toFixed(2) : "0.00";
     const avgPct75 = distRecords.length ? (distRecords.reduce((a,c) => a + c.pct75, 0) / distRecords.length).toFixed(2) : "0.00";
     const distPL = getPL(parseFloat(avgMPS));
@@ -2243,7 +2277,7 @@ async function renderComparativeView(container) {
     if (currentScope === "ALL") {
         const compiledDistrictCards = DEFAULT_DISTRICTS.map((d, idx) => {
             const dNotes = notesMap[d] || { analysis: "", interventions: "" };
-            const coord = districtCoordinators[d] || { name: "Unassigned", position: "District Supervisor" };
+            const coord = coordFor(d, "District Supervisor");
             return `<div class="district-note" style="background: #F8FAFC; border: 1px solid var(--border-color); padding: 14px; border-radius: 6px; margin-bottom: 12px;">
                 <div style="display: flex; justify-content: space-between; align-items:center; margin-bottom:8px;">
                     <h5 style="color:var(--deped-blue); font-size:0.92rem; font-weight:bold;">${idx + 1}. ${esc(d.toUpperCase())} DISTRICT</h5>
@@ -2439,7 +2473,7 @@ async function renderDashboard(container) {
             <div class="kpi-sub">${spflData.length ? `<span class="badge ${getBadgeClass(spflPL)}">${spflPL}</span>` : ''} (10 Languages)</div>
             ${spflData.length ? profRuler(parseFloat(spflAvgMPS), true) : ''}
         </div>
-        <div class="kpi-card" style="border-top-color: #D69E2E;">
+        <div class="kpi-card" style="border-top-color: #B7791F;">
             <div class="kpi-title">IPED Consolidated Total MPS</div>
             <div class="kpi-value">${ipedData.length ? ipedAvgMPS + '%' : '<span class="no-data">No data</span>'}</div>
             <div class="kpi-sub">${ipedData.length ? `<span class="badge ${getBadgeClass(ipedPL)}">${ipedPL}</span>` : ''} (8 IPED Subjects)</div>
@@ -2512,8 +2546,9 @@ async function renderDashboard(container) {
 
     activeCharts['distMps'] = new Chart(document.getElementById('c-dist-mps'), {
         type: 'bar',
-        data: { labels: dLabels, datasets: [{ label: 'District MPS (%)', data: dVals, backgroundColor: '#0038A8', borderRadius: 3, maxBarThickness: 30 }] },
-        options: chartOptions,
+        data: { labels: dLabels, datasets: [{ label: 'District MPS (%)', data: dVals, backgroundColor: dLabels.map(districtColor), borderRadius: 3, maxBarThickness: 30 }] },
+        // every district name stays visible on a phone (no skipped labels)
+        options: { ...chartOptions, scales: { ...chartOptions.scales, x: { ...chartOptions.scales.x, ticks: { autoSkip: false, maxRotation: 90, minRotation: 45 } } } },
         plugins: [cutoffLines]
     });
 
@@ -2522,7 +2557,7 @@ async function renderDashboard(container) {
 
     activeCharts['subMps'] = new Chart(document.getElementById('c-subj-mps'), {
         type: 'bar',
-        data: { labels: trackLabels, datasets: [{ label: 'Consolidated Track MPS (%)', data: trackVals, backgroundColor: '#0038A8', borderRadius: 3, maxBarThickness: 56 }] },
+        data: { labels: trackLabels, datasets: [{ label: 'Consolidated Track MPS (%)', data: trackVals, backgroundColor: TRACK_COLORS, borderRadius: 3, maxBarThickness: 56 }] },
         options: chartOptions,
         plugins: [cutoffLines]
     });
@@ -2532,7 +2567,7 @@ async function renderDashboard(container) {
         const compVals = [...MAPEH_COMPONENTS.map(c => mapehMeanFor(data, c.area)), mapehMeanFor(data, MAPEH_OVERALL)];
         activeCharts['mapehComp'] = new Chart(document.getElementById('c-mapeh-comp'), {
             type: 'bar',
-            data: { labels: compLabels, datasets: [{ label: 'MPS (%)', data: compVals, backgroundColor: '#0038A8', borderRadius: 3, maxBarThickness: 56 }] },
+            data: { labels: compLabels, datasets: [{ label: 'MPS (%)', data: compVals, backgroundColor: MAPEH_PART_COLORS, borderRadius: 3, maxBarThickness: 56 }] },
             options: chartOptions,
             plugins: [cutoffLines]
         });
@@ -3192,6 +3227,59 @@ function handleExcelImport(e) {
     reader.readAsArrayBuffer(file);
 }
 
+/* LEAST LEARNED COMPETENCIES: edit one existing entry in place. The database function app_edit_competency replaces that
+   one element on its record (nothing is created), under the caller's own row level security. */
+let _compLast = [];
+async function openCompetencyEditor(recordId, index) {
+    if (!canEditData()) { toast("Please log in to edit competencies.", "error"); return; }
+    let rec;
+    try {
+        const { data, error } = await sb().from("assessment_records").select("*").eq("id", recordId).is("deleted_at", null).maybeSingle();
+        if (error) throw error;
+        rec = data ? fromRow(data) : null;
+    } catch (err) { toast(friendlyError(err), "error"); return; }
+    const entry = rec && rec.leastLearned[index];
+    if (!entry) { toast("That competency could not be found. Reload the page and try again.", "error"); return; }
+    const code = typeof entry === "string" ? `LC-${index + 1}` : (entry.code || `LC-${index + 1}`);
+    const desc = typeof entry === "string" ? entry : (entry.desc || entry.description || entry.competency || "");
+    openRecordModal(`
+        <h3 id="rec-title">Edit competency</h3>
+        <div class="rec-summary">${esc(rec.district)}${rec.school ? ' - ' + esc(rec.school) : ''}<br>${esc(rec.sy)} ${esc(rec.term)} - ${esc(rec.gradeLevel)} - ${esc(rec.learningArea)}</div>
+        <form id="comp-form" onsubmit="saveCompetencyEdit(event, ${rec.id}, ${index})">
+            <input type="hidden" id="comp-old" value="${esc(desc)}">
+            <div class="form-group"><label for="comp-code">Competency code</label><input type="text" id="comp-code" maxlength="40" value="${esc(code)}"></div>
+            <div class="form-group" style="margin-top:10px;"><label for="comp-desc">Competency description</label><textarea id="comp-desc" maxlength="500">${esc(desc)}</textarea></div>
+            <p class="comp-note">This corrects the existing entry. The district, school, grade level, program, school year and term stay as they are.</p>
+            <div class="login-error" id="rec-error" role="alert" style="margin-top:8px;"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeRecordModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="comp-save">Save changes</button>
+            </div>
+        </form>`);
+}
+
+async function saveCompetencyEdit(ev, recordId, index) {
+    ev.preventDefault();
+    const err = document.getElementById("rec-error"), btn = document.getElementById("comp-save");
+    const code = document.getElementById("comp-code").value.trim(), desc = document.getElementById("comp-desc").value.trim();
+    if (!code) { err.textContent = "Enter a competency code."; return; }
+    if (!desc) { err.textContent = "The competency description cannot be empty."; return; }
+    if (desc.length > 500) { err.textContent = "The competency description is too long (500 characters at most)."; return; }
+    err.textContent = "";
+    setBusy(btn, true);
+    try {
+        const { error } = await sb().rpc("app_edit_competency", { p_id: recordId, p_index: index, p_old_desc: document.getElementById("comp-old").value, p_code: code, p_desc: desc });
+        if (error) throw error;
+        closeRecordModal();
+        toast("Competency updated.");
+        switchView("least-learned");
+    } catch (e) {
+        err.textContent = friendlyError(e);
+    } finally {
+        setBusy(btn, false);
+    }
+}
+
 async function renderLeastLearnedView(container) {
     const records = await getFilteredData();
     const compItems = extractCompetencyItems(records);
@@ -3266,6 +3354,7 @@ async function renderLeastLearnedView(container) {
         <td>${esc(r.learningArea)}</td>
         <td><code style="background:#EDF2F7; padding:2px 6px; border-radius:3px; font-weight:bold; font-size:0.75rem; color:var(--deped-blue);">${esc(r.code)}</code></td>
         <td>${esc(r.desc)}</td>
+        <td class="screen-only"><button class="btn btn-secondary btn-sm" onclick="openCompetencyEditor(${r.recordId}, ${r.index})" aria-label="Edit competency ${esc(r.code)} for ${esc(r.district)}">Edit</button></td>
     </tr>`).join('');
 
     container.innerHTML = `
@@ -3313,6 +3402,7 @@ async function renderLeastLearnedView(container) {
                     <th>Program / Specialization Area</th>
                     <th>Code</th>
                     <th>Competency Description / Learning Competency</th>
+                    <th class="screen-only">Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -3453,20 +3543,27 @@ function renderSettingsView(container) {
         return;
     }
 
+    // One card per district (existing order); inside it an Elementary and a Secondary coordinator, each with its own fields.
     const coordFormRows = DEFAULT_DISTRICTS.map((d, i) => {
-        const info = districtCoordinators[d] || { name: "", position: "Public Schools District Supervisor" };
-        return `<div class="coord-row" style="background: #F8FAFC; padding: 12px; border-radius: 6px; border:1px solid var(--border-color); margin-bottom: 10px;">
-            <h5 style="color:var(--deped-blue); margin-bottom:8px;">${i + 1}. ${esc(d)} District</h5>
-            <div class="form-grid">
-                <div class="form-group">
-                    <label>Coordinator Name</label>
-                    <input type="text" id="coord-name-${d.replace(/[^a-zA-Z0-9]/g,'_')}" value="${esc(info.name)}" placeholder="Enter Full Name">
+        const key = d.replace(/[^a-zA-Z0-9]/g, '_');
+        const sub = (tag, cls, title, info) => `<div class="coord-sub ${cls}">
+                <h6>${title}</h6>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="coord-${tag}-name-${key}">Coordinator Name</label>
+                        <input type="text" id="coord-${tag}-name-${key}" value="${esc(info.name)}" placeholder="Enter Full Name">
+                    </div>
+                    <div class="form-group">
+                        <label for="coord-${tag}-pos-${key}">Designated Position / Title</label>
+                        <input type="text" id="coord-${tag}-pos-${key}" value="${esc(info.position)}" placeholder="e.g., Public Schools District Supervisor, Principal In-Charge">
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Designated Position / Title</label>
-                    <input type="text" id="coord-pos-${d.replace(/[^a-zA-Z0-9]/g,'_')}" value="${esc(info.position)}" placeholder="e.g., Public Schools District Supervisor, Principal In-Charge">
-                </div>
-            </div>
+            </div>`;
+        const c = districtCoordinators[d] || { elementary: { name: "", position: "" }, secondary: { name: "", position: "" } };
+        return `<div class="coord-row coord-card">
+            <h5>${i + 1}. ${esc(d)} District</h5>
+            ${sub('e', 'is-elem', 'Elementary Coordinator', c.elementary)}
+            ${sub('s', 'is-sec', 'Secondary Coordinator', c.secondary)}
         </div>`;
     }).join('');
 
@@ -3506,7 +3603,7 @@ function renderSettingsView(container) {
     </div>
     <div class="card-box" style="padding: 20px; margin-bottom:20px;">
         <h3>District Coordinator & Position Management</h3>
-        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 15px;">Customize designated District Coordinators and official positions for report signatories and profiles.</p>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 15px;">Each district has an Elementary and a Secondary coordinator. Set the name and official position of each; reports and profiles use the coordinator of the level being shown.</p>
         <form onsubmit="saveDistrictCoordinators(event)">
             ${coordFormRows}
             <button type="submit" class="btn btn-success" style="margin-top: 10px;">Save District Coordinators</button>
@@ -3642,9 +3739,10 @@ async function saveDistrictCoordinators(e) {
     try {
         const results = await Promise.all(DEFAULT_DISTRICTS.map(async d => {
             const key = d.replace(/[^a-zA-Z0-9]/g, '_');
+            const v = id => document.getElementById(`coord-${id}-${key}`).value;
             const { data, error } = await sb().from("districts").update({
-                coordinator_name: document.getElementById(`coord-name-${key}`).value,
-                coordinator_position: document.getElementById(`coord-pos-${key}`).value
+                elem_coordinator_name: v("e-name"), elem_coordinator_position: v("e-pos"),
+                sec_coordinator_name: v("s-name"), sec_coordinator_position: v("s-pos")
             }).eq("id", districtIdByName[d]).select("id");
             return { d, ok: !error && !!data && data.length === 1, error };
         }));
@@ -3692,7 +3790,7 @@ function updateSignatoriesUI() {
     const activeDist = userDist !== "ALL" ? userDist : filters.district;
 
     if (activeDist !== "ALL" && districtCoordinators[activeDist]) {
-        const coord = districtCoordinators[activeDist];
+        const coord = coordFor(activeDist);
         document.getElementById("sig-p-name").textContent = coord.name;
         document.getElementById("sig-p-pos").textContent = `${activeDist} ${coord.position}`;
         document.getElementById("print-title").textContent = `${activeDist.toUpperCase()} DISTRICT${levelTitleWord()} PROFICIENCY CONSOLIDATION REPORT`;

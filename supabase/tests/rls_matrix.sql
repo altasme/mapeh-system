@@ -1,5 +1,5 @@
 -- rls_matrix.sql: access rules after 0005 (levels, MAPEH rules, edit and soft delete). Run in the Supabase SQL editor
--- AFTER migrations 0001 to 0005 and seed/districts.sql. One transaction, rolled back: it creates throwaway users and
+-- AFTER migrations 0001 to 0007 and seed/districts.sql. One transaction, rolled back: it creates throwaway users and
 -- never touches real accounts. A failed check raises an exception; passes print NOTICE lines.
 begin;
 
@@ -66,6 +66,7 @@ begin
     insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
       values ('2025-2026','Term 2',car,'Key Stage 3','Grade 9','X',65,80,70,'x') returning id into rid;
     update public.assessment_records set grade_level = 'Grade 2', district_id = asu where id = rid; get diagnostics n = row_count; assert n = 1, code || ' can move a record across level and district';
+    update public.districts set elem_coordinator_name = elem_coordinator_name, sec_coordinator_position = sec_coordinator_position where id = asu; get diagnostics n = row_count; assert n = 1, code || ' can edit the per-level coordinator details';
     assert public.app_delete_records(array[rid], 'test') = 1, code || ' soft deletes';
     select count(*) into n from public.assessment_records where id = rid; assert n = 1, code || ' still sees the deleted row (recoverable)';
     assert public.app_restore_records(array[rid]) = 1, code || ' restores';
@@ -167,6 +168,7 @@ begin
         values ('2025-2026', (select name from public.districts where id = dist), lvl, 'ALL','T9','x','x');
       -- everything else
       update public.districts set coordinator_name = 'x' where id = dist; get diagnostics n = row_count; assert n = 0, who || ' cannot update districts';
+      update public.districts set elem_coordinator_name = 'x', sec_coordinator_name = 'x' where id = dist; get diagnostics n = row_count; assert n = 0, who || ' cannot update the per-level coordinator details';
       update public.app_settings set data = data; get diagnostics n = row_count; assert n = 0, who || ' cannot update settings';
       select count(*) into n from public.audit_log; assert n = 0, who || ' cannot read audit log';
       select count(*) into n from public.profiles; assert n = 1, who || ' sees only their own profile';
@@ -273,6 +275,62 @@ begin
     select count(*) into n from public.audit_log where row_id = rid::text and action = 'RESTORE'; assert n = 1, 'audit has RESTORE';
     reset role;
     raise notice 'PASS MAPEH rules, computed proficiency, edit and soft delete';
+  end;
+
+  -- ===== Editing one least-learned competency (0007) =====
+  declare
+    r_own bigint; r_far bigint; r_lvl bigint; ll_before jsonb; cnt_before int; cnt_after int;
+  begin
+    -- fixture rows: Asuncion elementary (own for b1), Carmen elementary (other district), Asuncion secondary (other level)
+    insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,least_learned,created_by)
+      values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 3','X',65,80,70,'x','[{"code":"LC-1","desc":"first"},{"code":"LC-2","desc":"second"},"plain string entry"]','00000000-0000-0000-0000-0000000000a1') returning id into r_own;
+    insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,least_learned,created_by)
+      values ('2025-2026','Term 1',car,'Key Stage 1','Grade 3','X',65,80,70,'x','[{"code":"LC-1","desc":"far"}]','00000000-0000-0000-0000-0000000000a1') returning id into r_far;
+    insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,least_learned,created_by)
+      values ('2025-2026','Term 1',asu,'Key Stage 3','Grade 9','X',65,80,70,'x','[{"code":"LC-1","desc":"other level"}]','00000000-0000-0000-0000-0000000000a1') returning id into r_lvl;
+    select count(*) into cnt_before from public.assessment_records;
+
+    perform set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}',true);
+    set local role authenticated;
+    assert public.app_edit_competency(r_own, 1, 'second', 'LC-2b', '  corrected second  ') = 1, 'coordinator edits an entry on an own-scope record';
+    reset role;
+    select least_learned into ll_before from public.assessment_records where id = r_own;
+    assert ll_before = '[{"code":"LC-1","desc":"first"},{"code":"LC-2b","desc":"corrected second"},"plain string entry"]'::jsonb, 'only the chosen entry changed; the others are untouched';
+    select count(*) into cnt_after from public.assessment_records; assert cnt_after = cnt_before, 'editing creates no record';
+    assert (select district_id = asu and grade_level = 'Grade 3' and learning_area = 'X' and sy = '2025-2026' and term = 'Term 1' and updated_by = '00000000-0000-0000-0000-0000000000b1' from public.assessment_records where id = r_own), 'associations kept; editor stamped';
+    set local role authenticated;
+    assert public.app_edit_competency(r_own, 2, 'plain string entry', 'LC-3', 'now an object') = 1, 'a legacy plain-text entry can be edited';
+    denied := false; begin perform public.app_edit_competency(r_own, 0, 'stale text', 'LC-1', 'x'); exception when others then denied := sqlerrm like '%changed by someone else%'; end;
+    assert denied, 'a stale edit is refused';
+    denied := false; begin perform public.app_edit_competency(r_own, 0, 'first', 'LC-1', '   '); exception when others then denied := sqlerrm like '%cannot be empty%'; end;
+    assert denied, 'empty description refused';
+    denied := false; begin perform public.app_edit_competency(r_own, 0, 'first', '', 'x'); exception when others then denied := sqlerrm like '%code%'; end;
+    assert denied, 'empty code refused';
+    denied := false; begin perform public.app_edit_competency(r_own, 0, 'first', 'LC-1', repeat('x', 501)); exception when others then denied := sqlerrm like '%too long%'; end;
+    assert denied, 'overlong description refused';
+    denied := false; begin perform public.app_edit_competency(r_own, 9, 'first', 'LC-1', 'x'); exception when others then denied := sqlerrm like '%could not be found%'; end;
+    assert denied, 'unknown entry refused';
+    denied := false; begin perform public.app_edit_competency(r_far, 0, 'far', 'LC-1', 'hijack'); exception when others then denied := true; end;
+    assert denied, 'coordinator cannot edit a competency in another district';
+    denied := false; begin perform public.app_edit_competency(r_lvl, 0, 'other level', 'LC-1', 'hijack'); exception when others then denied := true; end;
+    assert denied, 'coordinator cannot edit a competency of the other education level';
+    denied := false; begin update public.assessment_records set least_learned = '"not a list"' where id = r_own; exception when check_violation then denied := true; end;
+    assert denied, 'least_learned must stay a list';
+    reset role;
+    assert (select least_learned #>> '{0,desc}' from public.assessment_records where id = r_far) = 'far' and (select least_learned #>> '{0,desc}' from public.assessment_records where id = r_lvl) = 'other level', 'out-of-scope entries untouched';
+    -- a deleted record cannot be edited, and a signed-out caller cannot call the function
+    perform set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}',true);
+    set local role authenticated;
+    assert public.app_edit_competency(r_far, 0, 'far', 'LC-1', 'division edit') = 1, 'admin edits anywhere';
+    perform public.app_delete_records(array[r_far], 'x');
+    denied := false; begin perform public.app_edit_competency(r_far, 0, 'division edit', 'LC-1', 'again'); exception when others then denied := true; end;
+    assert denied, 'a deleted record cannot be edited';
+    reset role;
+    set local role anon;
+    denied := false; begin perform public.app_edit_competency(r_own, 0, 'first', 'LC-1', 'x'); exception when insufficient_privilege then denied := true; end;
+    assert denied, 'signed-out callers cannot use it';
+    reset role;
+    raise notice 'PASS competency editing';
   end;
 
   -- ===== Signed out =====

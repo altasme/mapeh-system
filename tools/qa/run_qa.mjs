@@ -37,7 +37,7 @@ const BASE = `http://127.0.0.1:${server.address().port}`;
 // ---------- data for the stand-in ----------
 const seedSql = fs.readFileSync(path.join(ROOT, 'supabase/seed/districts.sql'), 'utf8');
 const seedRows = [...seedSql.matchAll(/\('([^']+)',\s*'([^']+)',\s*'([^']+)',\s*(\d+)\)/g)];
-const districts = seedRows.map(m => ({ id: Number(m[4]), name: m[1], coordinator_name: m[2], coordinator_position: m[3], sort_order: Number(m[4]) }));
+const districts = seedRows.map(m => ({ id: Number(m[4]), name: m[1], coordinator_name: m[2], coordinator_position: m[3], elem_coordinator_name: m[2], elem_coordinator_position: m[3], sec_coordinator_name: m[2], sec_coordinator_position: m[3], sort_order: Number(m[4]) }));
 const ACCOUNTS = [
   ['admin', 'System Administrator', 'admin', null], ['supervisor', 'Education Program Supervisor', 'supervisor', null],
   ['asuncion_coord', 'Asuncion District Coordinator', 'district_coordinator', 'Asuncion'],
@@ -905,6 +905,148 @@ console.log('\n[16] MAPEH components, grade rules, and record edit / delete');
     await S.page.click('#mr-tab-deleted'); await S.page.waitForFunction(() => /Deleted Assessment Records/.test(document.getElementById('mr-title').textContent));
     ok(await S.page.locator('#mr-table button:has-text("Restore")').count() === 1, 'supervisor sees deleted records and can restore them');
     await S.ctx.close();
+  }
+}
+
+
+console.log('\n[17] Settings: coordinators grouped by district, one Elementary and one Secondary each');
+{
+  const N = await openNew('admin', demo.slice(0, 40));
+  await N.page.evaluate(() => switchView('settings')); await settled(N.page);
+  const cards = await N.page.evaluate(() => Array.from(document.querySelectorAll('.coord-card')).map(c => ({
+    h: c.querySelector('h5').textContent.trim(),
+    subs: Array.from(c.querySelectorAll('.coord-sub')).map(x => ({ t: x.querySelector('h6').textContent.trim(), n: x.querySelectorAll('input').length, v: Array.from(x.querySelectorAll('input')).map(i => i.value) }))
+  })));
+  ok(cards.length === 11 && cards.every((c, i) => c.h === `${i + 1}. ${districts[i].name} District`), 'one card per district, in the existing district order (11)');
+  ok(cards.every(c => c.subs.length === 2 && c.subs[0].t === 'Elementary Coordinator' && c.subs[1].t === 'Secondary Coordinator' && c.subs.every(x => x.n === 2)), 'each district holds an Elementary and a Secondary subsection directly beneath it, two fields each');
+  ok(cards.every((c, i) => c.subs.every(x => x.v[0] === districts[i].coordinator_name && x.v[1] === districts[i].coordinator_position)), 'existing coordinator information is preserved in both subsections');
+  ok(await N.page.evaluate(() => document.querySelectorAll('label[for^="coord-"]').length === 44 && Array.from(document.querySelectorAll('label[for^="coord-"]')).every(l => document.getElementById(l.htmlFor))), 'all 44 fields are labelled');
+  // edit Asuncion: different details per level; Carmen untouched
+  await N.page.fill('#coord-e-name-Asuncion', 'Elena Elementary'); await N.page.fill('#coord-e-pos-Asuncion', 'Elementary Supervisor');
+  await N.page.fill('#coord-s-name-Asuncion', 'Sam Secondary'); await N.page.fill('#coord-s-pos-Asuncion', 'Secondary Principal');
+  await N.page.click('text=Save District Coordinators'); await N.page.waitForSelector('.toast-success');
+  const st = await N.page.evaluate(() => window.__STUB.districts.map(d => [d.name, d.elem_coordinator_name, d.elem_coordinator_position, d.sec_coordinator_name, d.sec_coordinator_position]));
+  ok(JSON.stringify(st[0]) === JSON.stringify(['Asuncion', 'Elena Elementary', 'Elementary Supervisor', 'Sam Secondary', 'Secondary Principal']) && st[2][1] === districts[2].coordinator_name && st[2][3] === districts[2].coordinator_name, 'each level is stored separately (four columns); other districts unchanged');
+  ok(await N.page.evaluate(() => document.getElementById('coord-e-name-Asuncion').value === 'Elena Elementary' && document.getElementById('coord-s-name-Asuncion').value === 'Sam Secondary'), 'the form reloads what the database holds');
+
+  // reports use the coordinator of the level shown
+  const sig = async () => N.page.evaluate(() => [document.getElementById('sig-p-name').textContent, document.getElementById('sig-p-pos').textContent]);
+  await N.page.evaluate(() => { resetFilters(); switchView('district-view'); }); await settled(N.page);
+  await N.page.selectOption('#flt-district', 'Asuncion'); await settled(N.page);
+  await N.page.selectOption('#flt-level', 'elementary'); await settled(N.page);
+  ok(JSON.stringify(await sig()) === JSON.stringify(['Elena Elementary', 'Asuncion Elementary Supervisor']), 'report signatory (Elementary view) = the Elementary coordinator');
+  ok((await N.page.textContent('#view-container')).includes('Elena Elementary') && !(await N.page.textContent('#view-container')).includes('Sam Secondary'), 'District Profile shows the Elementary coordinator only');
+  await N.page.selectOption('#flt-level', 'secondary'); await settled(N.page);
+  ok(JSON.stringify(await sig()) === JSON.stringify(['Sam Secondary', 'Asuncion Secondary Principal']), 'report signatory (Secondary view) = the Secondary coordinator');
+  await N.page.selectOption('#flt-level', 'ALL'); await settled(N.page);
+  ok(JSON.stringify(await sig()) === JSON.stringify(['Elena Elementary / Sam Secondary', 'Asuncion Elementary Supervisor / Secondary Principal']), 'both levels in view and the details differ: both coordinators are named');
+  await N.page.evaluate(() => { resetFilters(); switchView('division'); }); await settled(N.page);
+  await N.page.selectOption('#flt-level', 'secondary'); await settled(N.page);
+  const row = await N.page.evaluate(() => Array.from(document.querySelectorAll('#view-container tbody tr')).find(r => r.children[1].textContent.trim() === 'Asuncion').children[2].innerText.replace(/\s+/g, ' ').trim());
+  ok(row === 'Sam Secondary Secondary Principal', 'Division Summary lists the coordinator of the level in view (Secondary)');
+  ok(N.errors.length === 0, 'no page errors' + (N.errors[0] ? ': ' + N.errors[0] : ''));
+  await N.ctx.close();
+
+  for (const [user, name, pos] of [['asuncion_elemcoord', 'Elena Elementary', 'Elementary Supervisor'], ['asuncion_seccoord', 'Sam Secondary', 'Secondary Principal']]) {
+    const C = await openNew(user, demo.slice(0, 40));
+    await C.page.evaluate(() => { window.__STUB.districts[0].elem_coordinator_name = 'Elena Elementary'; window.__STUB.districts[0].elem_coordinator_position = 'Elementary Supervisor'; window.__STUB.districts[0].sec_coordinator_name = 'Sam Secondary'; window.__STUB.districts[0].sec_coordinator_position = 'Secondary Principal'; });
+    await C.page.evaluate(() => initDB().then(() => { switchView('district-view'); })); await settled(C.page);
+    ok(await C.page.evaluate(() => [document.getElementById('sig-p-name').textContent, document.getElementById('sig-p-pos').textContent].join('|')) === `${name}|Asuncion ${pos}`, `${user}: the printed "Prepared by" is their own level's coordinator`);
+    const w = await C.page.evaluate(async () => (await sb().from('districts').update({ elem_coordinator_name: 'hacked' }).eq('id', 1).select('id')).data.length);
+    ok(w === 0 && await C.page.evaluate(() => window.__STUB.districts[0].elem_coordinator_name === 'Elena Elementary'), `${user}: cannot change coordinator details through the API`);
+    await C.ctx.close();
+  }
+}
+
+
+console.log('\n[18] Chart colours, and editing least learned competencies');
+{
+  // ---- colours: distinct, consistent, readable; data unchanged (parity tests above already compare the values)
+  const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+  const lin = c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  const lum = h => { const [r, g, b] = hexRgb(h).map(lin); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const lab = h => { const [r, g, b] = hexRgb(h).map(lin); const x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047, y = 0.2126 * r + 0.7152 * g + 0.0722 * b, z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883; const f = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116; return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))]; };
+  const dE = (a, b) => Math.hypot(...lab(a).map((v, i) => v - lab(b)[i]));
+  const minDE = a => { let m = 999; for (let i = 0; i < a.length; i++) for (let j = i + 1; j < a.length; j++) m = Math.min(m, dE(a[i], a[j])); return m; };
+  const N = await openNew('admin', demoNew);
+  await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
+  const cols = async () => N.page.evaluate(() => Object.fromEntries(Object.entries(activeCharts).map(([k, c]) => [k, { labels: c.data.labels, colors: c.data.datasets[0].backgroundColor, data: c.data.datasets[0].data }])));
+  let c1 = await cols();
+  ok(c1.distMps.labels.length === 11 && new Set(c1.distMps.colors).size === 11 && minDE(c1.distMps.colors) >= 20, 'district chart: 11 bars, 11 different colours, none too similar (min colour distance ' + minDE(c1.distMps.colors).toFixed(1) + ')');
+  ok(new Set(c1.subMps.colors).size === 5 && minDE(c1.subMps.colors) >= 20, 'program track chart: 5 distinct colours');
+  ok(new Set(c1.mapehComp.colors).size === 5 && minDE(c1.mapehComp.colors) >= 20, 'MAPEH components chart: 5 distinct colours');
+  const allCols = [...c1.distMps.colors, ...c1.subMps.colors, ...c1.mapehComp.colors];
+  ok(allCols.every(c => 1.05 / (lum(c) + 0.05) >= 3), 'every bar colour has at least 3:1 contrast against the white chart background');
+  ok(JSON.stringify(c1.subMps.colors) === JSON.stringify(await N.page.evaluate(() => TRACK_COLORS)) && c1.distMps.colors[2] === (await N.page.evaluate(() => districtColor('Carmen'))), 'colours come from the one shared palette');
+  // consistent under a filter: Carmen keeps its colour although other districts drop out
+  await N.page.selectOption('#flt-keystage', 'Key Stage 3'); await settled(N.page);
+  await N.page.evaluate(() => { window.__tmp = 1; });
+  const c2 = await cols();
+  ok(c2.distMps.labels.length === 11 && c2.distMps.colors[2] === c1.distMps.colors[2], 'a district keeps its colour under a filter');
+  await N.page.evaluate(() => { resetFilters(); });
+  await N.page.selectOption('#flt-district', 'Carmen'); await settled(N.page);
+  const c3 = await cols();
+  ok(JSON.stringify(c3.distMps.labels) === '["Carmen"]' && c3.distMps.colors[0] === c1.distMps.colors[2], 'a single-district view still uses that district\'s colour');
+  // phone width stays readable
+  await N.ctx.close();
+  const M = await openNew('admin', demoNew, {}, { width: 360, height: 740 });
+  await M.page.evaluate(() => switchView('dashboard')); await settled(M.page);
+  ok(await M.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth && Array.from(document.querySelectorAll('canvas')).every(c => c.getBoundingClientRect().width <= window.innerWidth)), 'charts fit a 360 px screen with no sideways scroll');
+  await M.ctx.close();
+
+  // ---- competency editing
+  const ownIdx = demoNew.findIndex(r => r.district === 'Asuncion' && r.gradeLevel === 'Grade 4' && r.learningArea === 'SPA - Vocal Arts' && r.term === 'Term 1');
+  const A = await openNew('asuncion_elemcoord', demoNew);
+  const rid = ownIdx + 1;
+  await A.page.evaluate(() => switchView('least-learned')); await settled(A.page);
+  const nEdit = await A.page.locator('#view-container button:has-text("Edit")').count();
+  const nLog = await A.page.evaluate(() => Number(document.querySelector('.badge-proficient + *, .card-box-header .badge').textContent.match(/\d+/) ? 0 : 0));
+  ok(nEdit > 0 && nEdit === await A.page.evaluate(() => document.querySelectorAll('#view-container tbody tr td.screen-only').length), 'every logged competency row has an Edit button (coordinator, not only the Supervisor): ' + nEdit);
+  const before = await A.page.evaluate(id => ({ count: window.__STUB.records.length, rec: JSON.parse(JSON.stringify(window.__STUB.records.find(r => r.id === id))) }), rid);
+  const oldDesc = demoNew[ownIdx].leastLearned[1].desc, occ = t => t.split(oldDesc).length - 1; const occBefore = occ(await text(A.page));
+  await A.page.evaluate(() => { const h = document.getElementById('qa-hide'); if (h) h.remove(); });
+  await A.page.evaluate(([id, i]) => openCompetencyEditor(id, i), [rid, 1]);
+  const form = await A.page.evaluate(() => [document.getElementById('comp-code').value, document.getElementById('comp-desc').value]);
+  ok(form[0] === demoNew[ownIdx].leastLearned[1].code && form[1] === demoNew[ownIdx].leastLearned[1].desc, 'the form loads the existing entry');
+  await A.page.fill('#comp-desc', '   '); await A.page.click('#comp-save');
+  ok(/cannot be empty/.test(await A.page.textContent('#rec-error')), 'empty description is refused before saving');
+  await A.page.fill('#comp-code', ''); await A.page.fill('#comp-desc', 'x'); await A.page.click('#comp-save');
+  ok(/Enter a competency code/.test(await A.page.textContent('#rec-error')), 'empty code is refused');
+  await A.page.fill('#comp-code', 'LC-2'); await A.page.fill('#comp-desc', 'Corrected competency text'); await A.page.click('#comp-save');
+  await A.page.waitForSelector('.toast-success'); await settled(A.page);
+  const after = await A.page.evaluate(id => ({ count: window.__STUB.records.length, rec: window.__STUB.records.find(r => r.id === id) }), rid);
+  ok(after.count === before.count && after.rec.least_learned.length === before.rec.least_learned.length && after.rec.least_learned[1].desc === 'Corrected competency text' && after.rec.least_learned[1].code === 'LC-2'
+    && after.rec.least_learned[0].desc === before.rec.least_learned[0].desc, 'the existing entry is updated in place: no new record, no duplicate entry, neighbours untouched');
+  ok(['district_id', 'grade_level', 'learning_area', 'sy', 'term', 'school', 'education_level', 'mps'].every(k => after.rec[k] === before.rec[k]), 'district, level, program, grade, school year, term and scores are unchanged');
+  { const t = await text(A.page); ok(/Corrected competency text/.test(t) && occ(t) === occBefore - 1, 'the Least Learned view shows the corrected text, and the old text appears exactly once less'); }
+  // persists after a refresh (new page load reading the same data)
+  await A.page.evaluate(() => { formDirty = false; return getAllRecords(); }).then(async rs => ok(rs.find(r => r.id === rid).leastLearned[1].desc === 'Corrected competency text', 'the change is read back from the database'));
+  // stale edit and direct API attempts
+  const api = await A.page.evaluate(async ([rid2, far, lvl]) => {
+    const r = {};
+    r.stale = (await sb().rpc('app_edit_competency', { p_id: rid2, p_index: 1, p_old_desc: 'old text', p_code: 'LC-2', p_desc: 'x' })).error?.message;
+    r.far = (await sb().rpc('app_edit_competency', { p_id: far, p_index: 0, p_old_desc: window.__STUB.records.find(x => x.id === far).least_learned[0].desc, p_code: 'LC-1', p_desc: 'hijack' })).error?.message;
+    r.lvl = (await sb().rpc('app_edit_competency', { p_id: lvl, p_index: 0, p_old_desc: window.__STUB.records.find(x => x.id === lvl).least_learned[0].desc, p_code: 'LC-1', p_desc: 'hijack' })).error?.message;
+    r.farUnchanged = !JSON.stringify(window.__STUB.records.find(x => x.id === far).least_learned).includes('hijack') && !JSON.stringify(window.__STUB.records.find(x => x.id === lvl).least_learned).includes('hijack');
+    return r;
+  }, [rid, demoNew.findIndex(r => r.district === 'Carmen' && r.gradeLevel === 'Grade 4') + 1, demoNew.findIndex(r => r.district === 'Asuncion' && r.gradeLevel === 'Grade 8') + 1]);
+  ok(/changed by someone else/.test(api.stale), 'a stale edit is refused');
+  ok(/could not be found/.test(api.far) && /could not be found/.test(api.lvl) && api.farUnchanged, 'a coordinator cannot edit another district\'s or the other level\'s competencies, even by calling the database directly');
+  // offline: readable error and no false success
+  await A.page.evaluate(() => switchView('least-learned')); await settled(A.page);
+  await A.page.evaluate(([id, i]) => openCompetencyEditor(id, i), [rid, 0]);
+  await A.page.fill('#comp-desc', 'offline attempt'); await A.page.evaluate(() => { window.__STUB_OFFLINE = true; }); await A.page.click('#comp-save');
+  await A.page.waitForFunction(() => document.getElementById('rec-error').textContent.length > 0);
+  ok(/Could not reach the server/.test(await A.page.textContent('#rec-error')) && !(await A.page.evaluate(id => JSON.stringify(window.__STUB.records.find(r => r.id === id).least_learned).includes('offline attempt'), rid)), 'offline: a readable error, nothing saved, no success message');
+  await A.ctx.close();
+  for (const user of ['admin', 'supervisor']) {
+    const D = await openNew(user, demoNew);
+    const id = demoNew.findIndex(r => r.district === 'Carmen' && r.gradeLevel === 'Grade 8') + 1;
+    await D.page.evaluate(() => switchView('least-learned')); await settled(D.page);
+    await D.page.evaluate(([i]) => openCompetencyEditor(i, 0), [id]);
+    await D.page.fill('#comp-desc', user + ' fix'); await D.page.click('#comp-save'); await D.page.waitForSelector('.toast-success');
+    ok(await D.page.evaluate(i => window.__STUB.records.find(r => r.id === i).least_learned[0].desc, id) === user + ' fix', `${user} can edit competencies anywhere`);
+    await D.ctx.close();
   }
 }
 

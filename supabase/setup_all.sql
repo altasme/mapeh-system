@@ -1,5 +1,5 @@
 -- setup_all.sql: paste into the Supabase SQL editor and run once, on a NEW project (schema, access rules, audit log,
--- education levels, MAPEH rules and record controls, districts, settings). An existing project that already ran 0001 to 0003 needs only 0004 and 0005.
+-- education levels, MAPEH rules and record controls, coordinators by level, districts, settings). An existing project that already ran 0001 to 0003 needs only 0004 to 0007.
 -- Sample records are loaded later by tools/load-demo-records.mjs.
 
 -- ===== supabase/migrations/0001_schema.sql =====
@@ -554,6 +554,96 @@ begin
   end if;
 end $$;
 
+-- ===== supabase/migrations/0006_coordinators_by_level.sql =====
+-- 0006_coordinators_by_level.sql: one Elementary and one Secondary coordinator (name and position) per district.
+-- Safe to run once on a project that already has 0001 to 0005. Run it BEFORE deploying the matching app version
+-- (the previous app version keeps working, it reads the old columns).
+--
+-- Each level's details are stored separately. Existing coordinator information is preserved: both levels start with
+-- the district's current name and position, which an Admin or Supervisor can then edit per level in Settings.
+-- The original columns (coordinator_name, coordinator_position) are kept untouched and are no longer read by the app.
+-- Who may change them is unchanged: districts are updatable by Admin and Supervisor only (policy from 0002).
+alter table public.districts
+  add column elem_coordinator_name text not null default '',
+  add column elem_coordinator_position text not null default '',
+  add column sec_coordinator_name text not null default '',
+  add column sec_coordinator_position text not null default '';
+
+update public.districts set
+  elem_coordinator_name = coordinator_name, elem_coordinator_position = coordinator_position,
+  sec_coordinator_name = coordinator_name, sec_coordinator_position = coordinator_position;
+
+comment on column public.districts.coordinator_name is 'Legacy, superseded by elem_/sec_coordinator_name (0006). Not read by the app.';
+comment on column public.districts.coordinator_position is 'Legacy, superseded by elem_/sec_coordinator_position (0006). Not read by the app.';
+
+-- ===== supabase/migrations/0007_edit_competency.sql =====
+-- 0007_edit_competency.sql: correct one least-learned competency entry in place.
+-- Safe to run once on a project that already has 0001 to 0006. Run it BEFORE deploying the matching app version.
+--
+-- A competency entry lives in assessment_records.least_learned (a JSON array on its record). Editing replaces ONE element
+-- of that array on the existing record: no row is created, so nothing is duplicated, and the record keeps its district,
+-- education level, program, grade level, school year and term.
+-- The function is SECURITY INVOKER on purpose: row level security and the column privileges of the caller apply exactly
+-- as for a direct update. A coordinator can therefore only edit entries on records in their own district and level, and
+-- Admin and Supervisor anywhere, with no extra rules to keep in sync. Deleted records cannot be edited.
+-- The caller sends the description it believes it is replacing; if the entry changed meanwhile, nothing is saved.
+
+create or replace function public.app_edit_competency(p_id bigint, p_index integer, p_old_desc text, p_code text, p_desc text) returns integer
+language plpgsql security invoker set search_path = '' as $$
+declare
+  cur jsonb; el jsonb; cur_desc text; n integer;
+begin
+  p_code := btrim(coalesce(p_code, ''));
+  p_desc := btrim(coalesce(p_desc, ''));
+  if p_desc = '' then raise exception 'The competency description cannot be empty.'; end if;
+  if char_length(p_desc) > 500 then raise exception 'The competency description is too long (500 characters at most).'; end if;
+  if p_code = '' then raise exception 'Enter a competency code.'; end if;
+  if char_length(p_code) > 40 then raise exception 'The competency code is too long (40 characters at most).'; end if;
+
+  select least_learned into cur from public.assessment_records where id = p_id and deleted_at is null;
+  if cur is null or jsonb_typeof(cur) <> 'array' or p_index < 0 or p_index >= jsonb_array_length(cur) then
+    raise exception 'That competency could not be found. Reload the page and try again.';
+  end if;
+  el := cur -> p_index;
+  cur_desc := case when jsonb_typeof(el) = 'string' then el #>> '{}'
+                   else coalesce(el ->> 'desc', el ->> 'description', el ->> 'competency', '') end;
+  if btrim(cur_desc) <> btrim(coalesce(p_old_desc, '')) then
+    raise exception 'This competency was changed by someone else. Reload the page and try again.';
+  end if;
+
+  update public.assessment_records
+    set least_learned = jsonb_set(least_learned, array[p_index::text], jsonb_build_object('code', p_code, 'desc', p_desc))
+    where id = p_id and deleted_at is null;
+  get diagnostics n = row_count;
+  if n = 0 then raise exception 'You do not have access to that record.' using errcode = '42501'; end if;
+  return n;
+end $$;
+
+revoke execute on function public.app_edit_competency(bigint, integer, text, text, text) from public, anon;
+grant execute on function public.app_edit_competency(bigint, integer, text, text, text) to authenticated;
+
+-- least_learned must stay a JSON array (the app and every report read it as a list).
+create or replace function public.app_records_guard() returns trigger
+language plpgsql set search_path = '' as $$
+declare
+  problem text;
+begin
+  if tg_op = 'INSERT' or new.grade_level is distinct from old.grade_level or new.learning_area is distinct from old.learning_area then
+    problem := public.app_mapeh_rule_problem(new.grade_level, new.learning_area);
+    if problem is not null then
+      raise exception '%', problem using errcode = '23514', constraint = 'mapeh_grade_rule';
+    end if;
+  end if;
+  if jsonb_typeof(new.least_learned) is distinct from 'array' then
+    raise exception 'Least learned competencies must be a list.' using errcode = '23514';
+  end if;
+  new.proficiency_level := public.app_proficiency_level(new.mps);
+  if tg_op = 'UPDATE' and auth.uid() is not null then
+    new.updated_by := auth.uid();
+  end if;
+  return new;
+end $$;
+
 -- ===== supabase/seed/districts.sql =====
 -- districts.sql: 11 districts and the client's existing coordinator defaults, verbatim (stars 5 and 6)
 insert into public.districts (name, coordinator_name, coordinator_position, sort_order) values
@@ -568,6 +658,17 @@ insert into public.districts (name, coordinator_name, coordinator_position, sort
   ('Sto. Tomas West', 'Ramon Magsaysay Jr.',       'District Assessment Coordinator',    9),
   ('Talaingod',       'Bayanihan Datu',            'Principal In-Charge',                10),
   ('Langilan',        'Luzviminda Salcedo',        'Public Schools District Supervisor', 11);
+
+-- When migration 0006 (coordinators by level) is already applied, give both levels the same starting details.
+do $$ begin
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'districts' and column_name = 'elem_coordinator_name') then
+    update public.districts set
+      elem_coordinator_name = coordinator_name, elem_coordinator_position = coordinator_position,
+      sec_coordinator_name = coordinator_name, sec_coordinator_position = coordinator_position
+    where elem_coordinator_name = '' and sec_coordinator_name = '';
+  end if;
+end $$;
+
 
 -- ===== supabase/seed/settings.sql =====
 -- settings.sql: app_settings row from the client's current defaults
