@@ -646,6 +646,9 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
     .coord-card { border-top: 1px solid var(--rule); padding: 16px 0 6px; }
     .coord-card > h5 { color: var(--ink); font-size: 0.98rem; font-weight: 650; margin: 0 0 10px; }
     .coord-sub { margin: 0 0 12px; padding: 10px 0 2px 14px; border-left: 3px solid var(--rule-strong, #c3ccdf); }
+    .coord-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; }
+    @media (max-width: 900px) { .coord-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 640px) { .coord-fields { grid-template-columns: 1fr; } }
     .coord-sub h6 { margin: 0 0 6px; font-size: 0.78rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2, #3a4764); }
     .coord-sub.is-elem { border-left-color: var(--deped-blue); }
     .coord-sub.is-sec { border-left-color: var(--deped-yellow); }
@@ -1224,9 +1227,11 @@ const ALL_GRADES = [
 function coordFor(district, fallbackPosition) {
     const c = districtCoordinators[district];
     if (!c || !c.elementary) return { name: "Unassigned", position: fallbackPosition || "District Coordinator" };
+    // Position and Title are stored separately; everything that prints a coordinator shows "Position, Title".
+    const show = x => ({ name: x.name, position: [x.position, x.title].filter(v => v && v.trim()).join(", ") });
     const L = effectiveLevel();
-    if (L !== "ALL") return c[L];
-    const e = c.elementary, sc = c.secondary;
+    if (L !== "ALL") return show(c[L]);
+    const e = show(c.elementary), sc = show(c.secondary);
     if (e.name === sc.name && e.position === sc.position) return e;
     const join = (a, b) => (a && b && a !== b) ? `${a} / ${b}` : (a || b);
     return { name: join(e.name, sc.name), position: join(e.position, sc.position) };
@@ -1318,7 +1323,7 @@ function toRow(r) {
 
 async function initDB() {
     const [dRes, sRes] = await Promise.all([
-        sb().from("districts").select("id, name, elem_coordinator_name, elem_coordinator_position, sec_coordinator_name, sec_coordinator_position, sort_order").order("sort_order"),
+        sb().from("districts").select("id, name, elem_coordinator_name, elem_coordinator_position, sec_coordinator_name, sec_coordinator_position, elem_coordinator_title, sec_coordinator_title, sort_order").order("sort_order"),
         sb().from("app_settings").select("data").eq("id", 1).maybeSingle()
     ]);
     if (dRes.error) throw dRes.error;
@@ -1333,8 +1338,8 @@ async function initDB() {
         districtIdByName[d.name] = d.id;
         districtNameById[d.id] = d.name;
         districtCoordinators[d.name] = {
-            elementary: { name: d.elem_coordinator_name || "", position: d.elem_coordinator_position || "" },
-            secondary: { name: d.sec_coordinator_name || "", position: d.sec_coordinator_position || "" }
+            elementary: { name: d.elem_coordinator_name || "", position: d.elem_coordinator_position || "", title: d.elem_coordinator_title || "" },
+            secondary: { name: d.sec_coordinator_name || "", position: d.sec_coordinator_position || "", title: d.sec_coordinator_title || "" }
         };
         return d.name;
     });
@@ -3450,18 +3455,22 @@ function renderSettingsView(container) {
         const key = d.replace(/[^a-zA-Z0-9]/g, '_');
         const sub = (tag, cls, title, info) => `<div class="coord-sub ${cls}">
                 <h6>${title}</h6>
-                <div class="form-grid">
+                <div class="coord-fields">
                     <div class="form-group">
                         <label for="coord-${tag}-name-${key}">Coordinator Name</label>
                         <input type="text" id="coord-${tag}-name-${key}" value="${esc(info.name)}" placeholder="Enter Full Name">
                     </div>
                     <div class="form-group">
-                        <label for="coord-${tag}-pos-${key}">Designated Position / Title</label>
-                        <input type="text" id="coord-${tag}-pos-${key}" value="${esc(info.position)}" placeholder="e.g., Public Schools District Supervisor, Principal In-Charge">
+                        <label for="coord-${tag}-pos-${key}">Designated Position</label>
+                        <input type="text" id="coord-${tag}-pos-${key}" value="${esc(info.position)}" placeholder="e.g., Public Schools District Supervisor">
+                    </div>
+                    <div class="form-group">
+                        <label for="coord-${tag}-title-${key}">Title</label>
+                        <input type="text" id="coord-${tag}-title-${key}" value="${esc(info.title || '')}" placeholder="e.g., Principal II (optional)">
                     </div>
                 </div>
             </div>`;
-        const c = districtCoordinators[d] || { elementary: { name: "", position: "" }, secondary: { name: "", position: "" } };
+        const c = districtCoordinators[d] || { elementary: { name: "", position: "", title: "" }, secondary: { name: "", position: "", title: "" } };
         return `<div class="coord-row coord-card">
             <h5>${i + 1}. ${esc(d)} District</h5>
             ${sub('e', 'is-elem', 'Elementary Coordinator', c.elementary)}
@@ -3505,7 +3514,7 @@ function renderSettingsView(container) {
     </div>
     <div class="card-box" style="padding: 20px; margin-bottom:20px;">
         <h3>District Coordinator & Position Management</h3>
-        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 15px;">Each district has an Elementary and a Secondary coordinator. Set the name and official position of each; reports and profiles use the coordinator of the level being shown.</p>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 15px;">Each district has an Elementary and a Secondary coordinator. Set the name, designated position and title of each; reports and profiles use the coordinator of the level being shown.</p>
         <form onsubmit="saveDistrictCoordinators(event)">
             ${coordFormRows}
             <button type="submit" class="btn btn-success" style="margin-top: 10px;">Save District Coordinators</button>
@@ -3643,8 +3652,8 @@ async function saveDistrictCoordinators(e) {
             const key = d.replace(/[^a-zA-Z0-9]/g, '_');
             const v = id => document.getElementById(`coord-${id}-${key}`).value;
             const { data, error } = await sb().from("districts").update({
-                elem_coordinator_name: v("e-name"), elem_coordinator_position: v("e-pos"),
-                sec_coordinator_name: v("s-name"), sec_coordinator_position: v("s-pos")
+                elem_coordinator_name: v("e-name"), elem_coordinator_position: v("e-pos"), elem_coordinator_title: v("e-title"),
+                sec_coordinator_name: v("s-name"), sec_coordinator_position: v("s-pos"), sec_coordinator_title: v("s-title")
             }).eq("id", districtIdByName[d]).select("id");
             return { d, ok: !error && !!data && data.length === 1, error };
         }));

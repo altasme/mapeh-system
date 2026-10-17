@@ -1,5 +1,5 @@
 -- setup_all.sql: paste into the Supabase SQL editor and run once, on a NEW project (schema, access rules, audit log,
--- education levels, MAPEH rules and record controls, coordinators by level, districts, settings). An existing project that already ran 0001 to 0003 needs only 0004 to 0008.
+-- education levels, MAPEH rules and record controls, coordinators by level, districts, settings). An existing project that already ran 0001 to 0003 needs only 0004 to 0009.
 -- Sample records are loaded later by tools/load-demo-records.mjs.
 
 -- ===== supabase/migrations/0001_schema.sql =====
@@ -672,6 +672,15 @@ create or replace function public.app_education_level_of_user() returns text
 language sql stable security definer set search_path = '' as $$
   select education_level from public.profiles where id = auth.uid() and active
 $$;
+
+-- ===== supabase/migrations/0009_coordinator_title.sql =====
+-- 0009_coordinator_title.sql: "Designated Position" and "Title" become separate fields for each district coordinator.
+-- Safe to run once on a project that already has 0001 to 0008. Run it BEFORE deploying the matching app version.
+-- Existing values stay in the position columns; the new title columns start empty, so existing reports do not change
+-- until a title is entered. Who may edit them is unchanged (Admin and Supervisor, policy from 0002).
+alter table public.districts
+  add column elem_coordinator_title text not null default '',
+  add column sec_coordinator_title text not null default '';
 
 -- ===== supabase/seed/districts.sql =====
 -- districts.sql: 11 districts and the client's existing coordinator defaults, verbatim (stars 5 and 6)
