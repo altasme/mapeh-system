@@ -10,6 +10,6 @@ window.APP_CONFIG = {
     excelDataExport: false,
     importValidation: false,
     duplicateDetection: false,
-    selfServicePassword: true   // change-password screen is built; reset-by-email is not
+    selfServicePassword: false  // client decision (testing phase): no change-password screen; accounts keep their initial passwords
   }
 };

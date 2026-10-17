@@ -335,13 +335,12 @@ table.excel-table tr.mapeh-row { background-color: #EBF8FF; font-weight: bold; }
 .toast-success { background: var(--success); }
 .toast-error { background: var(--danger); }
 .toast-info { background: var(--deped-blue); }
-#reauth-modal, #pw-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10500; display: none; align-items: center; justify-content: center; padding: 20px; }
+#reauth-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10500; display: none; align-items: center; justify-content: center; padding: 20px; }
 .modal-card { background: #fff; width: 100%; max-width: 380px; padding: 24px; border-radius: 10px; }
 .modal-card h3 { color: var(--deped-dark); margin-bottom: 8px; font-size: 1.05rem; }
 .modal-card p { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px; }
 .modal-card input { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.9rem; }
 .modal-card label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--ink-2, #3a4764); margin: 12px 0 6px; }
-.pw-rules { font-size: 0.78rem !important; margin: 10px 0 0 !important; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 #nav-toggle, #nav-backdrop, #filters-toggle { display: none; }
 #print-sample-line { display: none; }
@@ -715,23 +714,6 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
         </div>
     </div>
 </div>
-<div id="pw-modal" role="dialog" aria-modal="true" aria-labelledby="pw-title">
-    <div class="modal-card">
-        <h3 id="pw-title">Set a new password</h3>
-        <p id="pw-text"></p>
-        <form id="pw-form" autocomplete="off">
-            <div id="pw-current-row"><label for="pw-current">Current password</label><input type="password" id="pw-current" autocomplete="current-password"></div>
-            <label for="pw-new">New password</label><input type="password" id="pw-new" autocomplete="new-password">
-            <label for="pw-confirm">Confirm new password</label><input type="password" id="pw-confirm" autocomplete="new-password">
-            <p class="pw-rules">At least 10 characters, with a letter and a number. Do not use your username or district name.</p>
-            <div class="login-error" id="pw-error" role="alert"></div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" id="pw-cancel">Cancel</button>
-                <button type="submit" class="btn btn-primary" id="pw-ok">Change password</button>
-            </div>
-        </form>
-    </div>
-</div>
 <div id="record-modal" class="screen-only" role="dialog" aria-modal="true" aria-labelledby="rec-title"><div class="modal-card" id="record-modal-card"></div></div>
 <div id="nav-backdrop" onclick="document.body.classList.remove('nav-open')"></div>
 
@@ -779,7 +761,6 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
                     <strong style="font-size: 0.85rem; color: var(--ink);" id="u-name">Guest User</strong><br>
                     <span style="font-size: 0.75rem; color: var(--muted);" id="u-role">View Only</span>
                 </div>
-                <button class="btn btn-secondary btn-sm" onclick="requestPasswordChange({ forced: false })">Password</button>
                 <button class="btn btn-secondary btn-sm" onclick="handleLogout()">Logout</button>
             </div>
         </div>
@@ -1007,81 +988,6 @@ function requireReauth(promptText) {
     });
 }
 
-/* PASSWORD CHANGE: used for the forced change of an initial password and for voluntary changes */
-function validateNewPassword(pw) {
-    if (pw.length < 10) return "Use at least 10 characters.";
-    if (!/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)) return "Use at least one letter and at least one number.";
-    const low = pw.toLowerCase();
-    if (currentUser) {
-        const name = currentUser.username.toLowerCase();
-        const code = name.split("_")[0];
-        if (low.includes(name) || (code.length >= 3 && low.includes(code))) return "Do not use your username or district name in the password.";
-    }
-    if (low.includes("password") || low.includes("123456")) return "That password is too easy to guess.";
-    return "";
-}
-
-function passwordErrorMessage(error) {
-    const msg = String(error.message || "");
-    if (error.code === "same_password" || /different from the old/i.test(msg)) return "Choose a password you have not used before.";
-    if (error.code === "weak_password" || /password.*(weak|short|characters)/i.test(msg)) return "That password does not meet the server's rules. Use a longer, less predictable one.";
-    return friendlyError(error);
-}
-
-function requestPasswordChange(opts) {
-    const forced = !!(opts && opts.forced);
-    return new Promise(resolve => {
-        const overlay = document.getElementById("pw-modal");
-        const form = document.getElementById("pw-form");
-        const err = document.getElementById("pw-error");
-        const cur = document.getElementById("pw-current"), nw = document.getElementById("pw-new"), cf = document.getElementById("pw-confirm");
-        const ok = document.getElementById("pw-ok"), cancel = document.getElementById("pw-cancel");
-        document.getElementById("pw-title").textContent = forced ? "Set a new password" : "Change password";
-        document.getElementById("pw-text").textContent = forced
-            ? "Your account was issued with an initial password. Choose your own password to continue. Until you do, no data can be opened."
-            : "Choose a new password for your account.";
-        document.getElementById("pw-current-row").style.display = forced ? "none" : "block";
-        cancel.textContent = forced ? "Log out" : "Cancel";
-        [cur, nw, cf].forEach(i => { i.value = ""; });
-        err.textContent = "";
-        overlay.style.display = "flex";
-        (forced ? nw : cur).focus();
-        const done = v => {
-            overlay.style.display = "none";
-            form.onsubmit = null; cancel.onclick = null;
-            [cur, nw, cf].forEach(i => { i.value = ""; });
-            resolve(v);
-        };
-        cancel.onclick = async () => {
-            if (forced) { await sb().auth.signOut().catch(() => {}); location.reload(); return; }
-            done(false);
-        };
-        form.onsubmit = async (ev) => {
-            ev.preventDefault();
-            err.textContent = "";
-            const problem = validateNewPassword(nw.value) || (nw.value !== cf.value ? "The two new passwords do not match." : "");
-            if (problem) { err.textContent = problem; return; }
-            ok.disabled = true;
-            try {
-                if (!forced) {
-                    const { error: e1 } = await sb().auth.signInWithPassword({ email: currentUser.email, password: cur.value });
-                    if (e1) { err.textContent = e1.status === 400 ? "Your current password is incorrect." : friendlyError(e1); return; }
-                }
-                const { error } = await sb().auth.updateUser({ password: nw.value });
-                if (error) { err.textContent = passwordErrorMessage(error); return; }
-                await loadProfile(); // the server clears the initial-password flag when the password really changes
-                if (currentUser.mustChangePassword) { err.textContent = "The password was changed, but the account is still locked. Please contact the administrator."; return; }
-                if (!forced) toast("Password changed.");
-                done(true);
-            } catch (e2) {
-                err.textContent = friendlyError(e2);
-            } finally {
-                ok.disabled = false;
-            }
-        };
-    });
-}
-
 /* 1. AUTHENTICATION (Supabase Auth; accounts live in the database) */
 const ROLE_LABELS = { admin: "Admin", supervisor: "Supervisor", district_coordinator: "District Coordinator" };
 
@@ -1136,7 +1042,7 @@ async function loadProfile() {
     const { data: { session } } = await sb().auth.getSession();
     if (!session) throw new Error("No session");
     const { data, error } = await sb().from("profiles")
-        .select("username, display_name, role, education_level, active, must_change_password, districts(name)")
+        .select("username, display_name, role, education_level, active, districts(name)")
         .eq("id", session.user.id).maybeSingle();
     if (error) throw error;
     if (!data) { const e = new Error("NO_PROFILE"); e.userMessage = "This account has no profile. Please contact the administrator."; throw e; }
@@ -1152,7 +1058,6 @@ async function loadProfile() {
         username: data.username,
         district: data.districts ? data.districts.name : "ALL",
         educationLevel: level,
-        mustChangePassword: !!data.must_change_password,
         email: session.user.email
     };
 }
@@ -1166,9 +1071,6 @@ function showLoginError(message) {
 async function enterApp() {
     try {
         await loadProfile();
-        // An initial password must be replaced before anything else happens. The database also refuses all data
-        // to such a session, so this screen is a courtesy and not the control.
-        if (currentUser.mustChangePassword) await requestPasswordChange({ forced: true });
         await initDB();
     } catch (err) {
         if (err && (err.message === "NO_PROFILE" || err.message === "RETIRED")) await sb().auth.signOut().catch(() => {});

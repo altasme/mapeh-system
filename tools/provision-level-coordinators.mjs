@@ -8,7 +8,7 @@
 // Username:         {district_code}_elemcoord   and   {district_code}_seccoord
 // Initial password: {district_code}@elem        and   {district_code}@sec     (built at run time, never printed or stored)
 //
-// Every new profile is created with must_change_password = true. Until the user sets a new password the database
+// Client decision (testing phase): no forced password change, so profiles are created with must_change_password = false (migration 0008). Formerly: until the user set a new password the database
 // refuses them all data, and the app forces the change at first login. Idempotent: an account that already exists
 // keeps its password and its flag; only its district, level and active state are brought back in line.
 // The district codes are the ones already used by the original usernames (username without "_coord").
@@ -69,13 +69,13 @@ for (const a of plan) {
     const c = must(await call('POST', '/auth/v1/admin/users', { email, password: a.password, email_confirm: true }), `create ${a.username}`);
     id = c.json.id; created++;
     must(await call('POST', '/rest/v1/profiles', { id, username: a.username, display_name: a.name, role: 'district_coordinator',
-      district_id: districtId[a.district], education_level: a.level, active: true, must_change_password: true }, { Prefer: 'return=minimal' }), `profile ${a.username}`);
+      district_id: districtId[a.district], education_level: a.level, active: true, must_change_password: false }, { Prefer: 'return=minimal' }), `profile ${a.username}`);
   } else {
     kept++; // existing account: keep its password and its must-change flag
     const ex = await call('GET', `/rest/v1/profiles?select=id&id=eq.${id}`);
     const body = { district_id: districtId[a.district], education_level: a.level, active: true, role: 'district_coordinator', display_name: a.name, username: a.username };
     if (ex.json && ex.json.length) must(await call('PATCH', `/rest/v1/profiles?id=eq.${id}`, body, { Prefer: 'return=minimal' }), `update ${a.username}`);
-    else must(await call('POST', '/rest/v1/profiles', { id, ...body, must_change_password: true }, { Prefer: 'return=minimal' }), `profile ${a.username}`);
+    else must(await call('POST', '/rest/v1/profiles', { id, ...body, must_change_password: false }, { Prefer: 'return=minimal' }), `profile ${a.username}`);
   }
   console.log(`ok  ${a.username}`);
 }
