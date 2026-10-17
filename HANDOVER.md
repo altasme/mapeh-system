@@ -197,3 +197,11 @@ The client asked for: original passwords back for everyone, no change-password f
 - **Provisioning.** `provision_coordinators.sql` and `tools/provision-level-coordinators.mjs` now create accounts without the lock. `tools/reset-password.mjs` resets a password without locking.
 - **To restore the passwords on the live project** (no terminal needed): run `0008`, then the password-restoring SQL that was handed over in chat (it is deliberately not in the repository because it contains the original Admin and Supervisor passwords).
 - **Accepted risk (AUDIT R3).** Anyone who knows the convention can sign in to any coordinator account, and anyone with the client's original file can sign in as Admin or Supervisor. This is acceptable only while the system holds sample data. Before real data goes in: new passwords, the password-change screen (it can be restored from git history, tag the commit before this change) and the lock.
+
+## 16. Designated Position and Title as separate fields (added 2026-10-17)
+
+In Settings & Branding, each Elementary and Secondary coordinator now has three fields: **Coordinator Name**, **Designated Position** and **Title** (previously one "Designated Position / Title" field). Migration `0009_coordinator_title.sql` adds `elem_coordinator_title` and `sec_coordinator_title` to `districts`. Existing text stays in Position and Title starts empty, so nothing printed changes until a title is entered.
+
+**How reports show it (please confirm with the client).** Wherever a coordinator's position is printed (the "Prepared by" signatory, District Profile, Division Summary column, per-district notes) it reads "Position, Title", for example "Public Schools District Supervisor, Principal II"; with no title it is the position alone. If the client wants Title shown differently (for instance an honorific before the name), it is a one-line change in `coordFor()` in `public/index.html`.
+
+**To deploy.** Run `0009_coordinator_title.sql` in the SQL editor first (the live app keeps working after it), then merge `feature/coordinator-title`. In the other order, Settings and every view fail to load.
