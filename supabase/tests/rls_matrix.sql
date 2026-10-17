@@ -1,5 +1,5 @@
 -- rls_matrix.sql: access rules after 0005 (levels, MAPEH rules, edit and soft delete). Run in the Supabase SQL editor
--- AFTER migrations 0001 to 0007 and seed/districts.sql. One transaction, rolled back: it creates throwaway users and
+-- AFTER migrations 0001 to 0008 and seed/districts.sql. One transaction, rolled back: it creates throwaway users and
 -- never touches real accounts. A failed check raises an exception; passes print NOTICE lines.
 begin;
 
@@ -196,23 +196,19 @@ begin
   reset role;
   raise notice 'PASS retired account';
 
+  -- Migration 0008: the password gate is off. An account whose (legacy) flag is still set is NOT locked out.
   perform set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-0000000000c2","role":"authenticated"}',true);
   set local role authenticated;
-  select count(*) into n from public.assessment_records; assert n = 0, 'initial-password account sees no records';
-  select count(*) into n from public.comparative_notes; assert n = 0, 'initial-password account sees no notes';
-  select count(*) into n from public.profiles where must_change_password; assert n = 1, 'the account can still read its own profile to learn it must change the password';
+  select count(*) into n from public.assessment_records;
+  assert n >= 1 and n = (select count(*) from public.assessment_records where district_id = asu and education_level = 'elementary' and deleted_at is null), 'an account with the legacy flag still sees exactly its own scope (Asuncion elementary)';
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
+    values ('2025-2026','Term 2',asu,'Key Stage 1','Grade 3','X',65,80,70,'x');
   denied := false;
   begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
-    values ('2025-2026','Term 2',asu,'Key Stage 1','Grade 3','X',65,80,70,'x'); exception when insufficient_privilege then denied := true; end;
-  assert denied, 'initial-password account cannot write';
+    values ('2025-2026','Term 2',asu,'Key Stage 3','Grade 9','X',65,80,70,'x'); exception when insufficient_privilege then denied := true; end;
+  assert denied, 'and is still limited to its own district and level';
   reset role;
-  -- the real password change (GoTrue updates encrypted_password) clears the flag
-  update auth.users set encrypted_password = 'new-hash' where id = '00000000-0000-0000-0000-0000000000c2';
-  assert (select not must_change_password from public.profiles where username = 't_gated'), 'trigger clears the flag after a real password change';
-  set local role authenticated;
-  select count(*) into n from public.assessment_records; assert n >= 1 and n = (select count(*) from public.assessment_records where district_id = asu and education_level = 'elementary' and deleted_at is null), 'after the password change the account sees exactly its own scope (Asuncion elementary)';
-  reset role;
-  raise notice 'PASS forced password change';
+  raise notice 'PASS no password gate';
 
   -- ===== MAPEH grade rules (create, edit, and direct API) =====
   declare

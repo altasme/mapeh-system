@@ -6,9 +6,7 @@
 //
 // Initial passwords are rebuilt from the convention at run time; Admin and Supervisor passwords come from legacy/.
 // Nothing is printed that contains a password. The script:
-//   1. checks the initial-password gate (an account that must change its password can read and write nothing),
-//   2. temporarily lifts the gate on each account with the service key, runs the district + level checks, and
-//      puts the gate back (a test account never ends up unlocked by this script),
+//   1. signs in as each account with its initial password and runs the district + level checks (no password gate any more),
 //   3. inserts and removes its own marker rows (school = LEVEL-TEST).
 import fs from 'fs'; import path from 'path';
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -57,16 +55,7 @@ try {
       console.log(`  SKIP ${tag}: initial password no longer works (already changed); only the SQL matrix covers it`); continue; }
     const A = rest(tok, PUB);
 
-    // 1. the gate: while the flag is set, no data at all
-    await svc('PATCH', `profiles?id=eq.${prof.id}`, { must_change_password: true }, 'return=minimal');
-    const g1 = await A('GET', 'assessment_records?select=id&limit=1');
-    ok(g1.n === 0 || denied(g1), `${tag}: initial password sees no records`);
-    ok(denied(await A('POST', 'assessment_records', rec(dist[district], level))), `${tag}: initial password cannot write`);
-    const own = await A('GET', 'profiles?select=must_change_password');
-    ok(own.j && own.j.length === 1 && own.j[0].must_change_password === true, `${tag}: can still read its own profile to learn it must change the password`);
-
-    // 2. lift the gate for the test and check scope
-    await svc('PATCH', `profiles?id=eq.${prof.id}`, { must_change_password: false }, 'return=minimal');
+    // scope checks (no password gate: accounts use their initial passwords as is, see migration 0008)
     const mine = await A('GET', 'assessment_records?select=id,district_id,education_level&school=eq.LEVEL-TEST');
     ok(mine.j && mine.j.length === 1 && mine.j[0].district_id === dist[district] && mine.j[0].education_level === level, `${tag}: sees exactly its own district and level (${mine.j ? mine.j.length : 'error'} marker row)`);
     const everything = await A('GET', 'assessment_records?select=id,district_id,education_level&limit=2000');
@@ -100,8 +89,6 @@ try {
     const roleChange = await A('PATCH', `profiles?id=eq.${prof.id}`, { education_level: other(level), active: true, must_change_password: false }, 'return=representation');
     ok(denied(roleChange) || (Array.isArray(roleChange.j) && roleChange.j.length === 0), `${tag}: cannot edit its own level or security flags`);
 
-    // 3. put the gate back
-    await svc('PATCH', `profiles?id=eq.${prof.id}`, { must_change_password: flagState[prof.id] }, 'return=minimal');
   }
 
   // Admin and Supervisor see both levels everywhere; the original coordinators are retired

@@ -4,8 +4,8 @@
 --   Username  {district_code}_elemcoord / {district_code}_seccoord      (login: username only, as on the login screen)
 --   Initial password  {district_code}@elem / {district_code}@sec        (initial credentials only)
 --
--- Every account starts with must_change_password = true: until its owner picks a new password the database returns
--- no data to it, and the app forces the change at first sign-in. Safe to run twice: an account that already exists is
+-- Client decision for the testing phase: accounts use their initial password as is (no forced or voluntary change;
+-- must_change_password stays false, see migration 0008). Safe to run twice: an account that already exists is
 -- left alone (password and flag unchanged). It also retires the original 11 district-wide coordinators
 -- (profiles.active = false and sign-in banned); undo by setting active = true and clearing banned_until.
 -- The passwords below come from the agreed convention, so keep this repository private and hand accounts out together.
@@ -42,7 +42,7 @@ begin
           values (gen_random_uuid(), v_id, v_id::text, jsonb_build_object('sub', v_id::text, 'email', v_email, 'email_verified', true, 'phone_verified', false),
             'email', now(), now(), now());
         insert into public.profiles (id, username, display_name, role, district_id, education_level, active, must_change_password)
-          values (v_id, v_user, v_dist || ' ' || lv[j][2] || ' Coordinator', 'district_coordinator', v_did, lv[j][1], true, true);
+          values (v_id, v_user, v_dist || ' ' || lv[j][2] || ' Coordinator', 'district_coordinator', v_did, lv[j][1], true, false);
         created := created + 1;
       else
         update public.profiles set district_id = v_did, education_level = lv[j][1], active = true, role = 'district_coordinator',
@@ -63,5 +63,5 @@ end $$;
 
 select count(*) filter (where education_level = 'elementary') as elementary,
        count(*) filter (where education_level = 'secondary') as secondary,
-       count(*) filter (where must_change_password) as awaiting_password_change
+       count(*) as accounts
 from public.profiles where role = 'district_coordinator' and active;

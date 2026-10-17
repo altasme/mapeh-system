@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Administrative password reset. The user must choose a new password again at next login.
+// Administrative password reset (testing phase: the new password is used as is, there is no forced change).
 //   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... NEW_PASSWORD='temporary-secret' node tools/reset-password.mjs <username>
 // The temporary password comes from the environment (never from a file or argument) and is never printed.
 const username = process.argv[2];
@@ -13,7 +13,4 @@ if (!prof.j || !prof.j.length) { console.error('No such username.'); process.exi
 const id = prof.j[0].id;
 const up = await call('PUT', `/auth/v1/admin/users/${id}`, { password: PW });
 if (up.s >= 300) { console.error('Password update failed: HTTP ' + up.s); process.exit(1); }
-// The database clears the flag whenever a password changes, so set it again afterwards.
-const fl = await call('PATCH', `/rest/v1/profiles?id=eq.${id}`, { must_change_password: true }, { Prefer: 'return=minimal' });
-if (fl.s >= 300) { console.error('Could not set must_change_password: HTTP ' + fl.s); process.exit(1); }
-console.log(`Password for ${username} reset. They must choose a new one at next sign-in.`);
+console.log(`Password for ${username} reset.`);

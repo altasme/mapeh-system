@@ -14,7 +14,7 @@
   const key = 'stub_session';
   const sess = () => { try { return JSON.parse(sessionStorage.getItem(key)); } catch (_) { return null; } };
   const me = () => { const s = sess(); return s ? T.profiles.find(p => p.id === s.user.id) : null; };
-  const sessionOk = () => { const p = me(); return !!p && p.active !== false && !p.must_change_password; };
+  const sessionOk = () => { const p = me(); return !!p && p.active !== false; };   // migration 0008: no password gate
   const isDivision = () => { const p = me(); return sessionOk() && (p.role === 'admin' || p.role === 'supervisor'); };
   const distName = id => (T.districts.find(d => d.id === id) || {}).name;
   const err = (code, message) => ({ code, message });

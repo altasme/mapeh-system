@@ -522,7 +522,7 @@ console.log('\n[11] Download CSV (Admin and Supervisor) and the aligned signator
   await A.ctx.close();
 }
 
-console.log('\n[12] Elementary and Secondary coordinators: 22 accounts, separation, password gate');
+console.log('\n[12] Elementary and Secondary coordinators: 22 accounts, separation, initial passwords as is');
 {
   const LV = { elementary: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'], secondary: ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'] };
   const LABEL = { elementary: 'Elementary', secondary: 'Secondary' };
@@ -598,51 +598,16 @@ console.log('\n[12] Elementary and Secondary coordinators: 22 accounts, separati
     await N.ctx.close();
   }
 
-  // --- forced password change for an account that still has its initial password
-  {
-    const u = 'dujali_seccoord', init = LEVEL_ACCOUNTS.find(a => a.username === u).password;
-    const N = await openNew(u, demo, { noLogin: true, mustChange: [u] });
-    await N.page.fill('#login-username', u); await N.page.fill('#login-password', init); await N.page.click('#login-screen button[type=submit]');
-    await N.page.waitForSelector('#pw-modal', { state: 'visible' });
-    ok(true, 'initial password: the change-password screen opens before anything else');
-    ok((await N.page.textContent('#pw-title')) === 'Set a new password' && !(await N.page.locator('#pw-current').isVisible()), 'forced change does not ask for the current password again and cannot be cancelled (only Log out)');
-    ok((await N.page.textContent('#pw-cancel')) === 'Log out', 'the only alternative is Log out');
-    ok(await N.page.evaluate(() => document.getElementById('login-screen').style.display !== 'none' && !document.querySelector('#view-container .kpi-grid')), 'no data screen is reachable while the password is still initial');
-    const direct = await N.page.evaluate(async () => (await sb().from('assessment_records').select('id').range(0, 5)).data.length);
-    ok(direct === 0, 'initial password: even a direct data request returns nothing (enforced by the access rules)');
-    const tryPw = async (pw, conf) => { await N.page.fill('#pw-new', pw); await N.page.fill('#pw-confirm', conf ?? pw); await N.page.click('#pw-ok'); await N.page.waitForFunction(() => document.getElementById('pw-error').textContent.length > 0 || document.getElementById('pw-modal').style.display === 'none'); return N.page.textContent('#pw-error'); };
-    ok(/at least 10/i.test(await tryPw('Short1')), 'rule: at least 10 characters');
-    ok(/letter and at least one number/i.test(await tryPw('onlyletterslong')), 'rule: a letter and a number');
-    ok(/username or district/i.test(await tryPw(init + '12345')), 'rule: the initial pattern (district name) is refused');
-    ok(/username or district/i.test(await tryPw('Dujali_seccoord9')), 'rule: the username is refused');
-    ok(/too easy/i.test(await tryPw('Password-2026x')), 'rule: obvious passwords are refused');
-    ok(/do not match/i.test(await tryPw('Quiet-River-2026', 'Quiet-River-2027')), 'rule: both entries must match');
-    ok(await N.page.evaluate(u => window.__STUB.profiles.find(p => p.username === u).must_change_password === true, u), 'nothing was unlocked by the failed attempts');
-    await tryPw('Quiet-River-2026');
+  // --- client decision (testing phase): initial passwords are used as is; there is no change-password screen
+  for (const u of ['dujali_seccoord', 'langilan_elemcoord']) {
+    const a = LEVEL_ACCOUNTS.find(x => x.username === u);
+    const N = await openNew(u, demo, { noLogin: true });
+    await N.page.fill('#login-username', u); await N.page.fill('#login-password', a.password); await N.page.click('#login-screen button[type=submit]');
     await N.page.waitForFunction(() => document.getElementById('login-screen').style.display === 'none'); await settled(N.page);
-    ok(true, 'a valid new password unlocks the account and loads the app');
-    ok(/TOTAL DISTRICT RECORDS\s+0/i.test(await text(N.page)) || await N.page.evaluate(() => currentUser.educationLevel === 'secondary'), 'the unlocked account is still limited to its own district and level');
-    ok(await N.page.evaluate(() => window.__STUB.passwords['dujali_seccoord'] === 'Quiet-River-2026' && window.__STUB.profiles.find(p => p.username === 'dujali_seccoord').must_change_password === false), 'the server holds the new password and has cleared the flag');
-    // voluntary change later needs the current password
-    await N.page.click('.user-profile-badge button:has-text("Password")'); await N.page.waitForSelector('#pw-modal', { state: 'visible' });
-    ok(await N.page.locator('#pw-current').isVisible(), 'voluntary change asks for the current password');
-    await N.page.fill('#pw-current', 'wrong-one-123'); await N.page.fill('#pw-new', 'Calm-Harbor-2026'); await N.page.fill('#pw-confirm', 'Calm-Harbor-2026'); await N.page.click('#pw-ok');
-    await N.page.waitForFunction(() => document.getElementById('pw-error').textContent.length > 0);
-    ok(/current password is incorrect/i.test(await N.page.textContent('#pw-error')), 'voluntary change: a wrong current password is refused');
-    await N.page.fill('#pw-current', 'Quiet-River-2026'); await N.page.fill('#pw-new', 'Quiet-River-2026'); await N.page.fill('#pw-confirm', 'Quiet-River-2026'); await N.page.click('#pw-ok');
-    await N.page.waitForFunction(() => document.getElementById('pw-error').textContent.length > 0);
-    ok(/not used before/i.test(await N.page.textContent('#pw-error')), 'voluntary change: re-using the same password is refused');
-    await N.page.fill('#pw-current', 'Quiet-River-2026'); await N.page.fill('#pw-new', 'Calm-Harbor-2026'); await N.page.fill('#pw-confirm', 'Calm-Harbor-2026'); await N.page.click('#pw-ok');
-    await N.page.waitForFunction(() => document.getElementById('pw-modal').style.display === 'none');
-    ok(await N.page.evaluate(() => window.__STUB.passwords['dujali_seccoord'] === 'Calm-Harbor-2026'), 'voluntary change: saved');
+    ok(await N.page.locator('#pw-modal').count() === 0 && await N.page.locator('.user-profile-badge button:has-text("Password")').count() === 0, `${u}: signs in with the initial password straight into the app; no change-password screen or button exists`);
+    ok(await N.page.evaluate(() => currentUser.district !== 'ALL' && currentUser.educationLevel !== 'ALL' && !!document.querySelector('#view-container .kpi-grid')), `${u}: data screens open, still limited to own district and level`);
+    ok(await N.page.evaluate(() => (typeof requestPasswordChange === 'undefined') && window.APP_CONFIG.features.selfServicePassword !== true), `${u}: the password-change code is gone`);
     await N.ctx.close();
-    // log out from the forced screen, and the initial password stops working once replaced
-    const M = await openNew(u, demo, { noLogin: true, mustChange: [u] });
-    await M.page.fill('#login-username', u); await M.page.fill('#login-password', init); await M.page.click('#login-screen button[type=submit]');
-    await M.page.waitForSelector('#pw-modal', { state: 'visible' });
-    await Promise.all([M.page.waitForEvent('load'), M.page.click('#pw-cancel')]);
-    ok(await M.page.evaluate(() => !sessionStorage.getItem('stub_session')), 'Log out from the forced screen ends the session');
-    await M.ctx.close();
   }
 
   // --- the original district-wide coordinators are retired
