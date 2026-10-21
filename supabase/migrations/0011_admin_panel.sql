@@ -357,6 +357,15 @@ begin
   perform public.app_admin_log('settings.update', 'setting', p_key, 'success', jsonb_build_object('key', p_key));
 end $$;
 
+-- back to the built-in value: removes the override
+create or replace function public.app_admin_clear_setting(p_key text) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if not public.app_is_admin() then raise exception 'Only an administrator can do this.' using errcode = '42501'; end if;
+  delete from public.site_settings where key = p_key;
+  if found then perform public.app_admin_log('settings.clear', 'setting', p_key, 'success', jsonb_build_object('key', p_key)); end if;
+end $$;
+
 -- ===== images and media =====
 create table public.site_media (
   id uuid primary key default gen_random_uuid(),
@@ -441,13 +450,13 @@ revoke execute on function public.app_admin_list_users(text, text, smallint, big
   public.app_admin_create_user(text, text, text, smallint, text, bigint, text), public.app_admin_update_user(uuid, text, text, text, smallint, text, bigint, boolean),
   public.app_admin_set_password(uuid, text), public.app_admin_activity(text, text, integer, integer), public.app_admin_data_changes(integer, integer),
   public.app_admin_save_content(text, text), public.app_admin_reset_content(text), public.app_admin_restore_content(bigint),
-  public.app_admin_save_setting(text, jsonb), public.app_admin_register_media(text, text, text, integer, text), public.app_admin_update_media(uuid, text),
+  public.app_admin_save_setting(text, jsonb), public.app_admin_clear_setting(text), public.app_admin_register_media(text, text, text, integer, text), public.app_admin_update_media(uuid, text),
   public.app_admin_assign_media(text, uuid), public.app_admin_delete_media(uuid) from public, anon;
 grant execute on function public.app_admin_list_users(text, text, smallint, bigint, text, text, integer, integer), public.app_admin_user_stats(),
   public.app_admin_create_user(text, text, text, smallint, text, bigint, text), public.app_admin_update_user(uuid, text, text, text, smallint, text, bigint, boolean),
   public.app_admin_set_password(uuid, text), public.app_admin_activity(text, text, integer, integer), public.app_admin_data_changes(integer, integer),
   public.app_admin_save_content(text, text), public.app_admin_reset_content(text), public.app_admin_restore_content(bigint),
-  public.app_admin_save_setting(text, jsonb), public.app_admin_register_media(text, text, text, integer, text), public.app_admin_update_media(uuid, text),
+  public.app_admin_save_setting(text, jsonb), public.app_admin_clear_setting(text), public.app_admin_register_media(text, text, text, integer, text), public.app_admin_update_media(uuid, text),
   public.app_admin_assign_media(text, uuid), public.app_admin_delete_media(uuid) to authenticated;
 
 -- ===== storage: a public bucket for site images; only an administrator can write to it =====

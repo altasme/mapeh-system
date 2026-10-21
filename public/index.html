@@ -24,6 +24,7 @@
 <meta name="twitter:image" content="https://mapehdavnor.com/og-image.jpg">
 <!-- Chart.js, SheetJS (XLSX) and supabase-js: versions pinned, integrity-checked -->
 <script src="config.js"></script>
+<script src="content-registry.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R" crossorigin="anonymous"></script>
@@ -661,6 +662,14 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
     .mr-pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 4px 2px; font-size: 0.82rem; color: var(--text-muted); flex-wrap: wrap; }
     .mr-flag { display: inline-block; margin-top: 3px; font-size: 0.72rem; }
     .comp-note { font-size: 0.8rem; color: var(--text-muted); margin-top: 10px; }
+    .site-announcement { padding: 8px 25px; font-size: 0.84rem; font-weight: 600; }
+    .site-announcement[hidden] { display: none; }
+    .site-announcement.level-info { background: #e7efff; color: #0f2f7a; }
+    .site-announcement.level-warning { background: #fff3cd; color: #6b4e00; }
+    #login-announcement { margin: 0 0 14px; border-radius: 6px; }
+    .brand-logo { display: block; max-height: 52px; max-width: 220px; margin-bottom: 12px; object-fit: contain; }
+    [data-cms] { white-space: pre-line; }
+    .login-contact { margin-top: 14px; font-size: 0.78rem; color: var(--text-muted); white-space: pre-line; }
     .sv-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
     .sv-kpi { border-top: 3px solid var(--deped-blue); background: #fff; padding: 10px 14px; border-radius: 6px; box-shadow: 0 0 0 1px var(--rule, #dde3f0) inset; }
     .sv-kpi strong { display: block; font-size: 1.4rem; color: var(--ink); }
@@ -693,12 +702,13 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
     <div class="login-shell">
         <div class="login-brand">
             <div>
+                <img id="brand-logo-login" class="brand-logo screen-only" alt="" style="display:none;">
                 <div class="lb-rule"></div>
-                <p class="lb-org">Schools Division of Davao del Norte, Region XI</p>
-                <h1>Division Assessment Consolidation System</h1>
+                <p class="lb-org" data-cms="login.org">Schools Division of Davao del Norte, Region XI</p>
+                <h1 data-cms="login.title">Division Assessment Consolidation System</h1>
             </div>
             <div class="lb-scale">
-                <p class="lb-scale-title">How results are rated (Mean Percentage Score)</p>
+                <p class="lb-scale-title" data-cms="login.scale_title">How results are rated (Mean Percentage Score)</p>
                 <ul>
                     <li><i style="background:var(--band-adv)"></i><span>Advanced</span><em>90 and above</em></li>
                     <li><i style="background:var(--band-pro)"></i><span>Proficient</span><em>85 to below 90</em></li>
@@ -707,13 +717,14 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
                     <li><i style="background:var(--band-beg)"></i><span>Beginning</span><em>below 75</em></li>
                 </ul>
             </div>
-            <p class="lb-desc">MAPEH, SPA, SPS, SPFL and IPED assessment results, consolidated by district, term and key stage into the report the Division submits.</p>
-            <p class="lb-foot">Department of Education, Republic of the Philippines</p>
+            <p class="lb-desc" data-cms="login.desc">MAPEH, SPA, SPS, SPFL and IPED assessment results, consolidated by district, term and key stage into the report the Division submits.</p>
+            <p class="lb-foot" data-cms="login.foot">Department of Education, Republic of the Philippines</p>
         </div>
         <div class="login-pane">
             <div class="login-card">
-                <h2>Sign in</h2>
-                <p>Use the username issued to your district or the Division office.</p>
+                <div id="login-announcement" class="site-announcement screen-only" role="status" hidden></div>
+                <h2 data-cms="login.card_title">Sign in</h2>
+                <p data-cms="login.card_text">Use the username issued to your district or the Division office.</p>
                 <form class="login-form" onsubmit="handleLogin(event)" autocomplete="on">
                     <div>
                         <label for="login-username">Username</label>
@@ -724,10 +735,9 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
                         <input type="password" id="login-password" placeholder="Enter password" autocomplete="current-password" required>
                     </div>
                     <div class="login-error" id="login-error" role="alert"></div>
-                    <button type="submit" class="btn btn-primary" style="justify-content: center; width: 100%; margin-top: 4px;">
-                        Log In
-                    </button>
+                    <button type="submit" class="btn btn-primary" style="justify-content: center; width: 100%; margin-top: 4px;" data-cms="login.button">Log In</button>
                 </form>
+                <p class="login-contact screen-only" id="login-contact" hidden></p>
             </div>
         </div>
     </div>
@@ -752,8 +762,9 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
 <!-- SIDEBAR -->
 <div id="sidebar">
     <div class="sidebar-brand">
-        <h2>SDO Davao del Norte</h2>
-        <p>MAPEH, SPA, SPS, SPFL & IPED MATRIX</p>
+        <img id="brand-logo-side" class="brand-logo screen-only" alt="" style="display:none;">
+        <h2 data-cms-org="1">SDO Davao del Norte</h2>
+        <p data-cms="sidebar.subtitle">MAPEH, SPA, SPS, SPFL & IPED MATRIX</p>
     </div>
     <ul class="nav-list">
         <li class="nav-group" aria-hidden="true">Overview</li>
@@ -776,13 +787,14 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
 
 <!-- MAIN WRAPPER -->
 <div id="main-wrapper">
+    <div id="site-announcement" class="site-announcement screen-only" role="status" hidden></div>
     <div id="env-banner" class="no-print" role="status" hidden>Test environment: figures may include sample data.</div>
     <!-- HEADER -->
     <header class="top-header">
         <button type="button" id="nav-toggle" class="btn btn-secondary btn-sm no-print" aria-label="Open menu" onclick="document.body.classList.toggle('nav-open')">&#9776; Menu</button>
         <div class="header-info">
             <h1 id="view-title">Division Summary View</h1>
-            <p>Republic of the Philippines | Region XI SDO Davao del Norte | <span id="header-sy-label">All School Years</span></p>
+            <p><span data-cms="header.org">Republic of the Philippines | Region XI SDO Davao del Norte</span> | <span id="header-sy-label">All School Years</span></p>
         </div>
         <div class="header-actions">
             <button type="button" id="csv-btn" class="btn btn-secondary no-print" style="display:none;" onclick="downloadCsv(event)">Download CSV</button>
@@ -1138,7 +1150,14 @@ async function enterApp() {
     applyUserPermissionsUI();
     applyPrintBrandingUI();
     updateEnvBanner();
-    switchView(currentUser.isSchool ? "dashboard" : "division");
+    applySiteContent();
+    const dsy = SITE.settings.default_sy;
+    if (typeof dsy === "string" && dsy !== "ALL" && SCHOOL_YEARS.includes(dsy)) {
+        filters.sy = dsy; document.getElementById("flt-sy").value = dsy;
+        document.getElementById("header-sy-label").textContent = `SY ${dsy}`; document.getElementById("print-sy-label").textContent = `SY ${dsy}`;
+    }
+    const landing = SITE.settings.default_view;
+    switchView(currentUser.isSchool ? "dashboard" : (typeof landing === "string" && landing in (window.SITE_REGISTRY ? window.SITE_REGISTRY.views : {}) ? landing : "division"));
 }
 
 async function handleLogin(e) {
@@ -1860,6 +1879,55 @@ function restoreFilterControls() {
     document.getElementById("flt-program").value = filters.program;
 }
 
+/* SITE CONTENT (edited in /admin, stored in public.site_content / site_settings / site_media_slots; readable without signing in).
+   Missing tables or an empty store simply leave the built-in text in place. */
+const SITE = { content: {}, settings: {}, slots: {} };
+const cmsText = (key, def) => (typeof SITE.content[key] === "string" && SITE.content[key]) ? SITE.content[key] : def;
+const mediaUrl = path => `${APP_CFG.supabaseUrl}/storage/v1/object/public/site-media/${encodeURIComponent(path)}`;
+const slotUrl = slot => SITE.slots[slot] ? mediaUrl(SITE.slots[slot].path) : "";
+
+async function loadSiteContent() {
+    try {
+        const [c, st, sl, md] = await Promise.all([
+            sb().from("site_content").select("key, value").range(0, 999),
+            sb().from("site_settings").select("key, value"),
+            sb().from("site_media_slots").select("slot, media_id"),
+            sb().from("site_media").select("id, path, alt_text").range(0, 999)
+        ]);
+        if (c.error || st.error || sl.error || md.error) return;
+        SITE.content = {}; c.data.forEach(r => { SITE.content[r.key] = r.value; });
+        SITE.settings = {}; st.data.forEach(r => { SITE.settings[r.key] = r.value; });
+        const byId = {}; md.data.forEach(m => { byId[m.id] = m; });
+        SITE.slots = {}; sl.data.forEach(r => { if (byId[r.media_id]) SITE.slots[r.slot] = byId[r.media_id]; });
+    } catch (_) { /* keep the built-in text */ }
+}
+
+function applySiteContent() {
+    document.querySelectorAll("[data-cms]").forEach(el => { const v = SITE.content[el.getAttribute("data-cms")]; if (typeof v === "string" && v) el.textContent = v; });
+    const org = SITE.settings["org.name"];
+    if (typeof org === "string" && org) document.querySelectorAll("[data-cms-org]").forEach(el => { el.textContent = org; });
+    const t = SITE.settings["site.title"];
+    if (typeof t === "string" && t) document.title = t;
+    const ann = SITE.settings.announcement, on = !!(ann && ann.enabled && ann.text);
+    ["site-announcement", "login-announcement"].forEach(id => {
+        const el = document.getElementById(id); if (!el) return;
+        el.hidden = !on; el.className = `site-announcement screen-only${on ? " level-" + (ann.level === "warning" ? "warning" : "info") : ""}`;
+        if (on) el.textContent = ann.text;
+    });
+    ["brand-logo-login", "brand-logo-side"].forEach(id => {
+        const el = document.getElementById(id); if (!el) return;
+        const m = SITE.slots["brand.logo"];
+        if (m) { el.src = mediaUrl(m.path); el.alt = m.alt_text || ""; el.style.display = "block"; } else el.style.display = "none";
+    });
+    const ct = SITE.settings.contact, lc = document.getElementById("login-contact");
+    if (lc) {
+        const parts = ct ? [ct.address, ct.phone, ct.email].filter(Boolean) : [];
+        lc.hidden = !parts.length; lc.textContent = parts.join("\n");
+    }
+    const vt = document.getElementById("view-title");
+    if (vt && currentUser && currentView) vt.textContent = cmsText("view." + currentView, VIEW_TITLES[currentView] || "");
+}
+
 let renderToken = 0;
 const SCHOOL_VIEWS = ["dashboard", "data-input", "manage-records", "least-learned", "grade-view"];
 function switchView(view) {
@@ -1873,7 +1941,7 @@ function switchView(view) {
     document.body.classList.remove('nav-open');
 
     const titleEl = document.getElementById("view-title");
-    if (titleEl) titleEl.textContent = VIEW_TITLES[view] || "";
+    if (titleEl) titleEl.textContent = cmsText("view." + view, VIEW_TITLES[view] || "");
     const root = document.getElementById("view-container");
     const token = ++renderToken;
     root.innerHTML = '<div class="view-loading" role="status">Loading...</div>';
@@ -3173,8 +3241,8 @@ function renderDataInputView(container) {
         </div>
         <div class="upload-dropzone" onclick="document.getElementById('excel-file').click()">
             <input type="file" id="excel-file" accept=".xlsx, .xls, .csv" style="display:none;" onchange="handleExcelImport(event)">
-            <h3>Drag & Drop District Excel File Here or Click to Browse</h3>
-            <p>Upload district spreadsheets containing School Year, Baseline MPS (%), Current MPS (%), and at least 3 least learned competencies per grade level.</p>
+            <h3>${esc(cmsText("dataentry.drop_title", "Drag & Drop District Excel File Here or Click to Browse"))}</h3>
+            <p>${esc(cmsText("dataentry.drop_text", "Upload district spreadsheets containing School Year, Baseline MPS (%), Current MPS (%), and at least 3 least learned competencies per grade level."))}</p>
             <button class="btn btn-primary" type="button">Select District Excel File</button>
         </div>
     </div>
@@ -4027,8 +4095,9 @@ async function savePrintBrandingSettings(e) {
 
 function applyPrintBrandingUI() {
     const hLogo = document.getElementById("print-h-logo");
-    if (settings.headerLogo) { 
-        hLogo.src = settings.headerLogo;
+    const hSrc = slotUrl("print.header_logo") || settings.headerLogo;
+    if (hSrc) { 
+        hLogo.src = hSrc;
         hLogo.style.display = "block"; 
     } else { 
         hLogo.style.display = "none"; 
@@ -4040,9 +4109,9 @@ function applyPrintBrandingUI() {
     document.getElementById("print-h-l4").textContent = settings.headerL4 || "";
 
     const fLogos = [
-        { el: "print-f-logo1", data: settings.footerLogo1 },
-        { el: "print-f-logo2", data: settings.footerLogo2 },
-        { el: "print-f-logo3", data: settings.footerLogo3 }
+        { el: "print-f-logo1", data: slotUrl("print.footer_logo_1") || settings.footerLogo1 },
+        { el: "print-f-logo2", data: slotUrl("print.footer_logo_2") || settings.footerLogo2 },
+        { el: "print-f-logo3", data: slotUrl("print.footer_logo_3") || settings.footerLogo3 }
     ];
 
     fLogos.forEach(item => {
@@ -4234,6 +4303,9 @@ window.addEventListener("DOMContentLoaded", async () => {
         showLoginError("This site is not configured yet: the Supabase settings in config.js are missing.");
         return;
     }
+    await loadSiteContent();
+    applySiteContent();
+    applyPrintBrandingUI();
     sb().auth.onAuthStateChange((event) => {
         if (event === "SIGNED_OUT") {
             currentUser = null;

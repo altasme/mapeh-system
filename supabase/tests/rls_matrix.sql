@@ -503,6 +503,7 @@ begin
       denied := false; begin perform public.app_admin_set_password('00000000-0000-0000-0000-0000000000a1', 'longenough1'); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot reset the admin password';
       denied := false; begin perform public.app_admin_save_content('login.title', 'x'); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot edit content';
       denied := false; begin perform public.app_admin_save_setting('site.title', '"Hacked title"'); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot edit settings';
+      denied := false; begin perform public.app_admin_clear_setting('site.title'); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot clear settings';
       denied := false; begin perform public.app_admin_register_media('00000000-0000-0000-0000-000000000000.png', 'x.png', 'image/png', 10, ''); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot register images';
       denied := false; begin perform * from public.app_admin_activity(); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot read the activity log';
       denied := false; begin insert into public.admin_activity (action) values ('x'); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot write the activity log';
@@ -650,8 +651,10 @@ begin
       $q$select public.app_admin_save_setting('contact', '{"email":"not-an-email"}')$q$, $q$select public.app_admin_save_setting('database_url', '"x"')$q$] loop
       denied := false; begin execute e; exception when others then denied := true; end; assert denied, 'refused: ' || e;
     end loop;
+    perform public.app_admin_clear_setting('contact');
+    assert not exists (select 1 from public.site_settings where key = 'contact'), 'a setting can be cleared back to the built-in value';
     reset role; set local role anon;
-    assert (select count(*) from public.site_settings) = 5, 'settings are readable on the login page'; reset role;
+    assert (select count(*) from public.site_settings) = 4, 'settings are readable on the login page'; reset role;
     raise notice 'PASS settings';
 
     -- media: validation, usage tracking, storage policies
@@ -682,7 +685,7 @@ begin
     raise notice 'PASS media';
 
     -- logging: administrative actions are recorded; a non-admin who opens /admin is recorded once a minute
-    assert (select count(distinct action) from public.admin_activity where action in ('user.create', 'user.update', 'user.password_reset', 'content.update', 'content.restore', 'content.reset', 'settings.update', 'media.upload', 'media.assign', 'media.delete')) = 10, 'every kind of administrative action is logged';
+    assert (select count(distinct action) from public.admin_activity where action in ('user.create', 'user.update', 'user.password_reset', 'content.update', 'content.restore', 'content.reset', 'settings.update', 'settings.clear', 'media.upload', 'media.assign', 'media.delete')) = 11, 'every kind of administrative action is logged';
     perform set_config('request.jwt.claims', sup, true); set local role authenticated;
     perform public.app_admin_log_denied(); perform public.app_admin_log_denied();
     reset role;
