@@ -1333,6 +1333,7 @@ console.log('\n[20] Admin panel (/admin)');
   const go = async (A, p2) => { await A.page.click(`.side nav a[href="${p2}"]`); await ready(A.page); };
   const stubOf = (A, k) => A.page.evaluate(k2 => JSON.parse(JSON.stringify(window.__STUB[k2])), k);
 
+  ok(['dashboard', 'users', 'roles', 'content', 'media', 'settings', 'audit', 'account'].every(d => fs.readFileSync(path.join(ROOT, 'public/admin', d, 'index.html'), 'utf8') === fs.readFileSync(path.join(ROOT, 'public/admin/index.html'), 'utf8')), 'every /admin/<screen>/ folder holds an identical copy of the admin page');
   // ---- access and authentication
   {
     const A = await openAdmin({ path: '/admin/users' }); await A.page.waitForSelector('#login-form');
