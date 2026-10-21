@@ -203,8 +203,8 @@ async function pDashboard(page) {
   <div class="card"><h3>Users by role</h3><div class="cards" style="margin:0">
     ${Object.keys(ROLE_LABEL).map(r => `<div class="stat"><strong>${by[r] || 0}</strong><span>${esc(ROLE_LABEL[r])}</span></div>`).join('')}</div></div>
   <div class="card"><h3>Recent administrative activity</h3>
-    ${act.length ? `<div class="scroll"><table><thead><tr><th>When</th><th>Administrator</th><th>Action</th><th>Outcome</th></tr></thead><tbody>
-      ${act.map(a => `<tr><td>${esc(fmt(a.at))}</td><td>${esc(a.actor_name || '-')}</td><td>${esc(a.action)}</td><td>${outcomeBadge(a.outcome)}</td></tr>`).join('')}</tbody></table></div>
+    ${act.length ? `<div class="scroll"><table class="stack"><thead><tr><th>When</th><th>Administrator</th><th>Action</th><th>Outcome</th></tr></thead><tbody>
+      ${act.map(a => `<tr><td data-label="When">${esc(fmt(a.at))}</td><td data-label="Administrator">${esc(a.actor_name || '-')}</td><td data-label="Action">${esc(a.action)}</td><td data-label="Outcome">${outcomeBadge(a.outcome)}</td></tr>`).join('')}</tbody></table></div>
       <p class="hint"><a href="/admin/audit" data-route="1">Open the full audit log</a></p>` : '<p class="empty">No administrative activity yet.</p>'}</div>
   <div class="card"><h3>Quick links</h3><p>
     <a class="btn btn-secondary" href="/admin/users" data-route="1">Manage users</a>
@@ -246,11 +246,13 @@ async function loadUsers() {
 }
 function drawUsers() {
   const t = $('#u-table'); if (!t) return;
-  t.innerHTML = U.rows.length ? `<table><thead><tr><th>Username</th><th>Name</th><th>Role</th><th>District</th><th>School / program</th><th>Level</th><th>Status</th><th>Created</th><th>Last sign-in</th><th>Actions</th></tr></thead><tbody>
-    ${U.rows.map(u => `<tr><td><strong>${esc(u.username)}</strong><br><span class="hint">${esc(u.email || '')}</span></td><td>${esc(u.display_name)}</td><td>${esc(ROLE_LABEL[u.role] || u.role)}</td><td>${esc(u.district_name || '-')}</td>
-      <td>${u.school_name ? esc(u.school_name) + '<br>' + progBadges(u.programs) : '-'}</td><td>${esc(LEVEL_LABEL[u.education_level] || '-')}</td>
-      <td><span class="badge ${u.active ? 'ok' : 'off'}">${u.active ? 'Active' : 'Disabled'}</span></td><td>${esc(fmt(u.created_at))}</td><td>${esc(fmt(u.last_sign_in_at))}</td>
-      <td class="actions"><button class="btn btn-secondary btn-sm" data-edit="${esc(u.id)}">Edit</button><button class="btn btn-secondary btn-sm" data-pw="${esc(u.id)}">Reset password</button>
+  t.innerHTML = U.rows.length ? `<table class="stack users"><thead><tr><th>User</th><th>Role</th><th>Assignment</th><th>Status</th><th>Last sign-in</th><th>Actions</th></tr></thead><tbody>
+    ${U.rows.map(u => `<tr><td data-label="User"><strong>${esc(u.display_name)}</strong><br><span class="hint">${esc(u.username)}</span></td>
+      <td data-label="Role">${esc(ROLE_LABEL[u.role] || u.role)}${u.education_level ? `<br><span class="hint">${esc(LEVEL_LABEL[u.education_level])}</span>` : ''}</td>
+      <td data-label="Assignment">${u.school_name ? esc(u.school_name) + '<br>' + progBadges(u.programs) : (u.district_name ? esc(u.district_name) : '<span class="hint">All districts</span>')}${u.school_name ? `<br><span class="hint">${esc(u.district_name || '')}</span>` : ''}</td>
+      <td data-label="Status"><span class="badge ${u.active ? 'ok' : 'off'}">${u.active ? 'Active' : 'Disabled'}</span></td>
+      <td data-label="Last sign-in">${esc(fmt(u.last_sign_in_at))}<br><span class="hint" title="Account created">Created ${esc(fmt(u.created_at))}</span></td>
+      <td class="actions" data-label="Actions"><button class="btn btn-secondary btn-sm" data-edit="${esc(u.id)}">Edit</button><button class="btn btn-secondary btn-sm" data-pw="${esc(u.id)}">Reset password</button>
         <button class="btn ${u.active ? 'btn-danger' : 'btn-secondary'} btn-sm" data-toggle="${esc(u.id)}">${u.active ? 'Disable' : 'Enable'}</button></td></tr>`).join('')}</tbody></table>` : '<p class="empty">No users match.</p>';
   const from = U.total ? U.page * U.size + 1 : 0, to = Math.min(U.total, (U.page + 1) * U.size);
   $('#u-pager').innerHTML = `<span>Showing ${from} to ${to} of ${U.total}</span><span><button class="btn btn-secondary btn-sm" id="u-prev" ${U.page === 0 ? 'disabled' : ''}>Previous</button> <button class="btn btn-secondary btn-sm" id="u-next" ${to >= U.total ? 'disabled' : ''}>Next</button></span>`;
@@ -350,8 +352,8 @@ async function pRoles(page) {
     ['Audit logs (/admin)', Y, N, N, N]];
   page.innerHTML = `<div class="card"><h3>What each role can do</h3>
     <p class="hint">These permissions are enforced by the database (row level security and server functions), so they hold even if someone calls the data service directly. They are shown here for reference and are deliberately not editable: a toggle must never be able to weaken district, education-level, school or program restrictions. Roles are assigned to people under User Management.</p>
-    <div class="scroll"><table class="matrix"><thead><tr><th>Capability</th><th>Administrator</th><th>Supervisor</th><th>District Coordinator</th><th>School Account</th></tr></thead><tbody>
-    ${rows.map(r => `<tr>${r.map((c, i) => i === 0 ? `<td>${esc(c)}</td>` : `<td>${/^<span/.test(c) ? c : esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>
+    <div class="scroll"><table class="matrix stack"><thead><tr><th>Capability</th><th>Administrator</th><th>Supervisor</th><th>District Coordinator</th><th>School Account</th></tr></thead><tbody>
+    ${rows.map(r => `<tr>${r.map((c, i) => i === 0 ? `<td class="cap">${esc(c)}</td>` : `<td data-label="${['', 'Admin', 'Supervisor', 'Coordinator', 'School'][i]}">${/^<span/.test(c) ? c : esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>
     <div class="cards">${Object.keys(ROLE_LABEL).map(r => `<div class="stat"><strong>${by[r] || 0}</strong><span>${esc(ROLE_LABEL[r])} accounts</span></div>`).join('')}</div>`;
 }
 
@@ -567,8 +569,8 @@ async function pAudit(page) {
     page.innerHTML = `<div class="card"><div class="tabs" role="tablist"><button class="tab" role="tab" aria-selected="${isAct}" data-tab="activity">Administrative actions</button><button class="tab" role="tab" aria-selected="${!isAct}" data-tab="data">Data changes</button></div>
       ${isAct ? `<div class="toolbar"><div><label for="a-action">Action</label><select id="a-action"><option value="">All actions</option>${['admin.', 'user.', 'content.', 'settings.', 'media.'].map(x => `<option value="${x}" ${A.action === x ? 'selected' : ''}>${x.replace('.', '')}</option>`).join('')}</select></div>
         <div><label for="a-outcome">Outcome</label><select id="a-outcome"><option value="">Any</option><option value="success" ${A.outcome === 'success' ? 'selected' : ''}>Success</option><option value="denied" ${A.outcome === 'denied' ? 'selected' : ''}>Denied</option><option value="failure" ${A.outcome === 'failure' ? 'selected' : ''}>Failure</option></select></div></div>` : '<p class="hint">Changes to assessment data, schools, settings and content, recorded automatically (summary only).</p>'}
-      <div class="scroll">${rows.length ? (isAct ? `<table><thead><tr><th>When</th><th>Administrator</th><th>Action</th><th>Resource</th><th>Outcome</th><th>Details</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(fmt(r.at))}</td><td>${esc(r.actor_name || '-')}</td><td>${esc(r.action)}</td><td>${esc(r.resource || '')} ${esc(r.resource_id || '')}</td><td>${outcomeBadge(r.outcome)}</td><td class="hint">${esc(detailText(r.details))}</td></tr>`).join('')}</tbody></table>`
-        : `<table><thead><tr><th>When</th><th>By</th><th>Table</th><th>Action</th><th>Record</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(fmt(r.at))}</td><td>${esc(r.actor_name || '-')}</td><td>${esc(r.table_name)}</td><td>${esc(r.action)}</td><td>${esc(r.row_id || '')}</td></tr>`).join('')}</tbody></table>`) : '<p class="empty">Nothing recorded.</p>'}</div>
+      <div class="scroll">${rows.length ? (isAct ? `<table class="stack"><thead><tr><th>When</th><th>Administrator</th><th>Action</th><th>Resource</th><th>Outcome</th><th>Details</th></tr></thead><tbody>${rows.map(r => `<tr><td data-label="When">${esc(fmt(r.at))}</td><td data-label="Administrator">${esc(r.actor_name || '-')}</td><td data-label="Action">${esc(r.action)}</td><td data-label="Resource">${esc(r.resource || '')} ${esc(r.resource_id || '')}</td><td data-label="Outcome">${outcomeBadge(r.outcome)}</td><td data-label="Details" class="hint detail">${esc(detailText(r.details))}</td></tr>`).join('')}</tbody></table>`
+        : `<table class="stack"><thead><tr><th>When</th><th>By</th><th>Table</th><th>Action</th><th>Record</th></tr></thead><tbody>${rows.map(r => `<tr><td data-label="When">${esc(fmt(r.at))}</td><td data-label="By">${esc(r.actor_name || '-')}</td><td data-label="Table">${esc(r.table_name)}</td><td data-label="Action">${esc(r.action)}</td><td data-label="Record">${esc(r.row_id || '')}</td></tr>`).join('')}</tbody></table>`) : '<p class="empty">Nothing recorded.</p>'}</div>
       <div class="pager"><span>Showing ${from} to ${to} of ${total}</span><span><button class="btn btn-secondary btn-sm" id="g-prev" ${A.page === 0 ? 'disabled' : ''}>Previous</button> <button class="btn btn-secondary btn-sm" id="g-next" ${to >= total ? 'disabled' : ''}>Next</button></span></div></div>`;
     page.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { A.tab = b.dataset.tab; A.page = 0; draw(); });
     if ($('#a-action')) { $('#a-action').onchange = e => { A.action = e.target.value; A.page = 0; draw(); }; $('#a-outcome').onchange = e => { A.outcome = e.target.value; A.page = 0; draw(); }; }
