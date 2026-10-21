@@ -9,6 +9,9 @@
     districts: S.districts, profiles: S.profiles, assessment_records: S.records,
     comparative_notes: S.notes, app_settings: [{ id: 1, data: S.settings }], schools: S.schools, school_programs: S.school_programs
   };
+  ['site_content', 'site_content_versions', 'site_settings', 'site_media', 'site_media_slots', 'admin_activity'].forEach(k => { S[k] = S[k] || []; T[k] = S[k]; });
+  S.storage = S.storage || {};
+  const PUBLIC_TABLES = ['site_content', 'site_settings', 'site_media', 'site_media_slots'];
   let nextSchoolId = Math.max(0, ...S.schools.map(x => x.id)) + 1;
   let nextId = Math.max(0, ...S.records.map(r => r.id || 0)) + 1;
   let nextNoteId = 1;
@@ -58,9 +61,12 @@
     row.school = sc.name; return null;
   }
   function canRead(table, row) {
+    if (PUBLIC_TABLES.includes(table)) return true;
     const p = me(); if (!p) return false;
     if (table === 'profiles') return row.id === p.id;
     if (table === 'assessment_records') return (canSeeRecord(row) && (!isDel(row) || isDivision())) || schoolOk(row);
+    if (PUBLIC_TABLES.includes(table)) return true;
+    if (table === 'site_content_versions' || table === 'admin_activity') return sessionOk() && p.role === 'admin';
     if (table === 'schools') return isDivision() || (sessionOk() && p.role === 'district_coordinator' && row.district_id === p.district_id) || (isSchoolUser() && row.id === p.school_id);
     if (table === 'school_programs') return canRead('schools', T.schools.find(x => x.id === row.school_id) || {});
     if (table === 'comparative_notes') return isDivision() || (sessionOk() && p.role === 'district_coordinator' && row.district_scope === distName(p.district_id) && row.education_level === p.education_level);
@@ -120,7 +126,7 @@
       const e = net(); if (e) return Promise.reject(e);
       const tbl = T[this.table];
       if (!tbl) return { data: null, error: err('42P01', 'relation does not exist'), count: null };
-      if (!me()) return { data: null, error: err('42501', 'permission denied for table ' + this.table), count: null };
+      if (!me() && !(this.op === 'select' && PUBLIC_TABLES.includes(this.table))) return { data: null, error: err('42501', 'permission denied for table ' + this.table), count: null };
       const match = r => this.f.every(fn => fn(r));
       if (this.op === 'select') {
         let rows = tbl.filter(r => canRead(this.table, r) && match(r));
@@ -200,6 +206,12 @@
   window.supabase = {
     createClient() {
       return {
+        storage: { from: bucket => ({
+          async upload(path, file, opts) { const e = net(); if (e) throw e; const p = me(); if (!(sessionOk() && p.role === 'admin') || bucket !== 'site-media') return { data: null, error: err('42501', 'new row violates row-level security policy') };
+            if (!['image/png', 'image/jpeg', 'image/webp'].includes((opts || {}).contentType)) return { data: null, error: err('415', 'mime type not supported') }; if (file.size > 2097152) return { data: null, error: err('413', 'The object exceeded the maximum allowed size') };
+            S.storage[path] = { size: file.size, type: file.type }; return { data: { path }, error: null }; },
+          async remove(paths) { const p = me(); if (!(sessionOk() && p.role === 'admin')) return { data: null, error: err('42501', 'denied') }; paths.forEach(x => { delete S.storage[x]; }); return { data: paths, error: null }; }
+        }) },
         from: t => new Q(t),
         rpc(name, a) {
           return Promise.resolve().then(() => {
@@ -287,6 +299,84 @@
               if (!isDivision()) return { data: [], error: null };
               return { data: T.profiles.filter(x => x.school_id != null).map(x => { const sc = T.schools.find(y => y.id === x.school_id) || {}; return { profile_id: x.id, username: x.username, display_name: x.display_name, active: x.active, school_id: x.school_id, school_name: sc.name, district_name: (T.districts.find(d => d.id === sc.district_id) || {}).name, programs: schoolProgs(x.school_id) }; }), error: null };
             }
+            const isAdmin = () => sessionOk() && me().role === 'admin';
+            const adminOnly = () => isAdmin() ? null : { data: null, error: err('42501', 'Only an administrator can do this.') };
+            const log = (action, resource, rid, outcome, details) => T.admin_activity.push({ id: T.admin_activity.length + 1, at: new Date().toISOString(), actor: me() ? me().id : null, actor_name: me() ? me().display_name : null, action, resource, resource_id: rid == null ? null : String(rid), outcome: outcome || 'success', details: details || {} });
+            const ADMIN_FNS = ['app_admin_list_users', 'app_admin_user_stats', 'app_admin_create_user', 'app_admin_update_user', 'app_admin_set_password', 'app_admin_activity', 'app_admin_data_changes', 'app_admin_save_content', 'app_admin_reset_content', 'app_admin_restore_content', 'app_admin_save_setting', 'app_admin_clear_setting', 'app_admin_register_media', 'app_admin_update_media', 'app_admin_assign_media', 'app_admin_delete_media', 'app_admin_log_event'];
+            if (ADMIN_FNS.includes(name)) { const d0 = adminOnly(); if (d0) return d0; }
+            const plain = v => !/[<>]/.test(v);
+            const checkAssign = (role, did, lvl, sid) => {
+              if (!['admin', 'supervisor', 'district_coordinator', 'school'].includes(role)) return 'Choose a valid role.';
+              if (role === 'admin' || role === 'supervisor') { if (did != null || lvl != null || sid != null) return 'An ' + role + ' has no district, education level or school.'; return { district_id: null, education_level: null, school_id: null }; }
+              if (role === 'district_coordinator') { if (sid != null) return 'A district coordinator is not assigned to a school.'; if (did == null || !T.districts.find(d => d.id === did)) return "Choose the coordinator's district."; if (!['elementary', 'secondary'].includes(lvl)) return 'Choose Elementary or Secondary for a district coordinator.'; return { district_id: did, education_level: lvl, school_id: null }; }
+              const sc = T.schools.find(x => x.id === sid); if (!sc) return 'Choose the school for a school account.'; if (lvl != null) return 'A school account has no education level; its school decides what it sees.';
+              if (did != null && did !== sc.district_id) return 'That school belongs to a different district.'; if (!sc.active) return 'That school is inactive.'; if (!schoolProgs(sc.id).length) return 'Classify the school as Special Programs or IPED first.';
+              return { district_id: sc.district_id, education_level: null, school_id: sc.id };
+            };
+            const uname = v => String(v || '').trim().toLowerCase();
+            if (name === 'app_admin_log_event') { if (!['login', 'logout', 'password_changed_self'].includes(a.p_action)) return fail('Unknown event.'); log('admin.' + a.p_action, 'session', null, 'success', {}); return { data: null, error: null }; }
+            if (name === 'app_admin_log_denied') { if (!me()) return { data: null, error: null }; if (!T.admin_activity.some(x => x.actor === me().id && x.action === 'admin.access_denied' && Date.now() - new Date(x.at) < 60000)) log('admin.access_denied', 'session', null, 'denied', {}); return { data: null, error: null }; }
+            if (name === 'app_admin_user_stats') { const P = T.profiles; const by = {}; P.forEach(p => { by[p.role] = (by[p.role] || 0) + 1; }); return { data: { total: P.length, active: P.filter(p => p.active !== false).length, disabled: P.filter(p => p.active === false).length, by_role: by, schools: T.schools.filter(x => x.active).length, schools_total: T.schools.length }, error: null }; }
+            if (name === 'app_admin_list_users') {
+              const q = String(a.p_search || '').trim().toLowerCase();
+              let rows = T.profiles.map(p => { const sc = T.schools.find(x => x.id === p.school_id); const d = T.districts.find(x => x.id === p.district_id); return { id: p.id, username: p.username, display_name: p.display_name, email: p.username + '@users.mapehdavnor.altasme.app', role: p.role, district_id: p.district_id ?? null, district_name: d ? d.name : null, education_level: p.education_level ?? null, school_id: p.school_id ?? null, school_name: sc ? sc.name : null, programs: sc ? schoolProgs(sc.id) : [], active: p.active !== false, created_at: p.created_at || '2025-10-01T00:00:00Z', last_sign_in_at: p.last_sign_in_at || null }; })
+                .filter(r => (!q || (r.username + ' ' + r.display_name + ' ' + (r.school_name || '')).toLowerCase().includes(q)) && (!a.p_role || r.role === a.p_role) && (a.p_district_id == null || r.district_id === a.p_district_id) && (a.p_school_id == null || r.school_id === a.p_school_id)
+                  && (!a.p_status || (a.p_status === 'active') === r.active) && (!a.p_program || r.programs.includes(a.p_program)));
+              rows.sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)) || x.username.localeCompare(y.username));
+              const total = rows.length; rows = rows.slice(a.p_offset || 0, (a.p_offset || 0) + (a.p_limit || 25)); return { data: rows.map(r => Object.assign({ total }, r)), error: null };
+            }
+            if (name === 'app_admin_create_user') {
+              const u = uname(a.p_username), dn = String(a.p_display_name || '').trim();
+              if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(u)) return fail('Username must be 3 to 40 characters: lowercase letters, numbers, dot, dash or underscore.');
+              if (!dn) return fail('Enter a display name (120 characters at most).'); if (String(a.p_password || '').length < 8 || a.p_password.length > 72) return fail('The password must be 8 to 72 characters.');
+              const c = checkAssign(a.p_role, a.p_district_id, a.p_education_level, a.p_school_id); if (typeof c === 'string') return fail(c);
+              if (a.p_role === 'school' && T.profiles.some(x => x.school_id === c.school_id && x.active !== false)) return fail('This school already has an active account.');
+              if (T.profiles.some(x => x.username.toLowerCase() === u)) return fail('That username is already taken.');
+              const id = 'u-' + u; T.profiles.push(Object.assign({ id, username: u, display_name: dn, role: a.p_role, active: true, must_change_password: false, created_at: new Date().toISOString() }, c)); S.passwords[u] = a.p_password;
+              log('user.create', 'user', id, 'success', { username: u, role: a.p_role }); return { data: id, error: null };
+            }
+            if (name === 'app_admin_update_user') {
+              const cur = T.profiles.find(x => x.id === a.p_id); if (!cur) return fail('User not found.'); const u = uname(a.p_username), dn = String(a.p_display_name || '').trim();
+              if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(u)) return fail('Username must be 3 to 40 characters: lowercase letters, numbers, dot, dash or underscore.'); if (!dn) return fail('Enter a display name (120 characters at most).');
+              const c = checkAssign(a.p_role, a.p_district_id, a.p_education_level, a.p_school_id); if (typeof c === 'string') return fail(c);
+              if (cur.role === 'admin' && cur.active !== false && (a.p_role !== 'admin' || !a.p_active) && !T.profiles.some(x => x.id !== cur.id && x.role === 'admin' && x.active !== false)) return fail('This is the last active administrator. Create or enable another administrator first.');
+              if (a.p_id === me().id && !a.p_active) return fail('You cannot disable your own account.');
+              if (a.p_role === 'school' && a.p_active && T.profiles.some(x => x.school_id === c.school_id && x.active !== false && x.id !== cur.id)) return fail('This school already has an active account.');
+              if (u !== cur.username.toLowerCase() && T.profiles.some(x => x.username.toLowerCase() === u && x.id !== cur.id)) return fail('That username is already taken.');
+              if (u !== cur.username.toLowerCase()) { S.passwords[u] = S.passwords[cur.username]; }
+              Object.assign(cur, { username: u, display_name: dn, role: a.p_role, active: !!a.p_active }, c); log('user.update', 'user', cur.id, 'success', { username: u }); return { data: null, error: null };
+            }
+            if (name === 'app_admin_set_password') { const p = T.profiles.find(x => x.id === a.p_id); if (!p) return fail('User not found.'); if (String(a.p_password || '').length < 8 || a.p_password.length > 72) return fail('The password must be 8 to 72 characters.'); S.passwords[p.username] = a.p_password; log('user.password_reset', 'user', p.id, 'success', { username: p.username }); return { data: null, error: null }; }
+            if (name === 'app_admin_activity') { let r = T.admin_activity.slice().reverse().filter(x => (!a.p_action || x.action.startsWith(a.p_action)) && (!a.p_outcome || x.outcome === a.p_outcome)); const total = r.length; r = r.slice(a.p_offset || 0, (a.p_offset || 0) + (a.p_limit || 25)); return { data: r.map(x => Object.assign({ total }, x)), error: null }; }
+            if (name === 'app_admin_data_changes') { return { data: [], error: null }; }
+            if (name === 'app_admin_save_content') {
+              const v = String(a.p_value || '').replace(/\r/g, '').trim();
+              if (!a.p_key || !/^[a-z0-9]+([._-][a-z0-9]+)*$/.test(a.p_key)) return fail('Unknown content item.'); if (!v) return fail('This text cannot be empty. Use "Reset to default" to go back to the original.'); if (v.length > 2000) return fail('This text is too long (2000 characters at most).'); if (!plain(v)) return fail('Plain text only: the characters < and > are not allowed.');
+              const old = T.site_content.find(x => x.key === a.p_key); if (old && old.value === v) return { data: null, error: null };
+              T.site_content_versions.push({ id: T.site_content_versions.length + 1, key: a.p_key, old_value: old ? old.value : null, new_value: v, changed_at: new Date().toISOString() });
+              if (old) { old.value = v; old.updated_at = new Date().toISOString(); } else T.site_content.push({ key: a.p_key, value: v, updated_at: new Date().toISOString() }); log('content.update', 'content', a.p_key, 'success', { key: a.p_key }); return { data: null, error: null };
+            }
+            if (name === 'app_admin_reset_content') { const i = T.site_content.findIndex(x => x.key === a.p_key); if (i < 0) return { data: null, error: null }; T.site_content_versions.push({ id: T.site_content_versions.length + 1, key: a.p_key, old_value: T.site_content[i].value, new_value: null, changed_at: new Date().toISOString() }); T.site_content.splice(i, 1); log('content.reset', 'content', a.p_key, 'success', {}); return { data: null, error: null }; }
+            if (name === 'app_admin_restore_content') { const v = T.site_content_versions.find(x => x.id === a.p_version_id); if (!v) return fail('Version not found.'); if (v.old_value === null) return (() => { const i = T.site_content.findIndex(x => x.key === v.key); if (i >= 0) T.site_content.splice(i, 1); return { data: null, error: null }; })(); const o = T.site_content.find(x => x.key === v.key); if (o) o.value = v.old_value; else T.site_content.push({ key: v.key, value: v.old_value, updated_at: new Date().toISOString() }); log('content.restore', 'content', v.key, 'success', {}); return { data: null, error: null }; }
+            if (name === 'app_admin_save_setting') {
+              const k = a.p_key; let v = a.p_value;
+              if (['site.title', 'org.name'].includes(k)) { v = String(v || '').trim(); if (v.length < 3 || v.length > 120) return fail('Use 3 to 120 characters.'); if (!plain(v)) return fail('Plain text only: the characters < and > are not allowed.'); }
+              else if (k === 'announcement') { const t = String((v || {}).text || '').trim(), l = (v || {}).level || 'info'; if (!['info', 'warning'].includes(l)) return fail('Choose Information or Warning.'); if (t.length > 300 || !plain(t)) return fail('The announcement must be plain text of 300 characters at most.'); if (v.enabled && !t) return fail('Enter the announcement text before turning it on.'); v = { enabled: !!v.enabled, text: t, level: l }; }
+              else if (k === 'default_view') { if (!['division', 'dashboard', 'district-view', 'comparative', 'grade-view', 'least-learned', 'data-input', 'manage-records'].includes(v)) return fail('Choose one of the listed screens.'); }
+              else if (k === 'default_sy') { if (v !== 'ALL' && !/^[0-9]{4}-[0-9]{4}$/.test(v)) return fail('Choose All school years or a school year like 2025-2026.'); }
+              else if (k === 'contact') { v = { email: String((v || {}).email || '').trim(), phone: String((v || {}).phone || '').trim(), address: String((v || {}).address || '').trim() }; if (v.email && !/^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$/.test(v.email)) return fail('Enter a valid email address.'); if (v.phone.length > 40 || v.address.length > 200 || !plain(v.phone + v.address)) return fail('The phone (40) or address (200) is too long or contains characters that are not allowed.'); }
+              else return fail('Unknown setting.');
+              const o = T.site_settings.find(x => x.key === k); if (o) o.value = v; else T.site_settings.push({ key: k, value: v }); log('settings.update', 'setting', k, 'success', { key: k }); return { data: null, error: null };
+            }
+            if (name === 'app_admin_clear_setting') { const i = T.site_settings.findIndex(x => x.key === a.p_key); if (i >= 0) { T.site_settings.splice(i, 1); log('settings.clear', 'setting', a.p_key, 'success', {}); } return { data: null, error: null }; }
+            if (name === 'app_admin_register_media') {
+              if (!['image/png', 'image/jpeg', 'image/webp'].includes(a.p_mime)) return fail('Only PNG, JPEG or WebP images are allowed.'); if (!a.p_size || a.p_size < 1 || a.p_size > 2097152) return fail('The image must be 2 MB or smaller.');
+              const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[a.p_mime]; if (!new RegExp('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.' + ext + '$').test(a.p_path || '')) return fail('The file name does not match its type.'); if (!plain(a.p_alt || '')) return fail('Plain text only for the description.');
+              const id = 'media-' + (T.site_media.length + 1); T.site_media.push({ id, path: a.p_path, original_name: a.p_name, mime: a.p_mime, size_bytes: a.p_size, alt_text: String(a.p_alt || '').trim(), uploaded_at: new Date().toISOString() }); log('media.upload', 'media', id, 'success', {}); return { data: id, error: null };
+            }
+            if (name === 'app_admin_update_media') { const m = T.site_media.find(x => x.id === a.p_id); if (!m) return fail('Image not found.'); if (!plain(a.p_alt || '') || String(a.p_alt || '').length > 200) return fail('Plain text only, 200 characters at most.'); m.alt_text = String(a.p_alt || '').trim(); return { data: null, error: null }; }
+            if (name === 'app_admin_assign_media') { if (!['brand.logo', 'print.header_logo', 'print.footer_logo_1', 'print.footer_logo_2', 'print.footer_logo_3'].includes(a.p_slot)) return fail('Unknown image position.'); const i = T.site_media_slots.findIndex(x => x.slot === a.p_slot); if (a.p_media_id == null) { if (i >= 0) T.site_media_slots.splice(i, 1); } else { if (!T.site_media.find(x => x.id === a.p_media_id)) return fail('Image not found.'); if (i >= 0) T.site_media_slots[i].media_id = a.p_media_id; else T.site_media_slots.push({ slot: a.p_slot, media_id: a.p_media_id }); } log('media.assign', 'media', a.p_slot, 'success', {}); return { data: null, error: null }; }
+            if (name === 'app_admin_delete_media') { const used = T.site_media_slots.filter(x => x.media_id === a.p_id).map(x => x.slot); if (used.length) return fail('This image is still in use (' + used.join(', ') + '). Replace or clear those positions first.'); const i = T.site_media.findIndex(x => x.id === a.p_id); if (i < 0) return fail('Image not found.'); const p = T.site_media[i].path; T.site_media.splice(i, 1); log('media.delete', 'media', a.p_id, 'success', {}); return { data: p, error: null }; }
             if (name === 'app_edit_competency') {
               const code = String(a.p_code || '').trim(), desc = String(a.p_desc || '').trim();
               if (!desc) return { data: null, error: err('P0001', 'The competency description cannot be empty.') };
