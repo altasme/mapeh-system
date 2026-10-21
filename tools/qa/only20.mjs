@@ -268,7 +268,7 @@ console.log('\n[20] Admin panel (/admin)');
   // ---- user management
   await go(A, '/admin/users');
   ok((await A.page.locator('#u-table tbody tr').count()) === Math.min(25, profs.length) && /Showing 1 to \d+ of \d+/.test(await A.page.textContent('#u-pager')), 'user directory is listed with a paged total');
-  await A.page.fill('#u-search', 'dujali'); await A.page.waitForFunction(() => /of 2\b/.test(document.getElementById('u-pager').textContent), null, { timeout: 6000 }).catch(async () => console.log('PAGER:', await A.page.textContent('#u-pager')));
+  await A.page.fill('#u-search', 'dujali'); await A.page.waitForFunction(() => /of 2(?!\d)/.test(document.getElementById('u-pager').textContent));
   ok((await A.page.locator('#u-table tbody tr').count()) === 2 && !/[$]2[ab]\$/.test(await A.page.textContent('#u-table')), 'search narrows the list');
   await A.page.fill('#u-search', ''); await A.page.selectOption('#u-role', 'supervisor'); await A.page.waitForFunction(() => document.querySelectorAll('#u-table tbody tr').length === 1);
   ok(!/encrypted|hash|token/i.test(await A.page.textContent('#u-table')), 'the directory shows no password hashes or tokens');

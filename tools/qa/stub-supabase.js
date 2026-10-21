@@ -112,7 +112,7 @@
     neq(c, v) { this.f.push(r => r[c] !== v); return this; }
     gt(c, v) { this.f.push(r => r[c] > v); return this; }
     in(c, vs) { this.f.push(r => vs.includes(r[c])); return this; }
-    order(c) { this.ord = c; return this; }
+    order(c, o) { this.ord = c; this.desc = !!(o && o.ascending === false); return this; }
     range(a, b) { this.rng = [a, b]; return this; }
     maybeSingle() { this.one = 'maybe'; return this; }
     single() { this.one = 'single'; return this; }
@@ -131,7 +131,7 @@
       if (this.op === 'select') {
         let rows = tbl.filter(r => canRead(this.table, r) && match(r));
         const total = rows.length;
-        if (this.ord) rows = rows.slice().sort((a, b) => a[this.ord] < b[this.ord] ? -1 : a[this.ord] > b[this.ord] ? 1 : 0);
+        if (this.ord) rows = rows.slice().sort((a, b) => (a[this.ord] < b[this.ord] ? -1 : a[this.ord] > b[this.ord] ? 1 : 0) * (this.desc ? -1 : 1));
         if (this.rng) rows = rows.slice(this.rng[0], this.rng[1] + 1);
         if (this.lim) rows = rows.slice(0, this.lim);
         rows = rows.slice(0, 1000);                                   // PostgREST max-rows

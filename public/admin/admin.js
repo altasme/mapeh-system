@@ -515,20 +515,20 @@ async function pSettings(page) {
   const V = {}; data.forEach(r => { V[r.key] = r.value; });
   const ann = V.announcement || { enabled: false, text: '', level: 'info' }, ct = V.contact || { email: '', phone: '', address: '' };
   page.innerHTML = `
-  <div class="card"><h3>Website title and organization</h3><form data-setting="titles"><div class="grid2">
+  <div class="card"><h3>Website title and organization</h3><form novalidate data-setting="titles"><div class="grid2">
     <div class="field"><label for="s-title">Website title (browser tab)</label><input type="text" id="s-title" maxlength="120" value="${esc(V['site.title'] || '')}" placeholder="DepEd SDO Division Assessment System"></div>
     <div class="field"><label for="s-org">Organization name (menu header)</label><input type="text" id="s-org" maxlength="120" value="${esc(V['org.name'] || '')}" placeholder="SDO Davao del Norte"></div></div>
     <div class="hint">Leave blank to keep the built-in wording.</div><div class="error" role="alert"></div><button class="btn" type="submit">Save</button></form></div>
-  <div class="card"><h3>Announcement banner</h3><form data-setting="announcement">
+  <div class="card"><h3>Announcement banner</h3><form novalidate data-setting="announcement">
     <div class="field"><label class="checkrow"><input type="checkbox" id="a-on" ${ann.enabled ? 'checked' : ''}> Show the banner (login page and every screen)</label></div>
     <div class="grid2"><div class="field"><label for="a-level">Style</label><select id="a-level"><option value="info" ${ann.level === 'info' ? 'selected' : ''}>Information</option><option value="warning" ${ann.level === 'warning' ? 'selected' : ''}>Warning</option></select></div></div>
     <div class="field"><label for="a-text">Message (plain text, up to 300 characters)</label><textarea id="a-text" maxlength="300">${esc(ann.text)}</textarea></div>
     <div class="error" role="alert"></div><button class="btn" type="submit">Save</button></form></div>
-  <div class="card"><h3>What people see first</h3><form data-setting="landing"><div class="grid2">
+  <div class="card"><h3>What people see first</h3><form novalidate data-setting="landing"><div class="grid2">
     <div class="field"><label for="d-view">Screen shown after sign-in</label><select id="d-view">${Object.entries(REG.views).map(([k, v]) => `<option value="${k}" ${(V.default_view || 'division') === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select><div class="hint">School accounts always start on the Dashboard.</div></div>
     <div class="field"><label for="d-sy">School year shown first</label><select id="d-sy"><option value="ALL" ${(V.default_sy || 'ALL') === 'ALL' ? 'selected' : ''}>All school years</option>${REG.schoolYears.map(y => `<option value="${y}" ${V.default_sy === y ? 'selected' : ''}>SY ${y}</option>`).join('')}</select></div></div>
     <div class="error" role="alert"></div><button class="btn" type="submit">Save</button></form></div>
-  <div class="card"><h3>Public contact information</h3><form data-setting="contact"><div class="grid2">
+  <div class="card"><h3>Public contact information</h3><form novalidate data-setting="contact"><div class="grid2">
     <div class="field"><label for="c-email">Email</label><input type="email" id="c-email" maxlength="120" value="${esc(ct.email)}"></div>
     <div class="field"><label for="c-phone">Phone</label><input type="text" id="c-phone" maxlength="40" value="${esc(ct.phone)}"></div></div>
     <div class="field"><label for="c-addr">Address</label><input type="text" id="c-addr" maxlength="200" value="${esc(ct.address)}"></div>
