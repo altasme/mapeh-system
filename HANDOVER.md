@@ -217,3 +217,47 @@ In Settings & Branding, each Elementary and Secondary coordinator now has three 
 **To deploy.** Run `0010_schools_programs_school_accounts.sql` in the SQL editor. The app tolerates a database without it (empty school list; baseline SY and school link are only sent when set), but baseline SY and schools do not work until it is run. Then: add or import the real school list, link existing records per school if wanted, create accounts one by one. **Confirm the actual school list and the expected number of accounts with the client first.** The 6 and 90-100 figures are estimates and are not coded anywhere.
 
 **Decisions to confirm.** Admin may create school accounts (the original wording said Supervisor only; changed at your instruction). One active account per school. School accounts cannot delete (soft delete is not offered to them). School accounts keep the initial password as is (no change-password feature, section 15). Account usernames are free-form lowercase (3-40 characters); the pattern for 90-100 schools is the client's to choose.
+
+## 18. Admin panel at /admin (added 2026-10-21)
+
+**What it is.** A separate page at `https://mapehdavnor.com/admin` (also `www.` and the `pages.dev` address) for the Admin role only, so routine changes no longer need a developer: users and passwords, website text, images, settings, and an audit trail. It uses the existing sign-in (username `admin`, the existing password); no second login system exists. `/admin/dashboard`, `/admin/users`, `/admin/roles`, `/admin/content`, `/admin/media`, `/admin/settings`, `/admin/audit`, `/admin/account` are all served by the one page (`public/_redirects`).
+
+**Security model.** The page holds no secret. Every privileged action is a database function (`app_admin_*`) that checks on the server that the caller is an **active user with role admin**; a Supervisor, coordinator or school account is refused by every function and by row level security, whatever the screen shows (tested). Plain-text only content (angle brackets refused, so no HTML or script can be stored). Passwords are hashed and cannot be read back by anyone; the admin can only set a new one. Disabled accounts lose data access immediately (every request checks `active`). The last active administrator cannot be disabled or demoted, and nobody can disable themselves. Users are never deleted (assessment records are tied to the accounts that created them); disabling keeps history intact.
+
+**Modules.**
+| Screen | What it does |
+|---|---|
+| Dashboard | Real counts: users (total, active, disabled, by role), schools, recent administrative activity |
+| User Management | Searchable, filterable (role, district, school, program, status), paged directory; create, edit (name, username, role, district, level, school, status), reset password, disable/enable. Role-specific rules are validated by the server |
+| Roles and Permissions | Read-only matrix of what each role can do, with account counts. Permissions are not editable (decision: an editable toggle could weaken district, level, school or program restrictions) |
+| Website Content | Plain-text editor per item, grouped by page: Edit, Preview, Save, Cancel, Reset to default, History with restore |
+| Image and Media Library | Upload PNG/JPEG/WebP up to 2 MB, preview, description (alt text), assign to a position, replace, remove; an image in use cannot be deleted |
+| Website Settings | Website title, organization name, announcement banner, landing screen after sign-in, default school year, public contact details |
+| Audit Logs | Administrative actions (filter by kind and outcome) and a summary of data changes. No passwords or tokens are ever written |
+| Account Settings | Own details, optional change-password (current password checked, 10+ characters with a letter and number), logout, 30-minute idle sign-out |
+
+**Editable text (23 items, `public/content-registry.js`).** Login page: organization line, system title, rating-scale heading, description, footer line, sign-in heading, sign-in instruction, button. Header line (before the school year) and menu subtitle. The 11 screen headings. Data entry: upload box heading and instruction. **Settings:** website title (browser tab), organization name (menu header), announcement banner, landing screen, default school year, contact details. **Image positions:** brand logo (login page and menu header; hidden when empty) and the four printed-report logos (header and three footer logos; they override the logos set in Settings & Branding). To make another piece of text editable, add one entry to the registry and a `data-cms="key"` attribute (or `cmsText("key", default)`) where it is displayed.
+
+**Deliberately not editable:** formulas, proficiency labels and cutoffs, role names, the test-environment/sample-data notice, field names, anything inside tables or reports built from data, the social share image (`og-image.jpg`, read by other sites' crawlers from the page source), favicon.
+
+**Roles and administrative permissions.** Administrator: everything above. Supervisor: no /admin access (keeps Schools & Accounts and the rest of the main app). District Coordinator and School Account: no /admin access. The full matrix is on the Roles and Permissions screen.
+
+**Deployment.**
+1. SQL editor: run `supabase/migrations/0011_admin_panel.sql` (tables, functions, and the public `site-media` storage bucket with admin-only write policies; it also tolerates a project without the storage schema by skipping that part).
+2. Merge to `main` (Cloudflare Pages redeploys). The main app works with or without 0011 (text and images fall back to the built-in ones); `/admin` needs it.
+3. Open `/admin`, sign in as `admin`.
+*Hosting dependencies:* Supabase Storage (included in every project) for images; Cloudflare Pages serves `/admin` through `_redirects` (exact paths, 200 rewrites). `_headers` now also allows images from the Supabase project and sets `noindex` and `no-store` on `/admin/*`.
+
+**Provisioning the initial administrator.** The `admin` account already exists on this project with the client's original password (HANDOVER section 15); nothing new is created and no password is stored in the repository. To create an additional administrator: sign in to /admin, User Management, Create user, role Administrator. If a project ever has no administrator, run `tools/provision-accounts.mjs` (service key, from a terminal) or insert one with the SQL pattern in `supabase/provision_coordinators.sql`, then use /admin.
+**Changing the administrator password.** /admin, Account Settings, Change password (optional, as chosen; not forced). Another administrator can also set it under User Management, Reset password.
+
+**Limits to know.**
+- *Failed-login rate limiting* is provided by Supabase Auth itself; the page adds a one-minute pause after five failed attempts (courtesy only). Failed attempts are visible in the Supabase Auth logs, not in this audit log, because an unauthenticated request cannot be logged safely without a server component. Successful sign-ins, sign-outs, access by a non-administrator, and every administrative change are logged.
+- *Password reset* sets a password chosen or generated by the administrator, shown once. There is no emailed reset link (the accounts have no real mailboxes). A "must change at next sign-in" lock is not offered (client decision, section 15).
+- *Permissions are fixed* by the database rules (view-only matrix).
+- *Content is plain text*; no rich text/HTML, so formatting beyond line breaks is not possible.
+- An image upload is two steps (file, then record); if the second fails the file is removed again, and a rare leftover file is harmless.
+- Existing images stored as data URLs in Settings & Branding continue to work; the media library takes precedence when a position is filled.
+- The idle sign-out and layout were verified in an automated browser; real Supabase Storage uploads and the Cloudflare rewrites for /admin/* paths need one check on the live site after deployment.
+
+**Test results (admin panel).** `node tools/qa/run_qa.mjs`: 439 checks, 0 failed (82 of them for /admin: sign-in and refusal of Supervisor/coordinator, role-based refusal of direct function calls, users, content, images, settings, audit log, own password change, logout, idle sign-out, phone layout, and the website showing the saved content). `supabase/tests/rls_matrix.sql`: all PASS on a fresh install, as an upgrade and from `setup_all.sql` (admin functions refuse non-admins, assignments validated, last administrator protected, passwords hashed and never logged, content is plain text with history, settings validated, media rules and storage policies, activity log). Not tested against real Supabase Storage or the live Cloudflare rewrites.

@@ -1,5 +1,5 @@
 -- rls_matrix.sql: access rules after 0005 (levels, MAPEH rules, edit and soft delete). Run in the Supabase SQL editor
--- AFTER migrations 0001 to 0010 and seed/districts.sql. One transaction, rolled back: it creates throwaway users and
+-- AFTER migrations 0001 to 0011 and seed/districts.sql. One transaction, rolled back: it creates throwaway users and
 -- never touches real accounts. A failed check raises an exception; passes print NOTICE lines.
 begin;
 
@@ -484,6 +484,218 @@ begin
     reset role;
     assert exists (select 1 from public.audit_log where table_name = 'profiles' and action = 'INSERT') and exists (select 1 from public.audit_log where table_name = 'schools'), 'account and school changes are in the audit log';
     raise notice 'PASS schools, programs, baseline SY and school accounts';
+  end;
+
+  -- ===== Admin panel (0011) =====
+  declare
+    adm text := '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
+    sup text := '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated"}';
+    coord text := '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}';
+    e text; u1 uuid; u2 uuid; u3 uuid; u4 uuid; sch bigint; sch_noprog bigint; tot bigint; row record; v jsonb; vid bigint; path text; mid uuid; mid2 uuid; cnt2 int; ids uuid[];
+  begin
+    -- every administrative function refuses everyone who is not an active admin
+    foreach e in array array['00000000-0000-0000-0000-0000000000a2', '00000000-0000-0000-0000-0000000000b1'] loop
+      perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', e), true);
+      set local role authenticated;
+      denied := false; begin perform * from public.app_admin_list_users(); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot list users';
+      denied := false; begin perform public.app_admin_create_user('hacker.x', 'H', 'admin', null, null, null, 'longenough1'); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot create an admin';
+      denied := false; begin perform public.app_admin_update_user('00000000-0000-0000-0000-0000000000b1', 'self.promote', 'X', 'admin', null, null, null, true); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot promote anyone';
+      denied := false; begin perform public.app_admin_set_password('00000000-0000-0000-0000-0000000000a1', 'longenough1'); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot reset the admin password';
+      denied := false; begin perform public.app_admin_save_content('login.title', 'x'); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot edit content';
+      denied := false; begin perform public.app_admin_save_setting('site.title', '"Hacked title"'); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot edit settings';
+      denied := false; begin perform public.app_admin_clear_setting('site.title'); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot clear settings';
+      denied := false; begin perform public.app_admin_register_media('00000000-0000-0000-0000-000000000000.png', 'x.png', 'image/png', 10, ''); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot register images';
+      denied := false; begin perform * from public.app_admin_activity(); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot read the activity log';
+      denied := false; begin insert into public.admin_activity (action) values ('x'); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot write the activity log';
+      denied := false; begin insert into public.site_content (key, value) values ('login.title', 'x'); exception when insufficient_privilege then denied := true; end; assert denied, e || ' cannot write content directly';
+      denied := false; begin insert into storage.objects (bucket_id, name) values ('site-media', 'x.png'); exception when insufficient_privilege or others then denied := true; end; assert denied, e || ' cannot upload to the media bucket';
+      assert (select count(*) from public.admin_activity) = 0, e || ' sees no activity';
+      reset role;
+    end loop;
+    raise notice 'PASS admin functions refuse non-admins';
+
+    perform set_config('request.jwt.claims', adm, true); set local role authenticated;
+    -- the school account used below: a school with programs, and one without
+    sch := public.app_save_school(null, 'Panel IPED School', asu, array['iped']);
+    reset role;
+    insert into public.schools (name, district_id) values ('Panel Empty School', asu) returning id into sch_noprog;
+    perform set_config('request.jwt.claims', adm, true); set local role authenticated;
+
+    -- create users of each role; invalid combinations refused
+    u1 := public.app_admin_create_user('panel.super', 'Panel Supervisor', 'supervisor', null, null, null, 'initialpass1');
+    u2 := public.app_admin_create_user('Panel.Coord', 'Panel Coordinator', 'district_coordinator', car, 'secondary', null, 'initialpass1');
+    u3 := public.app_admin_create_user('panel.school', 'Panel School', 'school', null, null, sch, 'initialpass1');
+    reset role;
+    assert (select role::text = 'supervisor' and district_id is null and education_level is null and school_id is null and active from public.profiles where id = u1), 'supervisor profile';
+    assert (select role::text = 'district_coordinator' and district_id = car and education_level = 'secondary' and username = 'panel.coord' from public.profiles where id = u2), 'coordinator profile (username lowercased)';
+    assert (select role::text = 'school' and school_id = sch and district_id = asu from public.profiles where id = u3), 'school profile: its district comes from the school';
+    assert (select extensions.crypt('initialpass1', encrypted_password) = encrypted_password and not exists (select 1 from information_schema.columns where false) from auth.users where id = u2) and exists (select 1 from auth.identities where user_id = u2), 'the login exists with a hashed password';
+    set local role authenticated;
+    foreach e in array array[
+      $q$select public.app_admin_create_user('bad.role', 'X', 'owner', null, null, null, 'initialpass1')$q$,
+      $q$select public.app_admin_create_user('bad.coord', 'X', 'district_coordinator', null, 'elementary', null, 'initialpass1')$q$,
+      $q$select public.app_admin_create_user('bad.coord2', 'X', 'district_coordinator', 1, null, null, 'initialpass1')$q$,
+      $q$select public.app_admin_create_user('bad.sup', 'X', 'supervisor', 1, null, null, 'initialpass1')$q$,
+      $q$select public.app_admin_create_user('bad.school', 'X', 'school', null, null, null, 'initialpass1')$q$,
+      $q$select public.app_admin_create_user('bad.school2', 'X', 'school', null, 'elementary', $q$ || sch || $q$, 'initialpass1')$q$,
+      $q$select public.app_admin_create_user('bad.school3', 'X', 'school', 3, null, $q$ || sch || $q$, 'initialpass1')$q$,
+      $q$select public.app_admin_create_user('bad.school4', 'X', 'school', null, null, $q$ || sch_noprog || $q$, 'initialpass1')$q$,
+      $q$select public.app_admin_create_user('panel.school2', 'X', 'school', null, null, $q$ || sch || $q$, 'initialpass1')$q$,
+      $q$select public.app_admin_create_user('panel.coord', 'X', 'supervisor', null, null, null, 'initialpass1')$q$,
+      $q$select public.app_admin_create_user('ab', 'X', 'supervisor', null, null, null, 'initialpass1')$q$,
+      $q$select public.app_admin_create_user('short.pw', 'X', 'supervisor', null, null, null, 'short')$q$] loop
+      denied := false; begin execute e; exception when others then denied := true; end;
+      assert denied, 'refused: ' || e;
+    end loop;
+    select count(*) into cnt2 from public.profiles where username like 'bad.%' or username = 'short.pw'; assert cnt2 = 0, 'refused creations leave nothing behind';
+    raise notice 'PASS admin creates users and validates assignments';
+
+    -- listing, filters, stats
+    select count(*) into cnt2 from public.app_admin_list_users(); assert cnt2 > 5, 'list returns users';
+    select total into tot from public.app_admin_list_users('panel') limit 1; assert tot = 3, 'search finds the three panel users';
+    assert (select count(*) from public.app_admin_list_users(null, 'school')) >= 1 and (select count(*) from public.app_admin_list_users(null, 'school', null, null, 'iped')) >= 1 and (select count(*) from public.app_admin_list_users(null, 'school', null, null, 'special_programs') where school_name = 'Panel IPED School') = 0, 'role and program filters';
+    assert (select school_name from public.app_admin_list_users('panel.school')) = 'Panel IPED School' and (select programs from public.app_admin_list_users('panel.school')) = array['iped'], 'school and program shown';
+    assert (select count(*) from public.app_admin_list_users('panel', null, null, null, null, null, 2, 0)) = 2, 'pagination limit';
+    v := public.app_admin_user_stats();
+    assert (v ->> 'total')::int > 5 and (v ->> 'active')::int + (v ->> 'disabled')::int = (v ->> 'total')::int and (v -> 'by_role' ->> 'school')::int >= 1, 'stats come from the real tables';
+    assert not exists (select 1 from public.app_admin_list_users('panel.coord') l where to_jsonb(l)::text ~* 'encrypted|hash|token'), 'the list exposes no hashes or tokens';
+
+    -- editing: role change, username change, assignments
+    perform public.app_admin_update_user(u2, 'panel.coord.new', 'Panel Coordinator Two', 'district_coordinator', asu, 'elementary', null, true);
+    reset role;
+    assert (select username = 'panel.coord.new' and district_id = asu and education_level = 'elementary' from public.profiles where id = u2), 'edit persists in the profile';
+    assert (select email = 'panel.coord.new@users.mapehdavnor.altasme.app' from auth.users where id = u2) and (select identity_data ->> 'email' = 'panel.coord.new@users.mapehdavnor.altasme.app' from auth.identities where user_id = u2), 'the username change is applied to the login too';
+    set local role authenticated;
+    perform public.app_admin_update_user(u2, 'panel.coord.new', 'Panel Coordinator Two', 'supervisor', null, null, null, true);
+    reset role; assert (select role::text = 'supervisor' and district_id is null and education_level is null from public.profiles where id = u2), 'a role change clears assignments that no longer apply';
+    set local role authenticated;
+    denied := false; begin perform public.app_admin_update_user(u2, 'panel.coord.new', 'x', 'district_coordinator', null, 'elementary', null, true); exception when others then denied := sqlerrm like '%district%'; end; assert denied, 'a coordinator needs a district';
+    denied := false; begin perform public.app_admin_update_user(u2, 'panel.super', 'x', 'supervisor', null, null, null, true); exception when others then denied := sqlerrm like '%already taken%'; end; assert denied, 'a taken username is refused on edit';
+
+    -- the last administrator cannot be removed; nobody can disable themselves
+    denied := false; begin perform public.app_admin_update_user('00000000-0000-0000-0000-0000000000a1', 't_admin', 'T Admin', 'supervisor', null, null, null, true); exception when others then denied := sqlerrm like '%last active administrator%'; end; assert denied, 'the last active administrator cannot be demoted';
+    denied := false; begin perform public.app_admin_update_user('00000000-0000-0000-0000-0000000000a1', 't_admin', 'T Admin', 'admin', null, null, null, false); exception when others then denied := true; end; assert denied, 'the administrator cannot disable their own account';
+    u4 := public.app_admin_create_user('panel.admin2', 'Second Admin', 'admin', null, null, null, 'initialpass1');
+    perform public.app_admin_update_user(u4, 'panel.admin2', 'Second Admin', 'admin', null, null, null, false);
+    reset role; assert (select not active from public.profiles where id = u4) and (select banned_until > now() from auth.users where id = u4), 'disabling deactivates the profile and bans the login';
+    set local role authenticated;
+    perform public.app_admin_update_user(u4, 'panel.admin2', 'Second Admin', 'admin', null, null, null, true);
+    perform public.app_admin_update_user('00000000-0000-0000-0000-0000000000a1', 't_admin', 'T Admin', 'admin', null, null, null, true);
+    -- with a second active admin, the first may be demoted; put it back through the second one
+    reset role; perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', u4), true); set local role authenticated;
+    perform public.app_admin_update_user('00000000-0000-0000-0000-0000000000a1', 't_admin', 'T Admin', 'supervisor', null, null, null, true);
+    perform public.app_admin_update_user('00000000-0000-0000-0000-0000000000a1', 't_admin', 'T Admin', 'admin', null, null, null, true);
+    reset role; perform set_config('request.jwt.claims', adm, true); set local role authenticated;
+    raise notice 'PASS admin edits users, protects the last administrator';
+
+    -- a disabled user loses data access at once; their records stay
+    reset role; perform set_config('request.jwt.claims', '', true);
+    insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by)
+      values ('2025-2026','Term 1',asu,sch,'Key Stage 1','Grade 3','IPED - English',65,80,70,'x',u3) returning id into rid;
+    perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', u3), true); set local role authenticated;
+    assert (select count(*) from public.assessment_records where id = rid) = 1, 'the school user sees its record while active';
+    reset role; perform set_config('request.jwt.claims', adm, true); set local role authenticated;
+    perform public.app_admin_update_user(u3, 'panel.school', 'Panel School', 'school', null, null, sch, false);
+    reset role; perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', u3), true); set local role authenticated;
+    assert (select count(*) from public.assessment_records) = 0, 'a disabled user sees nothing';
+    denied := false; begin perform public.app_admin_save_content('login.title', 'x'); exception when insufficient_privilege then denied := true; end; assert denied, 'and cannot use any admin function';
+    reset role;
+    assert (select count(*) from public.assessment_records where id = rid and created_by = u3) = 1, 'the disabled user''s assessment records are untouched';
+    perform set_config('request.jwt.claims', adm, true); set local role authenticated;
+    perform public.app_admin_update_user(u3, 'panel.school', 'Panel School', 'school', null, null, sch, true);
+
+    -- password reset: hashed, previous password untouched until reset, nothing logged
+    perform public.app_admin_set_password(u3, 'brandnewpass9');
+    reset role;
+    assert (select extensions.crypt('brandnewpass9', encrypted_password) = encrypted_password and extensions.crypt('initialpass1', encrypted_password) <> encrypted_password from auth.users where id = u3), 'the new password is stored hashed and the old one stops working';
+    assert not exists (select 1 from public.admin_activity where details::text ~* 'brandnewpass9|initialpass1' or resource_id::text ~* 'brandnewpass9'), 'no password appears in the activity log';
+    assert not exists (select 1 from public.audit_log where (old::text || coalesce(new::text, '')) ~* 'brandnewpass9|initialpass1'), 'nor in the data audit log';
+    set local role authenticated;
+    denied := false; begin perform public.app_admin_set_password(u3, 'short'); exception when others then denied := true; end; assert denied, 'a short password is refused';
+    raise notice 'PASS passwords';
+
+    -- website content: plain text, history, restore, public read
+    perform public.app_admin_save_content('login.title', 'New division title');
+    perform public.app_admin_save_content('login.title', 'Newer division title');
+    denied := false; begin perform public.app_admin_save_content('login.title', 'bad <script>alert(1)</script>'); exception when others then denied := sqlerrm like '%Plain text%'; end; assert denied, 'HTML and script are refused';
+    denied := false; begin perform public.app_admin_save_content('login.title', '   '); exception when others then denied := sqlerrm like '%cannot be empty%'; end; assert denied, 'empty text is refused';
+    denied := false; begin perform public.app_admin_save_content('Bad Key!', 'x'); exception when others then denied := true; end; assert denied, 'a malformed content key is refused';
+    denied := false; begin perform public.app_admin_save_content('login.title', repeat('x', 2001)); exception when others then denied := true; end; assert denied, 'overlong text refused';
+    assert (select value from public.site_content where key = 'login.title') = 'Newer division title', 'the content is stored';
+    assert (select count(*) from public.site_content_versions where key = 'login.title') = 2, 'each change is a version';
+    select id into vid from public.site_content_versions where key = 'login.title' order by id desc limit 1;
+    perform public.app_admin_restore_content(vid);
+    assert (select value from public.site_content where key = 'login.title') = 'New division title', 'a version can be restored';
+    perform public.app_admin_save_content('login.note', E'Line one\r\nLine two');
+    assert (select value from public.site_content where key = 'login.note') = E'Line one\nLine two', 'line breaks are kept';
+    perform public.app_admin_reset_content('login.note');
+    assert not exists (select 1 from public.site_content where key = 'login.note'), 'reset goes back to the original (the row is removed)';
+    reset role;
+    set local role anon;
+    assert (select count(*) from public.site_content) >= 1, 'content is public for the login page';
+    assert (select count(*) from public.site_content_versions) = 0 or true, 'x';
+    denied := false; begin perform count(*) from public.site_content_versions; exception when insufficient_privilege then denied := true; end; assert denied, 'but history is not public';
+    reset role;
+    raise notice 'PASS website content';
+
+    -- settings
+    perform set_config('request.jwt.claims', adm, true); set local role authenticated;
+    perform public.app_admin_save_setting('site.title', '"Division Assessment System"');
+    perform public.app_admin_save_setting('announcement', '{"enabled":true,"text":"Maintenance on Friday","level":"warning"}');
+    perform public.app_admin_save_setting('default_view', '"dashboard"');
+    perform public.app_admin_save_setting('default_sy', '"2025-2026"');
+    perform public.app_admin_save_setting('contact', '{"email":"sdo@example.org","phone":"(084) 555 0100","address":"Tagum City"}');
+    foreach e in array array[$q$select public.app_admin_save_setting('site.title', '"<b>x</b>"')$q$, $q$select public.app_admin_save_setting('site.title', '"ab"')$q$,
+      $q$select public.app_admin_save_setting('announcement', '{"enabled":true,"text":"","level":"info"}')$q$, $q$select public.app_admin_save_setting('announcement', '{"enabled":false,"text":"x","level":"danger"}')$q$,
+      $q$select public.app_admin_save_setting('default_view', '"settings"')$q$, $q$select public.app_admin_save_setting('default_sy', '"2025"')$q$,
+      $q$select public.app_admin_save_setting('contact', '{"email":"not-an-email"}')$q$, $q$select public.app_admin_save_setting('database_url', '"x"')$q$] loop
+      denied := false; begin execute e; exception when others then denied := true; end; assert denied, 'refused: ' || e;
+    end loop;
+    perform public.app_admin_clear_setting('contact');
+    assert not exists (select 1 from public.site_settings where key = 'contact'), 'a setting can be cleared back to the built-in value';
+    reset role; set local role anon;
+    assert (select count(*) from public.site_settings) = 4, 'settings are readable on the login page'; reset role;
+    raise notice 'PASS settings';
+
+    -- media: validation, usage tracking, storage policies
+    perform set_config('request.jwt.claims', adm, true); set local role authenticated;
+    mid := public.app_admin_register_media('11111111-1111-1111-1111-111111111111.png', 'logo.png', 'image/png', 5000, 'Division logo');
+    mid2 := public.app_admin_register_media('22222222-2222-2222-2222-222222222222.jpg', 'banner.jpg', 'image/jpeg', 9000, '');
+    foreach e in array array[$q$select public.app_admin_register_media('33333333-3333-3333-3333-333333333333.svg', 'x.svg', 'image/svg+xml', 10, '')$q$,
+      $q$select public.app_admin_register_media('33333333-3333-3333-3333-333333333333.png', 'x.png', 'image/jpeg', 10, '')$q$,
+      $q$select public.app_admin_register_media('33333333-3333-3333-3333-333333333333.png', 'x.png', 'image/png', 3000000, '')$q$,
+      $q$select public.app_admin_register_media('../evil.png', 'x.png', 'image/png', 10, '')$q$,
+      $q$select public.app_admin_register_media('33333333-3333-3333-3333-333333333333.png', 'x.png', 'image/png', 10, '<script>')$q$,
+      $q$select public.app_admin_assign_media('login.hero', null)$q$] loop
+      denied := false; begin execute e; exception when others then denied := true; end; assert denied, 'refused: ' || e;
+    end loop;
+    perform public.app_admin_assign_media('brand.logo', mid);
+    denied := false; begin perform public.app_admin_delete_media(mid); exception when others then denied := sqlerrm like '%still in use%'; end; assert denied, 'an image in use cannot be deleted';
+    perform public.app_admin_assign_media('brand.logo', mid2);
+    path := public.app_admin_delete_media(mid); assert path = '11111111-1111-1111-1111-111111111111.png', 'once replaced, the old image can be deleted (path returned for the file)';
+    perform public.app_admin_update_media(mid2, 'Division banner');
+    assert (select alt_text from public.site_media where id = mid2) = 'Division banner', 'alt text saved';
+    insert into storage.objects (bucket_id, name) values ('site-media', '22222222-2222-2222-2222-222222222222.jpg');
+    denied := false; begin insert into storage.objects (bucket_id, name) values ('other-bucket', 'x.png'); exception when others then denied := true; end; assert denied, 'the administrator can write only to the site-media bucket';
+    reset role; set local role anon;
+    assert (select count(*) from public.site_media_slots) = 1, 'image positions are public for the login page'; reset role;
+    perform set_config('request.jwt.claims', sup, true); set local role authenticated;
+    denied := false; begin insert into storage.objects (bucket_id, name) values ('site-media', 'sneaky.png'); exception when others then denied := true; end; assert denied, 'a supervisor cannot upload';
+    reset role;
+    raise notice 'PASS media';
+
+    -- logging: administrative actions are recorded; a non-admin who opens /admin is recorded once a minute
+    assert (select count(distinct action) from public.admin_activity where action in ('user.create', 'user.update', 'user.password_reset', 'content.update', 'content.restore', 'content.reset', 'settings.update', 'settings.clear', 'media.upload', 'media.assign', 'media.delete')) = 11, 'every kind of administrative action is logged';
+    perform set_config('request.jwt.claims', sup, true); set local role authenticated;
+    perform public.app_admin_log_denied(); perform public.app_admin_log_denied();
+    reset role;
+    assert (select count(*) from public.admin_activity where action = 'admin.access_denied' and outcome = 'denied') = 1, 'a denied attempt is logged once per minute';
+    perform set_config('request.jwt.claims', adm, true); set local role authenticated;
+    perform public.app_admin_log_event('login');
+    denied := false; begin perform public.app_admin_log_event('anything'); exception when others then denied := true; end; assert denied, 'only known session events can be logged';
+    assert (select count(*) from public.app_admin_activity('user.')) >= 3 and (select count(*) from public.app_admin_data_changes()) > 0, 'the admin can read both logs';
+    reset role;
+    raise notice 'PASS admin activity log';
   end;
 
   -- ===== Signed out =====

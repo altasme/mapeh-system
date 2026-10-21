@@ -1,0 +1,9 @@
+# /admin is a single page; these paths all serve it (the page reads the path to decide which screen to show)
+/admin/dashboard /admin/index.html 200
+/admin/users /admin/index.html 200
+/admin/roles /admin/index.html 200
+/admin/content /admin/index.html 200
+/admin/media /admin/index.html 200
+/admin/settings /admin/index.html 200
+/admin/audit /admin/index.html 200
+/admin/account /admin/index.html 200
