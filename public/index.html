@@ -643,6 +643,17 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
     .mr-pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 4px 2px; font-size: 0.82rem; color: var(--text-muted); flex-wrap: wrap; }
     .mr-flag { display: inline-block; margin-top: 3px; font-size: 0.72rem; }
     .comp-note { font-size: 0.8rem; color: var(--text-muted); margin-top: 10px; }
+    .sv-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .sv-kpi { border-top: 3px solid var(--deped-blue); background: #fff; padding: 10px 14px; border-radius: 6px; box-shadow: 0 0 0 1px var(--rule, #dde3f0) inset; }
+    .sv-kpi strong { display: block; font-size: 1.4rem; color: var(--ink); }
+    .sv-kpi span { font-size: 0.78rem; color: var(--text-muted); }
+    .sv-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .sv-tools select, .sv-tools input[type="search"] { padding: 7px 10px; border: 1px solid var(--rule-strong, #c3ccdf); border-radius: 4px; font: inherit; font-size: 0.86rem; background: #fff; }
+    .prog-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 650; margin-right: 4px; }
+    .prog-sp { background: #efe6f7; color: #5b2a86; }
+    .prog-iped { background: #fdf1d6; color: #7a4e0a; }
+    .bl-sy-note { color: var(--text-muted); font-weight: 500; }
+    .bl-sy-select { margin-top: 4px; max-width: 150px; font-size: 0.74rem; padding: 3px 6px; border: 1px solid var(--rule-strong, #c3ccdf); border-radius: 4px; background: #fff; }
     .coord-card { border-top: 1px solid var(--rule); padding: 16px 0 6px; }
     .coord-card > h5 { color: var(--ink); font-size: 0.98rem; font-weight: 650; margin: 0 0 10px; }
     .coord-sub { margin: 0 0 12px; padding: 10px 0 2px 14px; border-left: 3px solid var(--rule-strong, #c3ccdf); }
@@ -740,6 +751,7 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
         <li class="nav-group" aria-hidden="true">Output</li>
         <li role="button" tabindex="0" class="nav-item" onclick="switchView('reports')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V3h10v6"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><path d="M7 14h10v7H7z"/></svg>Reports & Signatories</li>
         <li class="nav-group" aria-hidden="true">Admin</li>
+        <li role="button" tabindex="0" class="nav-item" id="nav-schools" style="display:none;" onclick="switchView('schools')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10l9-6 9 6"/><path d="M5 10v9h14v-9"/><path d="M10 19v-5h4v5"/></svg>Schools & Accounts</li>
         <li role="button" tabindex="0" class="nav-item" id="nav-settings" onclick="switchView('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Settings & Branding</li>
     </ul>
 </div>
@@ -814,6 +826,14 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
             <label>Learning Area / Program Track</label>
             <select id="flt-subject" onchange="applyFilters()">
                 <!-- Dynamically populated -->
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>Program</label>
+            <select id="flt-program" onchange="applyFilters()">
+                <option value="ALL">All Programs</option>
+                <option value="special_programs">Special Programs (SPA, SPS, SPFL)</option>
+                <option value="iped">IPED</option>
             </select>
         </div>
         <div style="margin-left: auto; display: flex; gap: 8px;">
@@ -917,7 +937,7 @@ function friendlyError(err) {
     if (/failed to fetch|networkerror|load failed|fetch failed/i.test(msg) || err.name === "AuthRetryableFetchError") {
         return "Could not reach the server. Your changes were not saved.";
     }
-    if (code === "42501" && /^(Only the division|You do not have access to one or more|Not allowed)/.test(msg)) return msg;
+    if (code === "42501" && /^(Only the division|Only a Supervisor|You do not have access to one or more|Not allowed)/.test(msg)) return msg;
     if (code === "42501" || /row-level security|permission denied/i.test(msg)) {
         return "You do not have access to that district or education level.";
     }
@@ -929,6 +949,7 @@ function friendlyError(err) {
         if (/_mps_check/.test(msg) && !/baseline/.test(msg)) return "MPS must be between 0 and 100.";
         if (/baseline_mps_check/.test(msg)) return "Baseline MPS must be between 0 and 100.";
         if (/pct75_check/.test(msg)) return "% of learners scoring 75% or above must be between 0 and 100.";
+        if (/baseline_sy_check/.test(msg)) return "Baseline school year must look like 2024-2025.";
         if (/_sy_check/.test(msg)) return "School year must look like 2025-2026.";
         if (/_term_check/.test(msg)) return "Term must be Term 1, Term 2 or Term 3.";
         return "A value is outside the allowed range.";
@@ -992,7 +1013,7 @@ function requireReauth(promptText) {
 }
 
 /* 1. AUTHENTICATION (Supabase Auth; accounts live in the database) */
-const ROLE_LABELS = { admin: "Admin", supervisor: "Supervisor", district_coordinator: "District Coordinator" };
+const ROLE_LABELS = { admin: "Admin", supervisor: "Supervisor", district_coordinator: "District Coordinator", school: "School Account" };
 
 /* EDUCATION LEVELS. Elementary is Grade 1 to 6 and Secondary is Grade 7 to 12: the same rule as
    public.app_education_level() in the database, which row level security enforces. This copy only shapes the screen. */
@@ -1045,13 +1066,13 @@ async function loadProfile() {
     const { data: { session } } = await sb().auth.getSession();
     if (!session) throw new Error("No session");
     const { data, error } = await sb().from("profiles")
-        .select("username, display_name, role, education_level, active, districts(name)")
+        .select("username, display_name, role, education_level, active, school_id, districts(name)")
         .eq("id", session.user.id).maybeSingle();
     if (error) throw error;
     if (!data) { const e = new Error("NO_PROFILE"); e.userMessage = "This account has no profile. Please contact the administrator."; throw e; }
     if (!data.active) {
         const e = new Error("RETIRED");
-        e.userMessage = "This account has been retired. Please sign in with the Elementary or Secondary account issued for your district.";
+        e.userMessage = "This account has been disabled or retired. Please contact the Supervisor, or sign in with the Elementary or Secondary account issued for your district.";
         throw e;
     }
     const level = data.education_level && LEVELS[data.education_level] ? data.education_level : "ALL";
@@ -1061,6 +1082,8 @@ async function loadProfile() {
         username: data.username,
         district: data.districts ? data.districts.name : "ALL",
         educationLevel: level,
+        isSchool: data.role === "school",
+        schoolId: data.school_id || null,
         email: session.user.email
     };
 }
@@ -1075,8 +1098,17 @@ async function enterApp() {
     try {
         await loadProfile();
         await initDB();
+        if (currentUser.isSchool) {   // a school account works for ONE school; its district and programs come from that school
+            const sc = SCHOOLS.find(x => x.id === currentUser.schoolId);
+            if (!sc || !sc.active) {
+                const e = new Error("NO_SCHOOL");
+                e.userMessage = "This school account is not linked to an active school. Please contact the Supervisor.";
+                throw e;
+            }
+            currentUser.school = sc; currentUser.programs = sc.programs; currentUser.district = sc.district;
+        }
     } catch (err) {
-        if (err && (err.message === "NO_PROFILE" || err.message === "RETIRED")) await sb().auth.signOut().catch(() => {});
+        if (err && (err.message === "NO_PROFILE" || err.message === "RETIRED" || err.message === "NO_SCHOOL")) await sb().auth.signOut().catch(() => {});
         currentUser = null;
         showLoginError(friendlyError(err));
         throw err;
@@ -1088,7 +1120,7 @@ async function enterApp() {
     applyUserPermissionsUI();
     applyPrintBrandingUI();
     updateEnvBanner();
-    switchView("division");
+    switchView(currentUser.isSchool ? "dashboard" : "division");
 }
 
 async function handleLogin(e) {
@@ -1122,7 +1154,9 @@ async function handleLogout() {
 function applyUserPermissionsUI() {
     if (!currentUser) return;
     document.getElementById("u-name").textContent = currentUser.name;
-    document.getElementById("u-role").textContent = currentUser.district !== "ALL" ? `${currentUser.role} (${currentUser.district})` : currentUser.role;
+    document.getElementById("u-role").textContent = currentUser.isSchool && currentUser.school
+        ? `${currentUser.school.name} (${currentUser.school.programs.map(p => PROGRAM_LABELS[p]).join(" + ")})`
+        : currentUser.district !== "ALL" ? `${currentUser.role} (${currentUser.district})` : currentUser.role;
     populateLevelFilter();
     document.getElementById("u-avatar").textContent = currentUser.name.charAt(0).toUpperCase();
 
@@ -1132,6 +1166,16 @@ function applyUserPermissionsUI() {
     }
     const csvBtn = document.getElementById("csv-btn");
     if (csvBtn) csvBtn.style.display = canAccessSettings() ? "" : "none";
+    const navSchools = document.getElementById("nav-schools");
+    if (navSchools) navSchools.style.display = canAccessSettings() ? "flex" : "none";
+    // A school account sees only the screens that make sense for one school
+    if (currentUser.isSchool) {
+        document.querySelectorAll(".nav-item").forEach(el => {
+            const v = (/switchView\('([^']+)'\)/.exec(el.getAttribute("onclick") || "") || [])[1];
+            if (v && !SCHOOL_VIEWS.includes(v)) el.style.display = "none";
+        });
+        document.querySelectorAll(".nav-group").forEach(g => { if (g.textContent === "Output" || g.textContent === "Admin") g.style.display = "none"; });
+    }
 
     populateDistrictFilter();
 }
@@ -1200,6 +1244,28 @@ const DISTRICT_COLORS = ["#0038A8", "#D9480F", "#2F855A", "#7B2CBF", "#C2185B", 
 const districtColor = d => DISTRICT_COLORS[Math.max(0, DEFAULT_DISTRICTS.indexOf(d)) % DISTRICT_COLORS.length];
 const TRACK_COLORS = ["#0038A8", "#800080", "#DD6B20", "#319795", "#B7791F"];   // MAPEH, SPA, SPS, SPFL, IPED
 const MAPEH_PART_COLORS = ["#8E44AD", "#D6336C", "#2F855A", "#E8590C", "#0038A8"]; // Music, Arts, PE, Health, Overall
+/* BASELINE SCHOOL YEAR. Each record stores the school year its baseline MPS comes from (baseline_sy). Old records have none:
+   they show "SY not recorded" and are never guessed. New entries and imports default to the school year before the record's. */
+function prevSy(sy) {
+    const m = /^(\d{4})-(\d{4})$/.exec(String(sy || ""));
+    return m ? `${Number(m[1]) - 1}-${Number(m[2]) - 1}` : "";
+}
+function baselineSyOptions() {
+    return Array.from(new Set([...SCHOOL_YEARS.map(prevSy), ...SCHOOL_YEARS])).sort();
+}
+function baselineSyLabel(recs) {
+    if (!recs.length) return "";
+    const set = new Set(recs.map(r => r.baselineSy || ""));
+    if (set.size === 1) { const v = Array.from(set)[0]; return v ? `SY ${v}` : "SY not recorded"; }
+    const known = Array.from(set).filter(Boolean).sort().map(v => `SY ${v}`);
+    return `Mixed: ${known.join(", ")}${set.has("") ? (known.length ? ", not recorded" : "not recorded") : ""}`;
+}
+const baselineSyNote = recs => recs.length ? `<br><small class="bl-sy-note">${esc(baselineSyLabel(recs))}</small>` : "";
+
+/* PROGRAMS. Special Programs (SPA, SPS, SPFL) and IPED are separate classifications of a school; a school can be in one or both. */
+const PROGRAM_LABELS = { special_programs: "Special Programs", iped: "IPED" };
+const areaProgram = a => /^(SPA|SPS|SPFL) - /.test(a || "") ? "special_programs" : /^IPED - /.test(a || "") ? "iped" : null;
+const programOk = r => filters.program === "ALL" || areaProgram(r.learningArea) === filters.program;
 const meanMps = list => list.length ? list.reduce((a, c) => a + c.mps, 0) / list.length : 0;
 const hasMapehNew = recs => recs.some(r => r.learningArea === MAPEH_OVERALL || isMapehComponent(r.learningArea));
 
@@ -1265,10 +1331,11 @@ let settings = {
 };
 
 let currentView = "division";
-let filters = { sy: "ALL", term: "ALL", district: "ALL", level: "ALL", keystage: "ALL", subject: "ALL" };
+let filters = { sy: "ALL", term: "ALL", district: "ALL", level: "ALL", keystage: "ALL", subject: "ALL", program: "ALL" };
 let activeCharts = {};
 
 /* 3. DB HELPERS (Supabase). Names and return shapes match the old IndexedDB helpers. */
+let SCHOOLS = [];   // { id, name, districtId, district, active, programs: ['special_programs'|'iped'] }
 let districtIdByName = {};
 let districtNameById = {};
 let _anyDemoLoaded = false;
@@ -1293,6 +1360,8 @@ function fromRow(row) {
         educationLevel: row.education_level || levelOfGrade(row.grade_level) || "",
         createdAt: row.created_at || "",
         updatedAt: row.updated_at || "",
+        baselineSy: row.baseline_sy || "",
+        schoolId: row.school_id || null,
         deletedAt: row.deleted_at || "",
         deleteReason: row.delete_reason || ""
     };
@@ -1317,7 +1386,9 @@ function toRow(r) {
         mps: r.mps,
         pct75: r.pct75,
         proficiency_level: r.proficiencyLevel,
-        least_learned: r.leastLearned || []
+        least_learned: r.leastLearned || [],
+        baseline_sy: r.baselineSy || null,
+        school_id: r.schoolId || null
     };
 }
 
@@ -1344,6 +1415,20 @@ async function initDB() {
         return d.name;
     });
     if (sRes.data && sRes.data.data) Object.assign(settings, sRes.data.data);
+    await loadSchools();
+}
+
+// Schools the signed-in user may see (the database decides: all for the division, own district for a coordinator, own school for a school account).
+async function loadSchools() {
+    const [a, b] = await Promise.all([
+        sb().from("schools").select("id, name, district_id, active").order("name").range(0, 4999),
+        sb().from("school_programs").select("school_id, program").range(0, 9999)
+    ]);
+    if (a.error) throw a.error;
+    if (b.error) throw b.error;
+    const progs = {};
+    b.data.forEach(p => { (progs[p.school_id] = progs[p.school_id] || []).push(p.program); });
+    SCHOOLS = a.data.map(x => ({ id: x.id, name: x.name, districtId: x.district_id, district: districtNameById[x.district_id] || "", active: x.active, programs: (progs[x.id] || []).sort() }));
 }
 
 async function getAllRecords() {
@@ -1431,6 +1516,37 @@ function applyBaselineFilters(q, ksObj, effectiveDistrict) {
     return q.in("grade_level", ksObj.grades.filter(g => inLevel.includes(g)));
 }
 
+function baselineSySelectHTML(ksCode, recs) {
+    const set = new Set(recs.map(r => r.baselineSy || ""));
+    const cur = set.size === 1 ? Array.from(set)[0] : "__mixed";
+    const opts = [`<option value="">SY not recorded</option>`, ...baselineSyOptions().map(v => `<option value="${v}">SY ${v}</option>`)];
+    if (cur === "__mixed") opts.unshift(`<option value="__mixed" selected disabled>Mixed: choose to set all</option>`);
+    return `<select class="bl-sy-select screen-only" aria-label="Baseline school year for ${ksCode}" onchange="updateBaselineSyForStage('${ksCode}', this.value)">${opts.join("").replace(`value="${cur}"`, `value="${cur}" selected`)}</select>`;
+}
+
+// Same scope and filters as the baseline MPS edit: sets which school year the baseline of those records comes from.
+async function updateBaselineSyForStage(ksCode, sy) {
+    if (!canEditData() || sy === "__mixed") return;
+    const ksObj = KEY_STAGES.find(k => k.code === ksCode);
+    if (!ksObj) return;
+    const userDist = currentUser ? currentUser.district : "ALL";
+    const effectiveDistrict = userDist !== "ALL" ? userDist : filters.district;
+    try {
+        const { count, error: cErr } = await applyBaselineFilters(
+            sb().from("assessment_records").select("id", { count: "exact", head: true }), ksObj, effectiveDistrict);
+        if (cErr) throw cErr;
+        if (!count) { toast("No records match the current filters, so nothing was changed.", "info"); switchView("comparative"); return; }
+        if (!confirm(`This will set the baseline school year to ${sy ? "SY " + sy : "\"not recorded\""} on ${count} record(s). Baseline MPS values are not changed. Continue?`)) { switchView("comparative"); return; }
+        const { count: updated, error } = await applyBaselineFilters(
+            sb().from("assessment_records").update({ baseline_sy: sy || null }, { count: "exact" }), ksObj, effectiveDistrict);
+        if (error) throw error;
+        toast(`Baseline school year updated on ${updated} record(s).`);
+    } catch (err) {
+        toast(friendlyError(err), "error");
+    }
+    formDirty = false; switchView("comparative");
+}
+
 async function updateBaselineMpsForStage(ksCode, val) {
     if (!canEditData()) {
         toast("Access Denied: Log in required to edit baseline figures.", "error");
@@ -1496,7 +1612,7 @@ function profRuler(mps, compact) {
 const VIEW_TITLES = {
     "division": "Division Summary View", "district-view": "District Profile View", "comparative": "Termly Comparative Analysis",
     "dashboard": "Performance Dashboard", "data-input": "Fast Data Entry & Upload", "least-learned": "Least Learned Competencies",
-    "grade-view": "Grade Level Breakdown", "manage-records": "Manage Records", "reports": "Reports & Signatories", "settings": "Settings & Branding"
+    "grade-view": "Grade Level Breakdown", "manage-records": "Manage Records", "schools": "Schools & Accounts", "reports": "Reports & Signatories", "settings": "Settings & Branding"
 };
 
 // On-screen letterhead of the sheet: mirrors the printed header so the screen reads as the report.
@@ -1538,6 +1654,7 @@ async function getFilteredData() {
         if (!levelOk(r)) return false;
         if (filters.keystage !== "ALL" && r.keyStage !== filters.keystage) return false;
         if (filters.subject !== "ALL" && r.learningArea !== filters.subject) return false;
+        if (!programOk(r)) return false;
         return true;
     });
     markSample(filtered);
@@ -1633,6 +1750,40 @@ function buildSubjectOptionsHTML(includeAllOption = true, forGrade = null, keepA
     </optgroup>`;
 }
 
+// Learning areas of the given program(s) only: what a school account may enter
+function programOptionsHTML(programs) {
+    const opt = a => `<option value="${esc(a)}">${esc(a)}</option>`;
+    let h = "";
+    if (programs.includes("special_programs")) h += `<optgroup label="Special Programs (SPA, SPS, SPFL)">${SUBJECTS.filter(a => /^(SPA|SPS|SPFL) - /.test(a)).map(opt).join("")}</optgroup>`;
+    if (programs.includes("iped")) h += `<optgroup label="IPED Learning Subjects">${IPED_OFFERS.map(opt).join("")}</optgroup>`;
+    return h;
+}
+
+// The school field offers the school list (schools of the chosen district and program); typing a name stays possible.
+function refreshSchoolPicker() {
+    const pick = document.getElementById("m-school-pick"), input = document.getElementById("m-school");
+    if (!pick || !input) return;
+    if (currentUser && currentUser.isSchool) {
+        pick.innerHTML = `<option value="${currentUser.school.id}">${esc(currentUser.school.name)}</option>`;
+        pick.disabled = true; pick.style.display = ""; input.style.display = "none"; input.required = false;
+        return;
+    }
+    const prog = areaProgram(document.getElementById("m-subject").value), dist = (document.getElementById("m-district") || {}).value;
+    const list = SCHOOLS.filter(x => x.active && x.district === dist && prog && x.programs.includes(prog));
+    if (!list.length) { pick.style.display = "none"; pick.innerHTML = ""; input.style.display = ""; input.required = true; return; }
+    const prev = pick.value;
+    pick.innerHTML = `<option value="">Choose a school from the list</option>${list.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join("")}<option value="__other">Not on the list (type the name)</option>`;
+    if (Array.from(pick.options).some(o => o.value === prev)) pick.value = prev;
+    pick.disabled = false; pick.style.display = "";
+    schoolPickChanged();
+}
+function schoolPickChanged() {
+    const pick = document.getElementById("m-school-pick"), input = document.getElementById("m-school");
+    if (!pick || !input || pick.style.display === "none") return;
+    const other = pick.value === "__other";
+    input.style.display = other ? "" : "none"; input.required = other;
+}
+
 function toggleSchoolField(subjectValue) {
     const schoolGroup = document.getElementById("m-school-group");
     const schoolInput = document.getElementById("m-school");
@@ -1644,6 +1795,7 @@ function toggleSchoolField(subjectValue) {
     if (isSpecialProgram) {
         schoolGroup.style.display = "flex";
         schoolInput.required = true;
+        refreshSchoolPicker();
     } else {
         schoolGroup.style.display = "none";
         schoolInput.required = false;
@@ -1680,10 +1832,13 @@ function restoreFilterControls() {
     document.getElementById("flt-level").value = filters.level;
     document.getElementById("flt-keystage").value = filters.keystage;
     document.getElementById("flt-subject").value = filters.subject;
+    document.getElementById("flt-program").value = filters.program;
 }
 
 let renderToken = 0;
+const SCHOOL_VIEWS = ["dashboard", "data-input", "manage-records", "least-learned", "grade-view"];
 function switchView(view) {
+    if (currentUser && currentUser.isSchool && !SCHOOL_VIEWS.includes(view)) view = "dashboard";
     if (!confirmDiscard()) return;
     destroyCharts();
     currentView = view;
@@ -1706,14 +1861,14 @@ function switchView(view) {
         "comparative": renderComparativeView, "dashboard": renderDashboard,
         "data-input": renderDataInputView, "least-learned": renderLeastLearnedView,
         "grade-view": renderGradeConsolidation, "reports": renderReportsView,
-        "settings": renderSettingsView, "manage-records": renderManageRecords
+        "settings": renderSettingsView, "manage-records": renderManageRecords, "schools": renderSchoolsView
     };
     const fn = renderers[view];
     Promise.resolve().then(() => fn ? fn(slot) : null).then(() => {
         if (token !== renderToken) return;
         const loading = root.querySelector(".view-loading");
         if (loading) loading.remove();
-        if (view === "data-input" || view === "settings" || view === "manage-records") slot.classList.add("no-head");
+        if (view === "data-input" || view === "settings" || view === "manage-records" || view === "schools") slot.classList.add("no-head");
         else slot.insertAdjacentHTML("afterbegin", `<div class="sheet-head screen-only"><div><span class="sh-title"></span><span class="sh-org"></span></div><div class="sh-right"><span class="sh-sy"></span><span class="chip-sample">Sample data</span></div></div>`);
         updateSheetHead();
     }).catch(err => {
@@ -1798,6 +1953,7 @@ function applyFilters() {
     syncKeyStageOptions();
     filters.keystage = document.getElementById("flt-keystage").value;
     filters.subject = document.getElementById("flt-subject").value;
+    filters.program = document.getElementById("flt-program").value;
 
     const syLabelText = filters.sy === "ALL" ? "All School Years" : `SY ${filters.sy}`;
     document.getElementById("header-sy-label").textContent = syLabelText;
@@ -1828,6 +1984,7 @@ function resetFilters() {
     if ((currentUser ? currentUser.educationLevel : "ALL") === "ALL") document.getElementById("flt-level").value = "ALL";
     document.getElementById("flt-keystage").value = "ALL";
     document.getElementById("flt-subject").value = "ALL";
+    document.getElementById("flt-program").value = "ALL";
     applyFilters();
 }
 
@@ -1936,6 +2093,7 @@ async function renderDistrictProfileView(container) {
         if (filters.term !== "ALL" && r.term !== filters.term) return false;
         if (filters.keystage !== "ALL" && r.keyStage !== filters.keystage) return false;
         if (filters.subject !== "ALL" && r.learningArea !== filters.subject) return false;
+        if (!programOk(r)) return false;
         return true;
     });
 
@@ -2035,7 +2193,7 @@ function changeDistrictView(dist) {
 }
 
 async function renderComparativeView(container) {
-    const records = (await getAllRecords()).filter(levelOk);
+    const records = (await getAllRecords()).filter(levelOk).filter(programOk);
     const userDist = currentUser ? currentUser.district : "ALL";
     const currentScope = userDist !== "ALL" ? userDist : filters.district;
     
@@ -2070,6 +2228,8 @@ async function renderComparativeView(container) {
             <td>${esc(subjectLabel)}</td>
             <td>
                 <input type="number" step="0.01" class="editable-baseline-input" ${!isUserEditable ? 'disabled style="background:#edf2f7; cursor:not-allowed;"' : ''} value="${baselineMps ? baselineMps.toFixed(2) : '65.00'}" title="Click to edit Baseline MPS" onchange="updateBaselineMpsForStage('${ks.code}', this.value)" /> %
+                ${baselineSyNote(ksRecs)}
+                ${isUserEditable && ksRecs.length ? baselineSySelectHTML(ks.code, ksRecs) : ''}
             </td>
             <td>${currentMps ? currentMps.toFixed(2) + '%' : '-'}</td>
             <td>${ksRecs.length ? `<strong>${variance > 0 ? '+' : ''}${variance.toFixed(2)}%</strong>` : '-'}</td>
@@ -2088,7 +2248,7 @@ async function renderComparativeView(container) {
     const mapehSummaryRow = (currentSubject === "ALL" || currentSubject.startsWith("MAPEH")) ? `
     <tr class="mapeh-row">
         <td colspan="3" class="text-left" style="color: var(--deped-blue);">CONSOLIDATED MAPEH TOTAL (Overall MAPEH)</td>
-        <td>${mapehRecs.length ? mapehBaseline.toFixed(2) + '%' : '-'}</td>
+        <td>${mapehRecs.length ? mapehBaseline.toFixed(2) + '%' + baselineSyNote(mapehRecs) : '-'}</td>
         <td>${mapehRecs.length ? mapehCurrent.toFixed(2) + '%' : '-'}</td>
         <td>${mapehRecs.length ? `${mapehVariance > 0 ? '+' : ''}${mapehVariance.toFixed(2)}%` : '-'}</td>
         <td>${mapehRecs.length ? mapehStatusBadge : '-'}</td>
@@ -2105,7 +2265,7 @@ async function renderComparativeView(container) {
         const st = v > 0 ? '<span class="badge badge-advanced">Increased</span>' : v < 0 ? '<span class="badge badge-critical">Decreased</span>' : '<span class="badge badge-proficient">Maintained</span>';
         return `<tr class="mapeh-comp-row">
         <td colspan="3" class="text-left">&nbsp;&nbsp;MAPEH component: ${esc(c.label)}</td>
-        <td>${b.toFixed(2)}%</td>
+        <td>${b.toFixed(2)}%${baselineSyNote(cr)}</td>
         <td>${cur.toFixed(2)}%</td>
         <td>${v > 0 ? '+' : ''}${v.toFixed(2)}%</td>
         <td>${st}</td>
@@ -2122,7 +2282,7 @@ async function renderComparativeView(container) {
     const spaSummaryRow = (currentSubject === "ALL" || currentSubject.startsWith("SPA")) ? `
     <tr class="mapeh-row">
         <td colspan="3" class="text-left" style="color: var(--deped-blue);">CONSOLIDATED SPA TOTAL (All SPA Disciplines)</td>
-        <td>${spaRecs.length ? spaBaseline.toFixed(2) + '%' : '-'}</td>
+        <td>${spaRecs.length ? spaBaseline.toFixed(2) + '%' + baselineSyNote(spaRecs) : '-'}</td>
         <td>${spaRecs.length ? spaCurrent.toFixed(2) + '%' : '-'}</td>
         <td>${spaRecs.length ? `${spaVariance > 0 ? '+' : ''}${spaVariance.toFixed(2)}%` : '-'}</td>
         <td>${spaRecs.length ? spaStatusBadge : '-'}</td>
@@ -2138,7 +2298,7 @@ async function renderComparativeView(container) {
     const spsSummaryRow = (currentSubject === "ALL" || currentSubject.startsWith("SPS")) ? `
     <tr class="mapeh-row">
         <td colspan="3" class="text-left" style="color: var(--deped-blue);">CONSOLIDATED SPS TOTAL (All SPS Offers)</td>
-        <td>${spsRecs.length ? spsBaseline.toFixed(2) + '%' : '-'}</td>
+        <td>${spsRecs.length ? spsBaseline.toFixed(2) + '%' + baselineSyNote(spsRecs) : '-'}</td>
         <td>${spsRecs.length ? spsCurrent.toFixed(2) + '%' : '-'}</td>
         <td>${spsRecs.length ? `${spsVariance > 0 ? '+' : ''}${spsVariance.toFixed(2)}%` : '-'}</td>
         <td>${spsRecs.length ? spsStatusBadge : '-'}</td>
@@ -2154,7 +2314,7 @@ async function renderComparativeView(container) {
     const spflSummaryRow = (currentSubject === "ALL" || currentSubject.startsWith("SPFL")) ? `
     <tr class="mapeh-row">
         <td colspan="3" class="text-left" style="color: var(--deped-blue);">CONSOLIDATED SPFL TOTAL (All SPFL Offers)</td>
-        <td>${spflRecs.length ? spflBaseline.toFixed(2) + '%' : '-'}</td>
+        <td>${spflRecs.length ? spflBaseline.toFixed(2) + '%' + baselineSyNote(spflRecs) : '-'}</td>
         <td>${spflRecs.length ? spflCurrent.toFixed(2) + '%' : '-'}</td>
         <td>${spflRecs.length ? `${spflVariance > 0 ? '+' : ''}${spflVariance.toFixed(2)}%` : '-'}</td>
         <td>${spflRecs.length ? spflStatusBadge : '-'}</td>
@@ -2170,7 +2330,7 @@ async function renderComparativeView(container) {
     const ipedSummaryRow = (currentSubject === "ALL" || currentSubject.startsWith("IPED")) ? `
     <tr class="mapeh-row">
         <td colspan="3" class="text-left" style="color: var(--deped-blue);">CONSOLIDATED IPED TOTAL (All IPED Subjects)</td>
-        <td>${ipedRecs.length ? ipedBaseline.toFixed(2) + '%' : '-'}</td>
+        <td>${ipedRecs.length ? ipedBaseline.toFixed(2) + '%' + baselineSyNote(ipedRecs) : '-'}</td>
         <td>${ipedRecs.length ? ipedCurrent.toFixed(2) + '%' : '-'}</td>
         <td>${ipedRecs.length ? `${ipedVariance > 0 ? '+' : ''}${ipedVariance.toFixed(2)}%` : '-'}</td>
         <td>${ipedRecs.length ? ipedStatusBadge : '-'}</td>
@@ -2482,13 +2642,28 @@ async function renderDashboard(container) {
 }
 
 function downloadExcelTemplate() {
+    if (currentUser && currentUser.isSchool) {   // a school account's template: its own school and a learning area of its program
+        const sc = currentUser.school, area = currentUser.programs.includes("iped") ? IPED_OFFERS[0] : "SPA - Vocal Arts";
+        const rows = [{
+            "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": sc.district, "School Name": sc.name,
+            "Key Stage": "Key Stage 2", "Grade Level": "Grade 4", "Learning Area": area,
+            "Baseline SY": prevSy(SCHOOL_YEARS[0]), "SY Baseline MPS": 65.00, "Mean Percentage Score (MPS%)": 78.50, "% Learners Scoring >= 75%": 82.00,
+            "Least Learned Competency 1 Code": "LC-1", "Least Learned Competency 1 Description": "Describe the least learned competency.",
+            "Least Learned Competency 2 Code": "LC-2", "Least Learned Competency 2 Description": "Describe the least learned competency.",
+            "Least Learned Competency 3 Code": "LC-3", "Least Learned Competency 3 Description": "Describe the least learned competency."
+        }];
+        const wb0 = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb0, XLSX.utils.json_to_sheet(rows), "School Template");
+        XLSX.writeFile(wb0, `DepEd_School_Template_${sc.name.replace(/[^A-Za-z0-9]+/g, "_")}.xlsx`);
+        return;
+    }
     const userDist = currentUser && currentUser.district !== "ALL" ? currentUser.district : "Asuncion";
     const secondary = currentUser && currentUser.educationLevel === "secondary";
     const templateData = secondary ? [
         {
             "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} National High School`,
             "Key Stage": "Key Stage 3", "Grade Level": "Grade 8", "Learning Area": "MAPEH - PE",
-            "SY Baseline MPS": 65.00, "Mean Percentage Score (MPS%)": 78.50, "% Learners Scoring >= 75%": 82.00,
+            "Baseline SY": prevSy(SCHOOL_YEARS[0]), "SY Baseline MPS": 65.00, "Mean Percentage Score (MPS%)": 78.50, "% Learners Scoring >= 75%": 82.00,
             "Least Learned Competency 1 Code": "LC-1",
             "Least Learned Competency 1 Description": "Demonstrates fitness routines and safe movement practices.",
             "Least Learned Competency 2 Code": "LC-2",
@@ -2499,7 +2674,7 @@ function downloadExcelTemplate() {
         {
             "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} National High School (SPA Campus)`,
             "Key Stage": "Key Stage 4", "Grade Level": "Grade 11", "Learning Area": "SPA - Vocal Arts",
-            "SY Baseline MPS": 66.00, "Mean Percentage Score (MPS%)": 80.20, "% Learners Scoring >= 75%": 83.50,
+            "Baseline SY": prevSy(SCHOOL_YEARS[0]), "SY Baseline MPS": 66.00, "Mean Percentage Score (MPS%)": 80.20, "% Learners Scoring >= 75%": 83.50,
             "Least Learned Competency 1 Code": "LC-1",
             "Least Learned Competency 1 Description": "Performs vocal pieces with correct pitch and phrasing.",
             "Least Learned Competency 2 Code": "LC-2",
@@ -2511,7 +2686,7 @@ function downloadExcelTemplate() {
         {
             "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} Central Elementary School`,
             "Key Stage": "Key Stage 1", "Grade Level": "Grade 1", "Learning Area": "MAPEH - Overall",
-            "SY Baseline MPS": 65.00, "Mean Percentage Score (MPS%)": 78.50, "% Learners Scoring >= 75%": 82.00,
+            "Baseline SY": prevSy(SCHOOL_YEARS[0]), "SY Baseline MPS": 65.00, "Mean Percentage Score (MPS%)": 78.50, "% Learners Scoring >= 75%": 82.00,
             "Least Learned Competency 1 Code": "LC-1",
             "Least Learned Competency 1 Description": "Demonstrates pitch awareness and rhythmic movement patterns.",
             "Least Learned Competency 2 Code": "LC-2",
@@ -2522,7 +2697,7 @@ function downloadExcelTemplate() {
         {
             "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} IPED Central Elementary School`,
             "Key Stage": "Key Stage 1", "Grade Level": "Grade 3", "Learning Area": "IPED - English",
-            "SY Baseline MPS": 66.00, "Mean Percentage Score (MPS%)": 80.20, "% Learners Scoring >= 75%": 83.50,
+            "Baseline SY": prevSy(SCHOOL_YEARS[0]), "SY Baseline MPS": 66.00, "Mean Percentage Score (MPS%)": 80.20, "% Learners Scoring >= 75%": 83.50,
             "Least Learned Competency 1 Code": "LC-1",
             "Least Learned Competency 1 Description": "Applies contextualized reading comprehension and vocabulary.",
             "Least Learned Competency 2 Code": "LC-2",
@@ -2555,6 +2730,179 @@ function closeRecordModal() {
 document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape" && document.getElementById("record-modal").style.display === "flex") closeRecordModal();
 });
+
+/* SCHOOLS & ACCOUNTS (Supervisor and Admin). The school list and its Special Programs / IPED classification live in the
+   database; every change goes through a function that checks the caller on the server. School accounts are created here
+   and nowhere else. */
+const SV = { program: "ALL", district: "ALL", search: "", accounts: [] };
+const progBadges = progs => progs.map(p => `<span class="prog-badge ${p === "iped" ? "prog-iped" : "prog-sp"}">${esc(PROGRAM_LABELS[p])}</span>`).join("") || '<span class="no-data">None</span>';
+
+async function renderSchoolsView(container) {
+    if (!canAccessSettings()) {
+        container.innerHTML = `<div class="card-box" style="padding: 40px; text-align: center;"><h3 style="color: var(--danger); margin-bottom: 10px;">Access Restricted</h3><p style="color: var(--text-muted);">Only a Supervisor or Admin can manage schools and school accounts.</p></div>`;
+        return;
+    }
+    SV.program = "ALL"; SV.district = "ALL"; SV.search = "";
+    container.innerHTML = `
+    <div class="screen-only">
+        <div class="sv-kpis" id="sv-kpis"></div>
+        <div class="card-box">
+            <div class="card-box-header">
+                <h3>Schools by Program</h3>
+                <div class="sv-tools">
+                    <select id="sv-program" aria-label="Program" onchange="SV.program = this.value; svDraw()"><option value="ALL">All programs</option><option value="special_programs">Special Programs</option><option value="iped">IPED</option><option value="none">No program</option></select>
+                    <select id="sv-district" aria-label="District" onchange="SV.district = this.value; svDraw()"><option value="ALL">All districts</option>${DEFAULT_DISTRICTS.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join("")}</select>
+                    <input type="search" id="sv-search" placeholder="Search school or username" aria-label="Search" oninput="SV.search = this.value.toLowerCase().trim(); svDraw()">
+                    <button class="btn btn-primary btn-sm" onclick="openSchoolEditor(null)">Add school</button>
+                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('sv-import').click()">Import list (Excel/CSV)</button>
+                    <input type="file" id="sv-import" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importSchoolList(event)">
+                </div>
+            </div>
+            <div class="table-scroll" id="sv-table"></div>
+        </div>
+        <p class="comp-note">A school can belong to Special Programs, IPED, or both, and is listed once. Counts come from this list, not from fixed numbers. Only a Supervisor or Admin can create school accounts; each account is tied to one school and can see and enter only that school's records in its program. Import columns: <em>School Name</em>, <em>District</em>, <em>Program</em> (Special Programs, IPED or Both). Accounts are created one school at a time; nothing is created automatically.</p>
+    </div>`;
+    await svReload();
+}
+
+async function svReload() {
+    try {
+        await loadSchools();
+        const { data, error } = await sb().rpc("app_list_school_accounts");
+        if (error) throw error;
+        SV.accounts = data || [];
+        svDraw();
+    } catch (err) { toast(friendlyError(err), "error"); }
+}
+
+function svDraw() {
+    const tbl = document.getElementById("sv-table");
+    if (!tbl) return;
+    const byId = {}; SV.accounts.forEach(a => { if (a.active || !byId[a.school_id]) byId[a.school_id] = a; });
+    const sp = SCHOOLS.filter(x => x.programs.includes("special_programs")).length, ip = SCHOOLS.filter(x => x.programs.includes("iped")).length;
+    const both = SCHOOLS.filter(x => x.programs.length === 2).length, withAcc = SCHOOLS.filter(x => SV.accounts.some(a => a.school_id === x.id && a.active)).length;
+    document.getElementById("sv-kpis").innerHTML = [["Special Programs schools", sp], ["IPED schools", ip], ["In both programs", both], ["Schools in the list", SCHOOLS.length], ["With an active account", withAcc]]
+        .map(([l, n]) => `<div class="sv-kpi"><strong>${n}</strong><span>${l}</span></div>`).join("");
+    let list = SCHOOLS.filter(x => (SV.program === "ALL" || (SV.program === "none" ? !x.programs.length : x.programs.includes(SV.program))) && (SV.district === "ALL" || x.district === SV.district));
+    if (SV.search) list = list.filter(x => (x.name + " " + ((byId[x.id] || {}).username || "")).toLowerCase().includes(SV.search));
+    list.sort((a, b) => DEFAULT_DISTRICTS.indexOf(a.district) - DEFAULT_DISTRICTS.indexOf(b.district) || a.name.localeCompare(b.name));
+    const rows = list.map(x => {
+        const a = byId[x.id];
+        const acct = a ? `<strong>${esc(a.username)}</strong><br><small style="color:var(--text-muted);">${a.active ? "Active" : "Disabled"}</small>` : '<span class="no-data">No account</span>';
+        const acctBtn = !a ? (x.active && x.programs.length ? `<button class="btn btn-primary btn-sm" onclick="openSchoolAccountCreate(${x.id})">Create account</button>` : '')
+            : (a.active ? `<button class="btn btn-danger btn-sm" onclick="toggleSchoolAccount('${esc(a.profile_id)}', false)">Disable</button>` : (x.active ? `<button class="btn btn-secondary btn-sm" onclick="toggleSchoolAccount('${esc(a.profile_id)}', true)">Enable</button><button class="btn btn-primary btn-sm" onclick="openSchoolAccountCreate(${x.id})">New account</button>` : ''));
+        return `<tr><td><strong>${esc(x.name)}</strong></td><td>${esc(x.district)}</td><td>${progBadges(x.programs)}</td><td>${acct}</td><td>${x.active ? "Active" : '<span class="no-data">Inactive</span>'}</td>
+            <td class="mr-actions"><button class="btn btn-secondary btn-sm" onclick="openSchoolEditor(${x.id})">Edit</button>${acctBtn}</td></tr>`;
+    }).join("");
+    tbl.innerHTML = `<table class="data-table"><thead><tr><th>School</th><th>District</th><th>Program</th><th>Account</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="no-data">No schools match. Add a school or import a list.</td></tr>'}</tbody></table>`;
+}
+
+async function openSchoolEditor(id) {
+    const x = id ? SCHOOLS.find(v => v.id === id) : null;
+    let linkable = 0;
+    if (x) { try { const r = await sb().rpc("app_count_linkable_records", { p_school_id: x.id }); linkable = Number(r.data) || 0; } catch (_) { /* optional hint */ } }
+    openRecordModal(`
+        <h3 id="rec-title">${x ? "Edit school" : "Add school"}</h3>
+        <form id="school-form" onsubmit="saveSchool(event, ${x ? x.id : "null"})">
+            <div class="form-group"><label for="sc-name">School name</label><input type="text" id="sc-name" maxlength="200" value="${esc(x ? x.name : "")}"></div>
+            <div class="form-group" style="margin-top:10px;"><label for="sc-district">District</label><select id="sc-district">${DEFAULT_DISTRICTS.map(d => `<option value="${esc(d)}" ${x && x.district === d ? "selected" : ""}>${esc(d)}</option>`).join("")}</select></div>
+            <div class="form-group" style="margin-top:10px;"><label>Program (a school can be in both)</label>
+                <label style="font-weight:500;"><input type="checkbox" id="sc-sp" style="width:auto;" ${x && x.programs.includes("special_programs") ? "checked" : ""}> Special Programs (SPA, SPS, SPFL)</label>
+                <label style="font-weight:500;"><input type="checkbox" id="sc-iped" style="width:auto;" ${x && x.programs.includes("iped") ? "checked" : ""}> IPED</label></div>
+            ${x ? `<label style="font-weight:500;margin-top:8px;"><input type="checkbox" id="sc-active" style="width:auto;" ${x.active ? "checked" : ""}> School is active</label>` : ""}
+            ${x && linkable ? `<p class="comp-note">${linkable} existing record(s) carry this school's name as plain text but are not linked to it yet. <button type="button" class="btn btn-secondary btn-sm" onclick="linkSchoolRecords(${x.id}, ${linkable})">Link them to this school</button></p>` : ""}
+            <div class="login-error" id="rec-error" role="alert" style="margin-top:8px;"></div>
+            <div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="closeRecordModal()">Cancel</button><button type="submit" class="btn btn-primary" id="school-save">Save school</button></div>
+        </form>`);
+}
+
+async function saveSchool(ev, id) {
+    ev.preventDefault();
+    const err = document.getElementById("rec-error"), btn = document.getElementById("school-save");
+    const name = document.getElementById("sc-name").value.trim(), dist = document.getElementById("sc-district").value;
+    const programs = [document.getElementById("sc-sp").checked ? "special_programs" : null, document.getElementById("sc-iped").checked ? "iped" : null].filter(Boolean);
+    if (!name) { err.textContent = "Enter the school name."; return; }
+    if (!programs.length) { err.textContent = "Choose Special Programs, IPED, or both."; return; }
+    err.textContent = ""; setBusy(btn, true);
+    try {
+        const act = document.getElementById("sc-active");
+        const { error } = await sb().rpc("app_save_school", { p_id: id, p_name: name, p_district_id: districtIdByName[dist], p_programs: programs, p_active: act ? act.checked : true });
+        if (error) throw error;
+        closeRecordModal(); toast(id ? "School updated." : "School added."); await svReload();
+    } catch (e) { err.textContent = friendlyError(e); } finally { setBusy(btn, false); }
+}
+
+async function linkSchoolRecords(id, n) {
+    if (!confirm(`Link ${n} existing record(s) to this school? Only records of the same district with this exact school name and a matching program are changed.`)) return;
+    try {
+        const { data, error } = await sb().rpc("app_link_school_records", { p_school_id: id });
+        if (error) throw error;
+        closeRecordModal(); toast(`${data} record(s) linked to the school.`);
+    } catch (e) { toast(friendlyError(e), "error"); }
+}
+
+function suggestUsername(name) {
+    return String(name).toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "").slice(0, 30);
+}
+function openSchoolAccountCreate(id) {
+    const x = SCHOOLS.find(v => v.id === id);
+    if (!x) return;
+    openRecordModal(`
+        <h3 id="rec-title">Create school account</h3>
+        <div class="rec-summary">${esc(x.name)} - ${esc(x.district)}<br>${progBadges(x.programs)}</div>
+        <form id="acct-form" onsubmit="saveSchoolAccount(event, ${x.id})" autocomplete="off">
+            <div class="form-group"><label for="ac-user">Username</label><input type="text" id="ac-user" maxlength="40" value="${esc(suggestUsername(x.name))}" autocomplete="off"></div>
+            <div class="form-group" style="margin-top:10px;"><label for="ac-name">Display name</label><input type="text" id="ac-name" maxlength="120" value="${esc(x.name)}"></div>
+            <div class="form-group" style="margin-top:10px;"><label for="ac-pass">Initial password (8 or more characters)</label><input type="text" id="ac-pass" maxlength="72" autocomplete="off"></div>
+            <p class="comp-note">The account can see and enter records for this school only, in its program${x.programs.length > 1 ? "s" : ""}. It cannot delete records, create accounts or open Settings. It uses this password as is.</p>
+            <div class="login-error" id="rec-error" role="alert" style="margin-top:8px;"></div>
+            <div class="modal-actions"><button type="button" class="btn btn-secondary" onclick="closeRecordModal()">Cancel</button><button type="submit" class="btn btn-primary" id="acct-save">Create account</button></div>
+        </form>`);
+}
+
+async function saveSchoolAccount(ev, schoolId) {
+    ev.preventDefault();
+    const err = document.getElementById("rec-error"), btn = document.getElementById("acct-save");
+    const user = document.getElementById("ac-user").value.trim().toLowerCase(), name = document.getElementById("ac-name").value.trim(), pass = document.getElementById("ac-pass").value;
+    if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(user)) { err.textContent = "Username must be 3 to 40 characters: lowercase letters, numbers, dot, dash or underscore."; return; }
+    if (!name) { err.textContent = "Enter a display name."; return; }
+    if (pass.length < 8) { err.textContent = "The password must be at least 8 characters."; return; }
+    err.textContent = ""; setBusy(btn, true);
+    try {
+        const { error } = await sb().rpc("app_create_school_account", { p_username: user, p_display_name: name, p_school_id: schoolId, p_password: pass });
+        if (error) throw error;
+        closeRecordModal(); toast(`School account "${user}" created.`); await svReload();
+    } catch (e) { err.textContent = friendlyError(e); } finally { setBusy(btn, false); }
+}
+
+async function toggleSchoolAccount(profileId, active) {
+    if (!confirm(active ? "Enable this school account?" : "Disable this school account? The school will not be able to sign in.")) return;
+    try {
+        const { error } = await sb().rpc("app_set_school_account_active", { p_profile_id: profileId, p_active: active });
+        if (error) throw error;
+        toast(active ? "Account enabled." : "Account disabled."); await svReload();
+    } catch (e) { toast(friendlyError(e), "error"); }
+}
+
+function importSchoolList(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async evt => {
+        try {
+            const wb = XLSX.read(new Uint8Array(evt.target.result), { type: "array" });
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+            const toProgs = v => { const t = String(v || "").toLowerCase(); const out = []; if (/both/.test(t)) return ["special_programs", "iped"]; if (/special|\bsp\b|spa|sps|spfl/.test(t)) out.push("special_programs"); if (/iped|indigenous/.test(t)) out.push("iped"); return out; };
+            const payload = rows.map(r => ({ name: String(r["School Name"] || r["School"] || "").trim(), district: String(r["District"] || "").trim(), programs: toProgs(r["Program"] || r["Programs"] || r["Classification"]) }));
+            const { data, error } = await sb().rpc("app_import_schools", { p_rows: payload });
+            if (error) throw error;
+            toast(`Schools imported: ${data.created} new, ${data.updated} already listed (programs merged).`);
+            await svReload();
+        } catch (err) { toast(err && err.code ? friendlyError(err) : "That file could not be read. Nothing was imported.", "error"); }
+        e.target.value = "";
+    };
+    reader.readAsArrayBuffer(file);
+}
 
 async function renderManageRecords(container) {
     if (!canEditData()) {
@@ -2621,12 +2969,12 @@ function mrDraw() {
     const slice = list.slice(MR.page * MR.pageSize, (MR.page + 1) * MR.pageSize);
     const head = deleted
         ? `<th>SY</th><th>Term</th><th>District</th><th>School</th><th>Grade</th><th>Learning Area</th><th class="num">MPS</th><th>Deleted on</th><th>Reason</th><th>Action</th>`
-        : `<th>SY</th><th>Term</th><th>District</th><th>School</th><th>Grade</th><th>Learning Area</th><th class="num">Baseline</th><th class="num">MPS</th><th class="num">% at 75+</th><th>Actions</th>`;
+        : `<th>SY</th><th>Term</th><th>District</th><th>School</th><th>Grade</th><th>Learning Area</th><th class="num">Baseline (SY)</th><th class="num">MPS</th><th class="num">% at 75+</th><th>Actions</th>`;
     const body = slice.map(r => deleted
         ? `<tr><td>${esc(r.sy)}</td><td>${esc(r.term)}</td><td>${esc(r.district)}</td><td>${esc(r.school) || '-'}</td><td>${esc(r.gradeLevel)}</td><td>${esc(r.learningArea)}</td><td class="num">${r.mps.toFixed(2)}%</td><td>${esc(String(r.deletedAt).slice(0, 10))}</td><td>${esc(r.deleteReason) || '-'}</td>
             <td class="mr-actions"><button class="btn btn-secondary btn-sm" onclick="mrRestore(${r.id})">Restore</button></td></tr>`
-        : `<tr><td>${esc(r.sy)}</td><td>${esc(r.term)}</td><td>${esc(r.district)}</td><td>${esc(r.school) || '-'}</td><td>${esc(r.gradeLevel)}</td><td>${esc(r.learningArea)}${mrFlag(r)}</td><td class="num">${r.baselineMps.toFixed(2)}%</td><td class="num">${r.mps.toFixed(2)}%</td><td class="num">${r.pct75.toFixed(2)}%</td>
-            <td class="mr-actions"><button class="btn btn-secondary btn-sm" onclick="openRecordEditor(${r.id})">Edit</button><button class="btn btn-danger btn-sm" onclick="openRecordDelete(${r.id})">Delete</button></td></tr>`
+        : `<tr><td>${esc(r.sy)}</td><td>${esc(r.term)}</td><td>${esc(r.district)}</td><td>${esc(r.school) || '-'}</td><td>${esc(r.gradeLevel)}</td><td>${esc(r.learningArea)}${mrFlag(r)}</td><td class="num">${r.baselineMps.toFixed(2)}%<br><small class="bl-sy-note">${esc(r.baselineSy ? 'SY ' + r.baselineSy : 'SY not recorded')}</small></td><td class="num">${r.mps.toFixed(2)}%</td><td class="num">${r.pct75.toFixed(2)}%</td>
+            <td class="mr-actions"><button class="btn btn-secondary btn-sm" onclick="openRecordEditor(${r.id})">Edit</button>${currentUser && currentUser.isSchool ? '' : `<button class="btn btn-danger btn-sm" onclick="openRecordDelete(${r.id})">Delete</button>`}</td></tr>`
     ).join("");
     tableEl.innerHTML = `<table class="data-table"><thead><tr>${head}</tr></thead><tbody>${body || `<tr><td colspan="10" class="no-data">${deleted ? 'No deleted records.' : 'No records match the current filters.'}</td></tr>`}</tbody></table>`;
     const from = list.length ? MR.page * MR.pageSize + 1 : 0;
@@ -2643,6 +2991,7 @@ function openRecordEditor(id) {
     const own = currentUser ? currentUser.educationLevel : "ALL";
     const grades = own !== "ALL" ? LEVELS[own].grades : ALL_GRADES;
     const userDist = currentUser ? currentUser.district : "ALL";
+    const linked = !!r.schoolId;   // the school name of a linked record follows the school list
     const dists = userDist !== "ALL" ? [userDist] : DEFAULT_DISTRICTS;
     const sel = (id2, opts, cur, attrs) => `<select id="${id2}" ${attrs || ""}>${opts.map(o => `<option value="${esc(o)}" ${o === cur ? 'selected' : ''}>${esc(o)}</option>`).join("")}</select>`;
     const lc = (i) => { const c = r.leastLearned[i]; return c ? esc(typeof c === "string" ? c : (c.desc || c.description || "")) : ""; };
@@ -2656,7 +3005,8 @@ function openRecordEditor(id) {
                 <div class="form-group"><label for="e-district">District</label>${sel("e-district", dists, r.district, userDist !== "ALL" ? "disabled" : "")}</div>
                 <div class="form-group"><label for="e-grade">Grade level</label>${sel("e-grade", grades, r.gradeLevel, 'onchange="refreshEditSubjects()"')}</div>
                 <div class="form-group span-2"><label for="e-subject">Learning area</label><select id="e-subject" data-orig="${esc(r.learningArea)}"></select></div>
-                <div class="form-group span-2"><label for="e-school">Implementing school</label><input type="text" id="e-school" value="${esc(r.school)}"></div>
+                <div class="form-group span-2"><label for="e-school">Implementing school</label><input type="text" id="e-school" value="${esc(r.school)}" ${linked ? 'disabled title="This record is linked to a school on the school list"' : ''}></div>
+                <div class="form-group"><label for="e-baseline-sy">Baseline school year</label><select id="e-baseline-sy"><option value="">SY not recorded</option>${baselineSyOptions().map(v => `<option value="${v}" ${v === r.baselineSy ? 'selected' : ''}>SY ${v}</option>`).join("")}</select></div>
                 <div class="form-group"><label for="e-baseline">Baseline MPS (%)</label><input type="number" step="0.01" id="e-baseline" value="${r.baselineMps}" required></div>
                 <div class="form-group"><label for="e-mps">Current MPS (%)</label><input type="number" step="0.01" id="e-mps" value="${r.mps}" required></div>
                 <div class="form-group"><label for="e-pct75">% learners at 75% or above</label><input type="number" step="0.01" id="e-pct75" value="${r.pct75}" required></div>
@@ -2678,13 +3028,14 @@ function refreshEditSubjects(preferred) {
     const grade = document.getElementById("e-grade");
     if (!sel || !grade) return;
     const prev = preferred || sel.value;
-    sel.innerHTML = buildSubjectOptionsHTML(false, grade.value, sel.dataset.orig);
+    sel.innerHTML = currentUser && currentUser.isSchool ? programOptionsHTML(currentUser.programs) : buildSubjectOptionsHTML(false, grade.value, sel.dataset.orig);
     if (Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
 }
 
 async function saveRecordEdit(ev, id) {
     ev.preventDefault();
     const orig = mrFind(id);
+    const linked = !!orig.schoolId;
     const err = document.getElementById("rec-error");
     const btn = document.getElementById("rec-save");
     const v = x => document.getElementById(x).value;
@@ -2697,8 +3048,8 @@ async function saveRecordEdit(ev, id) {
     }).filter(Boolean).concat(orig.leastLearned.slice(3));
     const rec = {
         sy: v("e-sy"), term: v("e-term"), district: userDist !== "ALL" ? userDist : v("e-district"),
-        school: v("e-school").trim(), keyStage: keyStageOfGrade(grade), gradeLevel: grade, learningArea: v("e-subject"),
-        baselineMps: parseFloat(v("e-baseline")), mps: parseFloat(v("e-mps")), pct75: parseFloat(v("e-pct75")),
+        school: linked ? orig.school : v("e-school").trim(), schoolId: orig.schoolId, keyStage: keyStageOfGrade(grade), gradeLevel: grade, learningArea: v("e-subject"),
+        baselineMps: parseFloat(v("e-baseline")), baselineSy: v("e-baseline-sy"), mps: parseFloat(v("e-mps")), pct75: parseFloat(v("e-pct75")),
         leastLearned: ll
     };
     rec.proficiencyLevel = getPL(rec.mps);
@@ -2778,7 +3129,7 @@ function renderDataInputView(container) {
     const gradeOptionsHTML = levelGrades.map(g => `<option value="${g}">${g}</option>`).join('');
     const keyStageOptionsHTML = keyStagesForLevel().map(ks => `<option value="${ks.code}">${ks.code} (Grades ${ks.grades[0].replace("Grade ", "")}-${ks.grades[ks.grades.length - 1].replace("Grade ", "")})</option>`).join('');
     const syOptionsHTML = SCHOOL_YEARS.map(sy => `<option value="${sy}">${sy}</option>`).join('');
-    const manualSubjectOptionsHTML = buildSubjectOptionsHTML(false, levelGrades[0]);
+    const manualSubjectOptionsHTML = currentUser && currentUser.isSchool ? programOptionsHTML(currentUser.programs) : buildSubjectOptionsHTML(false, levelGrades[0]);
 
     container.innerHTML = `
     <div class="tab-menu">
@@ -2807,7 +3158,7 @@ function renderDataInputView(container) {
             <form onsubmit="handleManualSave(event)" oninput="markDirty()">
                 <h4 style="color:var(--deped-blue); margin-bottom:12px;">1. District & School Year Context</h4>
                 <div class="form-grid">
-                    <div class="form-group"><label>School Year</label><select id="m-sy">${syOptionsHTML}</select></div>
+                    <div class="form-group"><label>School Year</label><select id="m-sy" onchange="syncBaselineSy()">${syOptionsHTML}</select></div>
                     <div class="form-group"><label>Term</label><select id="m-term"><option value="Term 1">Term 1</option><option value="Term 2">Term 2</option><option value="Term 3">Term 3</option></select></div>
                     <div class="form-group"><label>District</label><select id="m-district"></select></div>
                     <div class="form-group"><label>Key Stage</label><select id="m-keystage" onchange="syncGradeWithKeyStage(this.value)">${keyStageOptionsHTML}</select></div>
@@ -2820,11 +3171,13 @@ function renderDataInputView(container) {
                     </div>
                     <div class="form-group" id="m-school-group" style="display:none; grid-column: span 2;">
                         <label style="color:var(--deped-blue);">Implementing School</label>
+                        <select id="m-school-pick" onchange="schoolPickChanged()" style="display:none;"></select>
                         <input type="text" id="m-school" placeholder="e.g., Central Elementary School">
                     </div>
                 </div>
                 <h4 style="color:var(--deped-blue); margin-top:15px; margin-bottom: 12px;">2. Assessment Metrics</h4>
                 <div class="form-grid">
+                    <div class="form-group"><label>Baseline School Year</label><select id="m-baseline-sy">${baselineSyOptions().map(v => `<option value="${v}">SY ${v}</option>`).join('')}</select></div>
                     <div class="form-group"><label>SY BASELINE MPS (%) (Previous SY)</label><input type="number" step="0.01" id="m-baseline" placeholder="65.00" value="65.00" required></div>
                     <div class="form-group"><label>Current Term MPS (%)</label><input type="number" step="0.01" id="m-mps" placeholder="78.50" required></div>
                     <div class="form-group"><label>% Learners Achieving ≥75%</label><input type="number" step="0.01" id="m-pct75" placeholder="82.00" required></div>
@@ -2858,6 +3211,7 @@ function renderDataInputView(container) {
             distSel.disabled = true;
         } else {
             distSel.disabled = false;
+            distSel.onchange = () => refreshSchoolPicker();
             DEFAULT_DISTRICTS.forEach(d => {
                 const opt = document.createElement("option");
                 opt.value = d; opt.textContent = d;
@@ -2868,6 +3222,13 @@ function renderDataInputView(container) {
 
     const currentSubj = document.getElementById("m-subject").value;
     toggleSchoolField(currentSubj);
+    syncBaselineSy();
+}
+
+// the baseline school year follows the chosen school year (the year before it) unless changed by hand
+function syncBaselineSy() {
+    const sy = document.getElementById("m-sy"), bs = document.getElementById("m-baseline-sy");
+    if (sy && bs && Array.from(bs.options).some(o => o.value === prevSy(sy.value))) bs.value = prevSy(sy.value);
 }
 
 function syncGradeWithKeyStage(ksCode) {
@@ -2886,7 +3247,7 @@ function refreshManualSubjects() {
     const grade = document.getElementById("m-grade");
     if (!sel || !grade) return;
     const prev = sel.value;
-    sel.innerHTML = buildSubjectOptionsHTML(false, grade.value);
+    sel.innerHTML = currentUser && currentUser.isSchool ? programOptionsHTML(currentUser.programs) : buildSubjectOptionsHTML(false, grade.value);
     if (Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
     toggleSchoolField(sel.value);
 }
@@ -2917,6 +3278,15 @@ function validateRecordInput(rec, orig) {
     if (!lv) p.push("Grade level must be one of Grade 1 to Grade 12.");
     else if (own !== "ALL" && lv !== own) p.push(`This account can only work with ${LEVELS[own].label} records.`);
     if (!rec.learningArea) p.push("Choose a learning area.");
+    if (rec.schoolId) {
+        const sc = SCHOOLS.find(x => x.id === rec.schoolId), prog = areaProgram(rec.learningArea);
+        if (!sc) p.push("That school is not on the school list.");
+        else {
+            if (sc.district !== rec.district) p.push("That school belongs to a different district.");
+            if (prog && !sc.programs.includes(prog)) p.push(`That school is not classified under ${PROGRAM_LABELS[prog]}, the program of this learning area.`);
+        }
+    }
+    if (rec.baselineSy && !/^[0-9]{4}-[0-9]{4}$/.test(String(rec.baselineSy))) p.push("Baseline school year must look like 2024-2025.");
     [["MPS", rec.mps], ["Baseline MPS", rec.baselineMps], ["% of learners at 75% or above", rec.pct75]].forEach(([n, v]) => {
         if (typeof v !== "number" || !isFinite(v) || v < 0 || v > 100) p.push(`${n} must be between 0 and 100.`);
     });
@@ -2960,15 +3330,25 @@ async function handleManualSave(e) {
         term: document.getElementById('m-term').value,
         district: selectedDistrict,
         school: document.getElementById('m-school') ? document.getElementById('m-school').value.trim() : "",
+        schoolId: null,
         keyStage: document.getElementById('m-keystage').value,
         gradeLevel: document.getElementById('m-grade').value,
         learningArea: document.getElementById('m-subject').value,
         baselineMps: baselineMps,
+        baselineSy: document.getElementById('m-baseline-sy').value,
         mps: mps,
         proficiencyLevel: getPL(mps),
         pct75: parseFloat(document.getElementById('m-pct75').value),
         leastLearned: leastLearned
     };
+    // school: a school account always enters for its own school; others choose from the list or type a name
+    const pick = document.getElementById('m-school-pick'), groupShown = document.getElementById('m-school-group').style.display !== "none";
+    if (currentUser.isSchool) {
+        record.schoolId = currentUser.school.id; record.school = currentUser.school.name; record.district = currentUser.school.district;
+    } else if (groupShown && pick && pick.style.display !== "none") {
+        if (!pick.value) { toast("Choose the school from the list, or pick \"Not on the list\" and type its name.", "error"); return; }
+        if (pick.value !== "__other") { const sc = SCHOOLS.find(x => x.id === Number(pick.value)); if (sc) { record.schoolId = sc.id; record.school = sc.name; } }
+    }
     const problems = validateRecordInput(record, null);
     if (problems.length) { toast(problems.join(" "), "error"); return; }
 
@@ -3081,6 +3461,7 @@ function handleExcelImport(e) {
                 gradeLevel: r["Grade Level"] || "Grade 1",
                 learningArea: r["Learning Area"] || MAPEH_OVERALL,
                 baselineMps: baselineMps,
+                baselineSy: String(r["Baseline SY"] || r["Baseline School Year"] || "").trim() || prevSy(String(r["School Year"] || r["SY"] || "")),
                 proficiencyLevel: getPL(mps),
                 mps: mps,
                 pct75: parseFloat(r["% Learners Scoring >= 75%"] || r["% Learners Scoring >=75%"] || 0),
@@ -3088,6 +3469,21 @@ function handleExcelImport(e) {
             });
         });
 
+        // School accounts import for their own school only; other users' rows are linked to the school list when the name matches exactly.
+        if (currentUser.isSchool) {
+            const sc = currentUser.school, bad = [];
+            recordsToInsert.forEach((rec, i) => {
+                rec.district = sc.district; rec.school = sc.name; rec.schoolId = sc.id;
+                if (!currentUser.programs.includes(areaProgram(rec.learningArea))) bad.push(`row ${i + 2}: "${rec.learningArea}" is not a learning area of your program`);
+            });
+            if (bad.length) { toast(`Nothing was saved. ${bad.length} row(s) cannot be imported: ${bad.slice(0, 4).join(" | ")}${bad.length > 4 ? " | ..." : ""}`, "error"); e.target.value = ""; return; }
+        } else {
+            recordsToInsert.forEach(rec => {
+                const prog = areaProgram(rec.learningArea);
+                const sc = prog && rec.school ? SCHOOLS.find(x => x.active && x.district === rec.district && x.name.toLowerCase() === String(rec.school).trim().toLowerCase() && x.programs.includes(prog)) : null;
+                if (sc) { rec.schoolId = sc.id; rec.school = sc.name; }
+            });
+        }
         // Districts are a fixed list and every grade must belong to a level this account may import
         // (spreadsheet row 1 is the header). Nothing is sent unless every row passes.
         const own = currentUser ? currentUser.educationLevel : "ALL";
@@ -3741,13 +4137,13 @@ async function downloadCsv(ev) {
             rank(SUBJECTS, a.learningArea) - rank(SUBJECTS, b.learningArea) || a.id - b.id);
         const maxLc = Math.max(3, ...recs.map(r => r.leastLearned.length));
         const head = ["School Year", "Term", "District", "School Name", "Key Stage", "Grade Level", "Learning Area",
-            "SY Baseline MPS", "Mean Percentage Score (MPS%)", "% Learners Scoring >= 75%", "Proficiency Level", "Education Level"];
+            "Baseline SY", "SY Baseline MPS", "Mean Percentage Score (MPS%)", "% Learners Scoring >= 75%", "Proficiency Level", "Education Level"];
         for (let i = 1; i <= maxLc; i++) head.push(`Least Learned Competency ${i} Code`, `Least Learned Competency ${i} Description`);
         head.push("Sample Data", "Record ID", "Date Added");
         const lines = [head.map(csvCell).join(",")];
         recs.forEach(r => {
             const row = [r.sy, r.term, r.district, r.school, r.keyStage, r.gradeLevel, r.learningArea,
-                r.baselineMps.toFixed(2), r.mps.toFixed(2), r.pct75.toFixed(2), r.proficiencyLevel, LEVELS[r.educationLevel] ? LEVELS[r.educationLevel].label : ""];
+                r.baselineSy, r.baselineMps.toFixed(2), r.mps.toFixed(2), r.pct75.toFixed(2), r.proficiencyLevel, LEVELS[r.educationLevel] ? LEVELS[r.educationLevel].label : ""];
             for (let i = 0; i < maxLc; i++) {
                 const c = r.leastLearned[i];
                 row.push(c ? (typeof c === "string" ? `LC-${i + 1}` : (c.code || `LC-${i + 1}`)) : "", c ? (typeof c === "string" ? c : (c.desc || c.description || "")) : "");
