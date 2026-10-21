@@ -1260,6 +1260,39 @@ const isMapehComponent = a => MAPEH_COMPONENTS.some(c => c.area === a);
 const isMapehLegacy = a => MAPEH_LEGACY.includes(a);
 const isMapehFamily = a => a === MAPEH_OVERALL || isMapehComponent(a) || isMapehLegacy(a);
 // What the "MAPEH total" figures count: official overall records plus the legacy combined records (unchanged totals).
+/* COMBINED REPORTING GROUPS. Reports show two combined components, MA (Music and Arts) and PEH (Physical Education and
+   Health). Records stay as entered (Music, Arts, PE, Health, and the older combined areas); nothing is rewritten.
+   Method: the established one, a plain unweighted mean of record MPS over the records in the group. A record filed under the
+   older combined area counts only where the same school, year, term and grade has no Music or Arts (or PE or Health)
+   record, so a figure is never counted twice. A group with only one of its two parts says so beside the figure. */
+const MAPEH_GROUPS = [
+    { key: "MAPEH - MA", short: "MA", label: "MA: Music and Arts", parts: ["MAPEH - Music", "MAPEH - Arts"], names: ["Music", "Arts"], legacy: "MAPEH - Music & Arts" },
+    { key: "MAPEH - PEH", short: "PEH", label: "PEH: Physical Education and Health", parts: ["MAPEH - PE", "MAPEH - Health"], names: ["PE", "Health"], legacy: "MAPEH - PE & Health" }
+];
+const groupOfFilter = v => MAPEH_GROUPS.find(g => g.key === v);
+const subjectOk = (r, v = filters.subject) => {
+    if (v === "ALL") return true;
+    const g = groupOfFilter(v);
+    return g ? (g.parts.includes(r.learningArea) || r.learningArea === g.legacy) : r.learningArea === v;
+};
+const groupRecKey = r => [r.sy, r.term, r.district, r.school || "", r.gradeLevel].join("|");
+// The records that make up a group, with older combined records dropped where Music/Arts (or PE/Health) records cover the same key.
+function mapehGroupRecords(recs, g) {
+    const parts = recs.filter(r => g.parts.includes(r.learningArea));
+    const covered = new Set(parts.map(groupRecKey));
+    const legacy = recs.filter(r => r.learningArea === g.legacy && !covered.has(groupRecKey(r)));
+    return parts.concat(legacy);
+}
+function mapehGroupFigure(recs, g) {
+    const list = mapehGroupRecords(recs, g);
+    if (!list.length) return { value: null, note: "" };
+    const present = g.parts.filter(a => list.some(r => r.learningArea === a));
+    const hasLegacy = list.some(r => r.learningArea === g.legacy);
+    const note = !hasLegacy && present.length === 1 ? `${g.names[g.parts.indexOf(present[0])]} only` : "";
+    return { value: parseFloat(meanMps(list).toFixed(2)), note };
+}
+// When the learning-area filter is MA or PEH, keep each combined figure once.
+const dedupGroupFilter = list => { const g = groupOfFilter(filters.subject); return g ? mapehGroupRecords(list, g) : list; };
 const isMapehConsolidated = a => a === MAPEH_OVERALL || isMapehLegacy(a);
 // Mirror of public.app_mapeh_rule_problem() in the database, which is the enforcement. Returns "" when the pair is allowed.
 function mapehRuleProblem(grade, area) {
@@ -1319,7 +1352,7 @@ function matchesFilters(r, district) {
     if (district !== "ALL" && r.district !== district) return false;
     if (!levelOk(r)) return false;
     if (!keyStageOk(r)) return false;
-    if (filters.subject !== "ALL" && r.learningArea !== filters.subject) return false;
+    if (!subjectOk(r)) return false;
     return programOk(r);
 }
 const meanMps = list => list.length ? list.reduce((a, c) => a + c.mps, 0) / list.length : 0;
@@ -1571,7 +1604,9 @@ function applyBaselineFilters(q, ksObj, effectiveDistrict) {
     q = q.is("deleted_at", null);
     if (filters.sy !== "ALL") q = q.eq("sy", filters.sy);
     if (effectiveDistrict !== "ALL") q = q.eq("district_id", districtIdByName[effectiveDistrict]);
-    if (filters.subject !== "ALL") q = q.eq("learning_area", filters.subject);
+    const grp = groupOfFilter(filters.subject);
+    if (grp) q = q.in("learning_area", [...grp.parts, grp.legacy]);
+    else if (filters.subject !== "ALL") q = q.eq("learning_area", filters.subject);
     if (filters.term !== "ALL") q = q.eq("term", filters.term);
     const inLevel = gradesForLevel();
     return q.in("grade_level", ksObj.grades.filter(g => inLevel.includes(g)));
@@ -1708,7 +1743,7 @@ async function getFilteredData() {
     const userDist = currentUser ? currentUser.district : "ALL";
     const effectiveDistrict = userDist !== "ALL" ? userDist : filters.district;
 
-    const filtered = data.filter(r => matchesFilters(r, effectiveDistrict));
+    const filtered = dedupGroupFilter(data.filter(r => matchesFilters(r, effectiveDistrict)));
     markSample(filtered);
     return filtered;
 }
@@ -1770,7 +1805,8 @@ function mapehOptgroupHTML(forGrade, keepArea) {
         areas = mapehAreasForGrade(forGrade).map(a => opt(a));
         if (keepArea && isMapehFamily(keepArea) && !mapehAreasForGrade(forGrade).includes(keepArea)) areas.push(opt(keepArea, " (existing, needs correction)"));
     } else {
-        areas = [MAPEH_OVERALL, ...MAPEH_COMPONENTS.map(c => c.area)].map(a => opt(a)).concat(MAPEH_LEGACY.map(a => opt(a, " (legacy)")));
+        // the filter offers the reporting structure: Overall MAPEH and the two combined components
+        areas = [opt(MAPEH_OVERALL), ...MAPEH_GROUPS.map(g => `<option value="${g.key}">${esc(g.label)}</option>`)];
     }
     return areas.length ? `<optgroup label="MAPEH Learning Components">${areas.join("")}</optgroup>` : "";
 }
@@ -2179,7 +2215,56 @@ async function renderDivisionSummaryView(container) {
             <tbody>${matrixRows}</tbody>
         </table></div>
     </div>
-    ${mapehComponentsByDistrictCard(data, districtsToDisplay, userDist !== "ALL" ? `${esc(userDist)} District` : 'Division')}`;
+    ${mapehComponentsByDistrictCard(data, districtsToDisplay, userDist !== "ALL" ? `${esc(userDist)} District` : 'Division')}
+    ${canAccessSettings() ? programOverallCards(data) : ''}`;
+}
+
+/* OVERALL SPECIAL PROGRAMS AND OVERALL IPED (System Administrator and Supervisor, Division Summary). Built only from the
+   records in view (every filter already applied), each record counted once. Overall = plain mean of record MPS, the
+   method used for every other consolidated figure. MA, PEH and Overall MAPEH are shown only where the program records
+   them: IPED has "MAPEH (Music & Arts)" and "MAPEH (PE & Health)" subjects; Special Programs (SPA, SPS, SPFL) are
+   assessed by discipline and have no MA, PEH or MAPEH record. No figure is derived or estimated. */
+function programOverallCards(data) {
+    const PROGRAMS = [
+        { key: "special_programs", title: "Overall Special Programs (SP)", groups: [["SPA", "SPA - "], ["SPS", "SPS - "], ["SPFL", "SPFL - "]], mapeh: null },
+        { key: "iped", title: "Overall IPED", groups: [], mapeh: { ma: "IPED - MAPEH (Music & Arts)", peh: "IPED - MAPEH (PE & Health)" } }
+    ];
+    const mean = (list, f) => list.length ? list.reduce((a, c) => a + c[f], 0) / list.length : null;
+    const pc = v => v === null ? '<span class="no-data">No data</span>' : `${v.toFixed(2)}%`;
+    const pl = v => v === null ? '<span class="no-data">No data</span>' : `<span class="badge ${getBadgeClass(getPL(v))}">${getPL(v)}</span>`;
+    const card = P => {
+        const recs = data.filter(r => areaProgram(r.learningArea) === P.key);
+        if (!recs.length) return `<div class="card-box program-overall screen-only" data-program="${P.key}"><div class="card-box-header"><h3>${P.title}</h3></div>
+            <div class="empty-state" role="status" style="padding:24px;text-align:center;color:var(--text-muted);">No data available for the selected filters.</div></div>`;
+        const mps = mean(recs, "mps"), pct = mean(recs, "pct75");
+        const schools = new Set(recs.map(r => r.schoolId || r.school).filter(Boolean));
+        const areaRow = (label, list, note) => `<tr><td>${esc(label)}</td><td class="num">${list.length}</td><td class="num">${pc(mean(list, "mps"))}</td><td>${list.length ? pl(mean(list, "mps")) : (note || '<span class="no-data">No data</span>')}</td></tr>`;
+        let rows = "";
+        if (P.mapeh) {
+            const ma = recs.filter(r => r.learningArea === P.mapeh.ma), peh = recs.filter(r => r.learningArea === P.mapeh.peh);
+            rows += areaRow("MA: Music and Arts (IPED MAPEH)", ma) + areaRow("PEH: Physical Education and Health (IPED MAPEH)", peh);
+            rows += `<tr><td>Overall MAPEH</td><td class="num">0</td><td class="num"><span class="no-data">Not recorded</span></td><td><span class="no-data">IPED has no overall MAPEH record</span></td></tr>`;
+            const other = Array.from(new Set(recs.map(r => r.learningArea).filter(a => a !== P.mapeh.ma && a !== P.mapeh.peh))).sort();
+            rows += other.map(a => areaRow(a, recs.filter(r => r.learningArea === a))).join('');
+        } else {
+            rows += P.groups.map(([name, prefix]) => areaRow(name, recs.filter(r => r.learningArea.startsWith(prefix)))).join('');
+            rows += `<tr><td>MA, PEH, Overall MAPEH</td><td class="num">-</td><td class="num"><span class="no-data">Not applicable</span></td><td><span class="no-data">Special Programs are assessed by discipline</span></td></tr>`;
+        }
+        const bySchool = {};
+        recs.forEach(r => { const k = r.school || "(no school named)"; (bySchool[k] = bySchool[k] || []).push(r); });
+        const schoolRows = Object.keys(bySchool).sort().map(k => `<tr><td>${esc(k)}</td><td class="num">${bySchool[k].length}</td><td class="num">${pc(mean(bySchool[k], "mps"))}</td><td>${pl(mean(bySchool[k], "mps"))}</td></tr>`).join('');
+        return `<div class="card-box program-overall screen-only" data-program="${P.key}">
+            <div class="card-box-header"><h3>${P.title}</h3></div>
+            <div class="kpi-grid">
+                <div class="kpi-card"><div class="kpi-title">Overall MPS</div><div class="kpi-value">${pc(mps)}</div><div class="kpi-sub">${pl(mps)}</div></div>
+                <div class="kpi-card"><div class="kpi-title">% Learners Achieving 75% and above</div><div class="kpi-value">${pc(pct)}</div></div>
+                <div class="kpi-card"><div class="kpi-title">Records / Schools</div><div class="kpi-value">${recs.length} / ${schools.size}</div></div>
+            </div>
+            <div class="table-scroll"><table class="data-table"><thead><tr><th>Area</th><th class="num">Records</th><th class="num">MPS (%)</th><th>Proficiency Level</th></tr></thead><tbody>${rows}</tbody></table></div>
+            <div class="table-scroll"><table class="data-table"><thead><tr><th>School</th><th class="num">Records</th><th class="num">MPS (%)</th><th>Proficiency Level</th></tr></thead><tbody>${schoolRows}</tbody></table></div>
+        </div>`;
+    };
+    return PROGRAMS.map(card).join('');
 }
 
 async function renderDistrictProfileView(container) {
@@ -2187,7 +2272,7 @@ async function renderDistrictProfileView(container) {
     let selectedDistrict = userDist !== "ALL" ? userDist : (filters.district !== "ALL" ? filters.district : DEFAULT_DISTRICTS[0]);
     
     const allRecords = await getAllRecords();
-    const distRecords = allRecords.filter(r => matchesFilters(r, selectedDistrict));
+    const distRecords = dedupGroupFilter(allRecords.filter(r => matchesFilters(r, selectedDistrict)));
 
     markSample(distRecords);
     // The coordinator follows the level in view; a Key Stage filter also fixes the level when none is chosen.
@@ -2200,12 +2285,18 @@ async function renderDistrictProfileView(container) {
     const districtOptions = (userDist !== "ALL" ? [userDist] : DEFAULT_DISTRICTS)
         .map(d => `<option value="${esc(d)}" ${d === selectedDistrict ? 'selected' : ''}>${esc(d)}</option>`).join('');
 
-    const activeSubjectsInDistrict = SUBJECTS.filter(s => distRecords.some(r => r.learningArea === s));
-    const subjectsToDisplay = activeSubjectsInDistrict;
+    // One row per area with records. Music and Arts (and PE and Health) are reported together as MA and PEH.
+    const rowDefs = [];
+    SUBJECTS.forEach(sub => {
+        if (isMapehComponent(sub) || isMapehLegacy(sub)) return;
+        const sr = distRecords.filter(r => r.learningArea === sub);
+        if (sr.length) rowDefs.push({ label: sub, recs: sr });
+        if (sub === MAPEH_OVERALL) MAPEH_GROUPS.forEach(g => { const gr = mapehGroupRecords(distRecords, g); if (gr.length) rowDefs.push({ label: g.label, recs: gr }); });
+    });
     const noMatch = distRecords.length === 0;
 
-    const subjMatrixRows = subjectsToDisplay.map(s => {
-        const sRecs = distRecords.filter(r => r.learningArea === s);
+    const subjMatrixRows = rowDefs.map(def => {
+        const s = def.label, sRecs = def.recs;
         const t1 = sRecs.filter(r => r.term === "Term 1");
         const t2 = sRecs.filter(r => r.term === "Term 2");
         const t3 = sRecs.filter(r => r.term === "Term 3");
@@ -2300,7 +2391,7 @@ async function renderComparativeView(container) {
     const activeRecords = records.filter(r => {
         if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
         if (currentScope !== "ALL" && r.district !== currentScope) return false;
-        if (currentSubject !== "ALL" && r.learningArea !== currentSubject) return false;
+        if (!subjectOk(r, currentSubject)) return false;
         if (filters.term !== "ALL" && r.term !== filters.term) return false;
         return true;
     });
@@ -2351,23 +2442,24 @@ async function renderComparativeView(container) {
         <td>${mapehRecs.length ? `<span class="badge ${getBadgeClass(getPL(mapehCurrent))}">${getPL(mapehCurrent)}</span>` : '-'}</td>
     </tr>` : '';
 
-    // Component rows (Music, Arts, PE, Health): shown only when such records exist, same columns as the stage rows.
-    const compRowsHTML = (currentSubject === "ALL" || currentSubject.startsWith("MAPEH")) ? MAPEH_COMPONENTS.map(c => {
-        const cr = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && r.learningArea === c.area);
-        if (!cr.length) return "";
+    // Combined component rows (MA, PEH): shown only when such records exist, same columns as the stage rows.
+    const compRowsHTML = MAPEH_GROUPS.map(g => {
+        if (currentSubject !== "ALL" && currentSubject !== g.key) return "";
+        const cr = mapehGroupRecords(records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term)), g);
+        if (!cr.some(r => g.parts.includes(r.learningArea))) return "";   // rows appear with the new component records, as before; historical combined records stay in the MAPEH totals
         const b = cr.reduce((a, x) => a + (x.baselineMps !== undefined ? x.baselineMps : 65.0), 0) / cr.length;
         const cur = meanMps(cr);
         const v = cur - b;
         const st = v > 0 ? '<span class="badge badge-advanced">Increased</span>' : v < 0 ? '<span class="badge badge-critical">Decreased</span>' : '<span class="badge badge-proficient">Maintained</span>';
         return `<tr class="mapeh-comp-row">
-        <td colspan="3" class="text-left">&nbsp;&nbsp;MAPEH component: ${esc(c.label)}</td>
+        <td colspan="3" class="text-left">&nbsp;&nbsp;MAPEH component: ${esc(g.label)}</td>
         <td>${b.toFixed(2)}%${baselineSyNote(cr)}</td>
         <td>${cur.toFixed(2)}%</td>
         <td>${v > 0 ? '+' : ''}${v.toFixed(2)}%</td>
         <td>${st}</td>
         <td><span class="badge ${getBadgeClass(getPL(cur))}">${getPL(cur)}</span></td>
     </tr>`;
-    }).join('') : '';
+    }).join('');
 
     const spaRecs = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && r.learningArea.startsWith("SPA"));
     const spaBaseline = spaRecs.length ? (spaRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / spaRecs.length) : 0;
@@ -2663,7 +2755,7 @@ async function renderDashboard(container) {
             <div class="chart-container"><canvas id="c-subj-mps"></canvas></div>
         </div>
         ${hasMapehNew(data) ? `<div class="chart-card">
-            <h4>MAPEH Components and Overall MAPEH (MPS %)</h4>
+            <h4>MA, PEH and Overall MAPEH (MPS %)</h4>
             <div class="chart-container"><canvas id="c-mapeh-comp"></canvas></div>
         </div>` : ''}
     </div>`;
@@ -2726,11 +2818,11 @@ async function renderDashboard(container) {
     });
 
     if (hasMapehNew(data)) {
-        const compLabels = [...MAPEH_COMPONENTS.map(c => c.label), "Overall MAPEH"];
-        const compVals = [...MAPEH_COMPONENTS.map(c => mapehMeanFor(data, c.area)), mapehMeanFor(data, MAPEH_OVERALL)];
+        const compLabels = [...MAPEH_GROUPS.map(g => g.short), "Overall MAPEH"];
+        const compVals = [...MAPEH_GROUPS.map(g => mapehGroupFigure(data, g).value), mapehMeanFor(data, MAPEH_OVERALL)];
         activeCharts['mapehComp'] = new Chart(document.getElementById('c-mapeh-comp'), {
             type: 'bar',
-            data: { labels: compLabels, datasets: [{ label: 'MPS (%)', data: compVals, backgroundColor: MAPEH_PART_COLORS, borderRadius: 3, maxBarThickness: 56 }] },
+            data: { labels: compLabels, datasets: [{ label: 'MPS (%)', data: compVals, backgroundColor: [MAPEH_PART_COLORS[0], MAPEH_PART_COLORS[2], MAPEH_PART_COLORS[4]], borderRadius: 3, maxBarThickness: 56 }] },
             options: chartOptions,
             plugins: [cutoffLines]
         });
@@ -3818,22 +3910,23 @@ function mapehMeanFor(recs, area) {
     return list.length ? parseFloat(meanMps(list).toFixed(2)) : null;
 }
 const pctCell = v => v ? `${v.toFixed(2)}%` : '<span class="no-data">No data</span>';
-const COMP_NOTE = `<p class="comp-note">Overall MAPEH is the official figure reported by the district. It is not calculated from the four components. Records filed under the older combined areas (Music & Arts, PE & Health) are counted in the MAPEH totals elsewhere but are not shown here.</p>`;
+const COMP_NOTE = `<p class="comp-note">MA (Music and Arts) and PEH (Physical Education and Health) are plain averages of the Music and Arts, and the PE and Health, records; records filed under the older combined areas are included where Music, Arts, PE or Health records do not already cover them. Overall MAPEH is the official figure reported by the district. It is not calculated from MA and PEH.</p>`;
+const groupCell = (recs, g, grade) => {
+    if (grade && mapehRuleProblem(grade, g.parts[0])) return '<span class="no-data">Not recorded</span>';
+    const f = mapehGroupFigure(recs, g);
+    if (f.value === null) return '<span class="no-data">No data</span>';
+    return `${f.value.toFixed(2)}%${f.note ? `<br><small class="bl-sy-note">${esc(f.note)}</small>` : ''}`;
+};
 
 function mapehComponentsByGradeCard(data, grades, scopeLabel) {
     if (!hasMapehNew(data)) {
-        return `<p class="comp-note screen-only">MAPEH component figures (Music, Arts, PE, Health and Overall MAPEH) appear here once records are entered under the new MAPEH structure.</p>`;
+        return `<p class="comp-note screen-only">MAPEH component figures (MA, PEH and Overall MAPEH) appear here once records are entered under the new MAPEH structure.</p>`;
     }
-    const cell = (recs, g, area) => {
-        if (g && mapehRuleProblem(g, area)) return '<span class="no-data">Not recorded</span>';
-        const v = mapehMeanFor(recs, area);
-        return v === null ? '<span class="no-data">No data</span>' : `${v.toFixed(2)}%`;
-    };
     const row = (label, recs, g) => {
         const ov = mapehMeanFor(recs, MAPEH_OVERALL);
         return `<tr>
             <td><strong>${label}</strong></td>
-            ${MAPEH_COMPONENTS.map(c => `<td class="num">${cell(recs, g, c.area)}</td>`).join('')}
+            ${MAPEH_GROUPS.map(gr => `<td class="num">${groupCell(recs, gr, g)}</td>`).join('')}
             <td class="num">${g && mapehRuleProblem(g, MAPEH_OVERALL) ? '<span class="no-data">Not recorded</span>' : ov === null ? '<span class="no-data">No data</span>' : `<div class="ruler-cell"><strong>${ov.toFixed(2)}%</strong>${profRuler(ov, true)}</div>`}</td>
             <td>${ov === null ? '<span class="no-data">No data</span>' : `<span class="badge ${getBadgeClass(getPL(ov))}">${getPL(ov)}</span>`}</td>
         </tr>`;
@@ -3841,9 +3934,9 @@ function mapehComponentsByGradeCard(data, grades, scopeLabel) {
     const rows = grades.map(g => row(g, data.filter(r => r.gradeLevel === g), g)).join('');
     return `
     <div class="card-box">
-        <div class="card-box-header"><h3>MAPEH Components by Grade Level - ${scopeLabel}</h3></div>
+        <div class="card-box-header"><h3>MAPEH Components by Grade Level (MA, PEH, Overall) - ${scopeLabel}</h3></div>
         <div class="table-scroll"><table class="data-table">
-            <thead><tr><th>Grade Level</th>${MAPEH_COMPONENTS.map(c => `<th class="num">${c.label} MPS (%)</th>`).join('')}<th class="num">Overall MAPEH MPS (%)</th><th>Overall Proficiency</th></tr></thead>
+            <thead><tr><th>Grade Level</th>${MAPEH_GROUPS.map(gr => `<th class="num">${gr.short} MPS (%)</th>`).join('')}<th class="num">Overall MAPEH MPS (%)</th><th>Overall Proficiency</th></tr></thead>
             <tbody>${rows}${row('All grades in view', data.filter(r => grades.includes(r.gradeLevel)), null)}</tbody>
         </table></div>
         ${COMP_NOTE}
@@ -3853,17 +3946,18 @@ function mapehComponentsByGradeCard(data, grades, scopeLabel) {
 // Division / district summary: per district, mean of term means (the method of the matrix above it).
 function mapehComponentsByDistrictCard(data, districts, scopeLabel) {
     if (!hasMapehNew(data)) return "";
-    const areas = [...MAPEH_COMPONENTS.map(c => c.area), MAPEH_OVERALL];
     const termMean = (recs) => {
         const tm = ["Term 1", "Term 2", "Term 3"].map(t => meanMps(recs.filter(r => r.term === t))).filter(v => v > 0);
         return tm.length ? tm.reduce((a, b) => a + b, 0) / tm.length : 0;
     };
-    const vals = districts.map(d => areas.map(a => termMean(data.filter(r => r.district === d && r.learningArea === a))));
+    const areas = [...MAPEH_GROUPS, MAPEH_OVERALL];
+    const forDistrict = (d, a) => a === MAPEH_OVERALL ? data.filter(r => r.district === d && r.learningArea === a) : mapehGroupRecords(data.filter(r => r.district === d), a);
+    const vals = districts.map(d => areas.map(a => termMean(forDistrict(d, a))));
     const rows = districts.map((d, i) => {
-        const ov = vals[i][4];
+        const ov = vals[i][2];
         return `<tr>
             <td><strong>${i + 1}</strong></td><td><strong>${esc(d)}</strong></td>
-            ${vals[i].slice(0, 4).map(v => `<td class="num">${pctCell(v)}</td>`).join('')}
+            ${vals[i].slice(0, 2).map(v => `<td class="num">${pctCell(v)}</td>`).join('')}
             <td class="num">${ov ? `<strong>${ov.toFixed(2)}%</strong>` : '<span class="no-data">No data</span>'}</td>
             <td>${ov ? `<span class="badge ${getBadgeClass(getPL(ov))}">${getPL(ov)}</span>` : '<span class="no-data">No data</span>'}</td>
         </tr>`;
@@ -3871,15 +3965,15 @@ function mapehComponentsByDistrictCard(data, districts, scopeLabel) {
     const tot = areas.map((a, j) => { const nz = vals.map(v => v[j]).filter(v => v > 0); return nz.length ? nz.reduce((x, y) => x + y, 0) / nz.length : 0; });
     const totRow = districts.length > 1 ? `<tr class="mapeh-row">
         <td colspan="2"><strong>${scopeLabel}</strong></td>
-        ${tot.slice(0, 4).map(v => `<td class="num">${pctCell(v)}</td>`).join('')}
-        <td class="num">${tot[4] ? `<strong>${tot[4].toFixed(2)}%</strong>` : '<span class="no-data">No data</span>'}</td>
-        <td>${tot[4] ? `<span class="badge ${getBadgeClass(getPL(tot[4]))}">${getPL(tot[4])}</span>` : '<span class="no-data">No data</span>'}</td>
+        ${tot.slice(0, 2).map(v => `<td class="num">${pctCell(v)}</td>`).join('')}
+        <td class="num">${tot[2] ? `<strong>${tot[2].toFixed(2)}%</strong>` : '<span class="no-data">No data</span>'}</td>
+        <td>${tot[2] ? `<span class="badge ${getBadgeClass(getPL(tot[2]))}">${getPL(tot[2])}</span>` : '<span class="no-data">No data</span>'}</td>
     </tr>` : '';
     return `
     <div class="card-box">
-        <div class="card-box-header"><h3>MAPEH Components by District - ${scopeLabel}</h3></div>
+        <div class="card-box-header"><h3>MAPEH Components by District (MA, PEH, Overall) - ${scopeLabel}</h3></div>
         <div class="table-scroll"><table class="data-table">
-            <thead><tr><th>#</th><th>District Name</th>${MAPEH_COMPONENTS.map(c => `<th class="num">${c.label} MPS (%)</th>`).join('')}<th class="num">Overall MAPEH MPS (%)</th><th>Overall Proficiency</th></tr></thead>
+            <thead><tr><th>#</th><th>District Name</th>${MAPEH_GROUPS.map(gr => `<th class="num">${gr.short} MPS (%)</th>`).join('')}<th class="num">Overall MAPEH MPS (%)</th><th>Overall Proficiency</th></tr></thead>
             <tbody>${rows}${totRow}</tbody>
         </table></div>
         ${COMP_NOTE}
