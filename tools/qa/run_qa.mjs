@@ -1029,7 +1029,8 @@ console.log('\n[19] Baseline school year, Special Programs / IPED classification
     const o = Object.assign({}, r);
     o.baselineSy = r.keyStage === 'Key Stage 1' ? '2024-2025' : r.keyStage === 'Key Stage 3' ? (i % 2 ? '2024-2025' : '2023-2024') : null;
     if (r.district === 'Asuncion' && isSP(r.learningArea)) o.schoolId = 2;
-    if (r.district === 'Carmen' && isIP(r.learningArea)) o.schoolId = 3;   // Asuncion IPED rows stay unlinked (school name text only)
+    if (r.district === 'Carmen' && isIP(r.learningArea)) o.schoolId = 3;
+    if (r.district === 'Asuncion' && isIP(r.learningArea) && r.term === 'Term 3') { o.schoolId = 1; o.school = 'Alpha IPED School'; }   // Asuncion IPED rows stay unlinked (school name text only)
     return o;
   });
   const ex = { schools: SCH, schoolPrograms: PRG, passwords: { 'alpha.iped': 'alphapass1', 'gamma.school': 'gammapass1' },
@@ -1101,7 +1102,7 @@ console.log('\n[19] Baseline school year, Special Programs / IPED classification
     ok(await N.page.inputValue('#flt-program') === 'ALL' && await total() === recs.length, 'Clear Filters resets the program filter');
     await N.page.evaluate(() => { document.getElementById('flt-program').value = 'iped'; applyFilters(); }); await settled(N.page);
     await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
-    ok(!/CONSOLIDATED SPA TOTAL|SPS|SPFL/i.test((await text(N.page)).replace(/SUBJECT:[^\n]*/g, '').split('\n').filter(l => /TOTAL/i.test(l) && /^CONSOLIDATED/i.test(l)).join(' ').replace(/CONSOLIDATED IPED TOTAL/gi, '')), 'the comparative sheet honours the program filter (no SPA/SPS/SPFL totals under IPED)');
+    ok(await N.page.evaluate(() => Array.from(document.querySelectorAll('tr.mapeh-row')).filter(tr => /SPA|SPS|SPFL/.test(tr.children[0].textContent)).every(tr => !/[0-9]%/.test(tr.innerText))) && /IPED/.test(await text(N.page)), 'the comparative sheet honours the program filter (Special Programs totals are empty under IPED)');
     await N.page.evaluate(() => { resetFilters(); });
     await N.page.evaluate(() => switchView('schools')); await settled(N.page);
     const kp = await N.page.evaluate(() => Array.from(document.querySelectorAll('.sv-kpi')).map(k => [k.querySelector('span').textContent, Number(k.querySelector('strong').textContent)]));

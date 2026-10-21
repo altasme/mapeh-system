@@ -1465,7 +1465,8 @@ async function getDeletedRecords() {
 
 // Edit one record. The database re-checks the MAPEH rules, the ranges and the caller's district and level.
 async function updateRecord(id, record) {
-    const { data, error } = await sb().from("assessment_records").update(toRow(record)).eq("id", id).select("id");
+    // baseline_sy is always sent on an edit so it can be cleared back to "not recorded"
+    const { data, error } = await sb().from("assessment_records").update({ ...toRow(record), baseline_sy: record.baselineSy || null }).eq("id", id).select("id");
     if (error) throw error;
     if (!data || !data.length) {
         const e = new Error("Record not found");
