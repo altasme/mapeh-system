@@ -25,7 +25,7 @@ Line numbers refer to the legacy file. "Result" says what the build did and how 
 | M5 | Med | Proficiency cutoffs 90/85/80/75 unconfirmed | DOC | Preserved and pinned by the fixture |
 | M6 | Med | Least-learned ranking groups exact text | DOC | Preserved |
 | M7 | Med | Mixed record grain (district vs school) | DOC | Preserved |
-| M8 | Med | Key Stage filter uses `keyStage`; comparative uses grade membership | DOC | Preserved |
+| M8 | Med | Key Stage filter used the stored `keyStage` text; comparative uses grade membership | FIX (N33) | Key Stage now judged from the grade everywhere |
 | M9 | Med | No edit, single delete, or data export | DOC | Not built (feature flags reserved, unwired) |
 | M10 | Med | Supervisor equals Admin | DOC | Preserved in RLS (`app_is_division_user`). Client to confirm (star 8) |
 | L1 | Low | Empty groups showed "0.00% Beginning" and "-65.00% Decreased" | FIX | Display only: "No data" or "-". Calculations untouched. QA 3 and 7 |
@@ -96,3 +96,4 @@ Supabase shim), and a final browser run against the real project is part of depl
 | N30 | High | No in-app way to manage users, passwords, text or images; every change needed the developer. | FIX: /admin panel; all privileged operations are server functions checking the admin role; plain-text content only; admin audit log. |
 | N31 | Info | Failed sign-in attempts cannot be recorded in our audit log without a server component; rate limiting is Supabase Auth's. | DOC (HANDOVER section 18). |
 | N32 | Info | The social share image is read from the page source by other sites, so it cannot be edited from /admin. | DOC. |
+| N33 | High | District Profile filters: with no matching records the Performance Matrix listed 15 unrelated subjects with no message; the Key Stage filter trusted the stored keyStage text, so an imported Grade 7 row labelled Key Stage 1 appeared under Key Stage 1 (and the coordinator shown ignored the level implied by Key Stage). | FIX: one shared `matchesFilters()` used by every filtered view; Key Stage judged by grade; "No data available for the selected filters" message; coordinator follows level or Key Stage. Formulas, RLS and permissions unchanged. Regression: QA section [21] (626 filter combinations against an independent calculation). |
