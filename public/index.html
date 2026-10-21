@@ -1251,7 +1251,9 @@ function prevSy(sy) {
     return m ? `${Number(m[1]) - 1}-${Number(m[2]) - 1}` : "";
 }
 function baselineSyOptions() {
-    return Array.from(new Set([...SCHOOL_YEARS.map(prevSy), ...SCHOOL_YEARS])).sort();
+    // the year before each school year, plus two earlier years so older baselines can still be recorded
+    const first = SCHOOL_YEARS[0];
+    return Array.from(new Set([prevSy(prevSy(first)), ...SCHOOL_YEARS.map(prevSy), ...SCHOOL_YEARS])).sort();
 }
 function baselineSyLabel(recs) {
     if (!recs.length) return "";
