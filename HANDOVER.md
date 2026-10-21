@@ -243,7 +243,7 @@ In Settings & Branding, each Elementary and Secondary coordinator now has three 
 **Roles and administrative permissions.** Administrator: everything above. Supervisor: no /admin access (keeps Schools & Accounts and the rest of the main app). District Coordinator and School Account: no /admin access. The full matrix is on the Roles and Permissions screen.
 
 **Deployment.**
-1. SQL editor: run `supabase/migrations/0011_admin_panel.sql` (tables, functions, and the public `site-media` storage bucket with admin-only write policies; it also tolerates a project without the storage schema by skipping that part).
+1. SQL editor: run `supabase/migrations/0011_admin_panel.sql` (about 480 lines; if the editor cuts a long paste short, run the four files in `supabase/migrations/0011_in_parts/` in order instead, each as its own run) (tables, functions, and the public `site-media` storage bucket with admin-only write policies; it also tolerates a project without the storage schema by skipping that part).
 2. Merge to `main` (Cloudflare Pages redeploys). The main app works with or without 0011 (text and images fall back to the built-in ones); `/admin` needs it.
 3. Open `/admin`, sign in as `admin`.
 *Hosting dependencies:* Supabase Storage (included in every project) for images; Cloudflare Pages serves each `/admin/<screen>/` from its own copy of the page. `_headers` now also allows images from the Supabase project and sets `noindex` and `no-store` on `/admin/*`.
