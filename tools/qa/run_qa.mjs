@@ -242,10 +242,10 @@ console.log('\n[3] Regression fixture: hand-computed expectations (fixtures/regr
   ok(new RegExp('(^|[^\\d.])' + E.dashboard.pct75 + '(\\.00)?%').test(t), `Dashboard shows % learners >= 75 at ${E.dashboard.pct75.toFixed(2)}%`);
   await N.page.evaluate(() => switchView('comparative')); await settled(N.page); t = await text(N.page);
   const baselines = await N.page.evaluate(() => Array.from(document.querySelectorAll('.editable-baseline-input')).map(i => i.value));
-  Object.entries(E.comparativeByKeyStage).forEach(([ks, v], idx) => {
-    const row = t.split('\n').find(l => l.startsWith(ks)) || '';
+  for (const [idx, [ks, v]] of Object.entries(E.comparativeByKeyStage).entries()) {
+    const row = await N.page.evaluate(i2 => document.querySelectorAll('table.excel-table tbody tr')[i2].innerText.replace(/\s+/g, ' '), idx);
     ok(Number(baselines[idx]) === v.baseline && row.includes(v.mps.toFixed(2) + '%') && row.includes((v.variance > 0 ? '+' : '') + v.variance.toFixed(2) + '%'), `Comparative ${ks}: baseline ${v.baseline}, MPS ${v.mps}, variance ${v.variance}`);
-  });
+  }
   const plChecks = await N.page.evaluate(c => Object.fromEntries(Object.keys(c).map(k => [k, getPL(Number(k))])), E.proficiencyCutoffs);
   ok(JSON.stringify(plChecks) === JSON.stringify(E.proficiencyCutoffs), 'getPL cutoffs 90/85/80/75 unchanged');
   // Same fixture in both apps: only empty-state rendering may differ
@@ -438,7 +438,7 @@ console.log('\n[10] Print output: PDFs of the original and the ported app for di
     // ported is printed twice: as shipped (with the SAMPLE DATA line) and with the flag cleared (must equal the original)
     for (const [pg, tag, clear] of [[L.page, 'legacy', false], [N.page, 'ported', false], [N.page, 'ported-noflag', true]]) {
       await pg.emulateMedia({ media: 'print' });
-      if (clear) await pg.evaluate(() => document.body.classList.remove('sample-in-view'));
+      if (clear) await pg.evaluate(() => { document.body.classList.remove('sample-in-view'); const st = document.createElement('style'); st.textContent = '.bl-sy-note{display:none!important}'; document.head.appendChild(st); });   // the baseline SY notes are a new, intended addition to the printed sheet; everything else must match
       const f = `${OUT}/print-${label}-${tag}.pdf`;
       await pg.pdf({ path: f, format: 'A4', printBackground: true }); files.push(f);
     }
@@ -475,7 +475,7 @@ console.log('\n[11] Download CSV (Admin and Supervisor) and the aligned signator
     ok(raw.charCodeAt(0) === 0xFEFF, `${user}: UTF-8 byte order mark so Excel reads it correctly`);
     ok(rows.length === 1 + rowsIn.length, `${user}: header plus every record (${rows.length - 1} of ${rowsIn.length} rows)`);
     const h = rows[0];
-    const want = ['School Year', 'Term', 'District', 'School Name', 'Key Stage', 'Grade Level', 'Learning Area', 'SY Baseline MPS', 'Mean Percentage Score (MPS%)', '% Learners Scoring >= 75%'];
+    const want = ['School Year', 'Term', 'District', 'School Name', 'Key Stage', 'Grade Level', 'Learning Area', 'Baseline SY', 'SY Baseline MPS', 'Mean Percentage Score (MPS%)', '% Learners Scoring >= 75%'];
     ok(want.every((w, i) => h[i] === w), `${user}: columns start with the import template's names, so the file can be re-imported`);
     ok(h.includes('Least Learned Competency 4 Description') && h.includes('Sample Data') && h.includes('Record ID'), `${user}: competency columns expand to the longest list; sample flag and id included`);
     ok(rows.every(r => r.length === h.length), `${user}: every row has exactly ${h.length} columns (quoting is sound)`);
