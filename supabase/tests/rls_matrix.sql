@@ -1,5 +1,5 @@
 -- rls_matrix.sql: access rules after 0005 (levels, MAPEH rules, edit and soft delete). Run in the Supabase SQL editor
--- AFTER migrations 0001 to 0008 and seed/districts.sql. One transaction, rolled back: it creates throwaway users and
+-- AFTER migrations 0001 to 0010 and seed/districts.sql. One transaction, rolled back: it creates throwaway users and
 -- never touches real accounts. A failed check raises an exception; passes print NOTICE lines.
 begin;
 
@@ -327,6 +327,163 @@ begin
     assert denied, 'signed-out callers cannot use it';
     reset role;
     raise notice 'PASS competency editing';
+  end;
+
+  -- ===== Schools, programs, baseline SY and school accounts (0010) =====
+  declare
+    s1 bigint; s2 bigint; s3 bigint; s4 bigint; uid1 uuid; uid2 uuid; e text; r_s1 bigint; r_s2 bigint; r_s3 bigint; r_none bigint; r_unl bigint; r_new bigint; cnt int;
+    sup text := '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated"}';
+    adm text := '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
+    coord text := '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}';
+    jwt text; res jsonb;
+  begin
+    -- division users manage the school list; a school can hold both programs; duplicates are refused
+    perform set_config('request.jwt.claims', sup, true); set local role authenticated;
+    s1 := public.app_save_school(null, 'Alpha IPED School', asu, array['iped']);
+    s2 := public.app_save_school(null, 'Beta Special Programs School', asu, array['special_programs']);
+    s3 := public.app_save_school(null, 'Gamma School', car, array['special_programs', 'iped']);
+    assert (select count(*) from public.school_programs where school_id = s3) = 2, 'a school can belong to both programs';
+    denied := false; begin perform public.app_save_school(null, '  alpha iped SCHOOL ', asu, array['iped']); exception when others then denied := sqlerrm like '%already exists%'; end;
+    assert denied, 'a duplicate school (same district, name ignoring case and spaces) is refused';
+    assert public.app_save_school(null, 'Alpha IPED School', car, array['iped']) is not null, 'the same name in another district is a different school';
+    denied := false; begin perform public.app_save_school(null, 'No Program School', asu, array[]::text[]); exception when others then denied := sqlerrm like '%Special Programs, IPED, or both%'; end;
+    assert denied, 'a school must have a program';
+    denied := false; begin perform public.app_save_school(null, 'Bad Program', asu, array['other']); exception when others then denied := true; end;
+    assert denied, 'unknown program refused';
+    reset role;
+
+    -- the district coordinator: sees schools of own district only, cannot manage or create accounts
+    perform set_config('request.jwt.claims', coord, true); set local role authenticated;
+    assert (select count(*) from public.schools where id in (s1, s2)) = 2 and (select count(*) from public.schools where id = s3) = 0, 'a coordinator sees the schools of their own district only';
+    denied := false; begin perform public.app_save_school(null, 'Hack', asu, array['iped']); exception when insufficient_privilege then denied := true; end; assert denied, 'a coordinator cannot add schools';
+    denied := false; begin perform public.app_create_school_account('hacker1', 'Hacker', s1, 'longenough1'); exception when insufficient_privilege then denied := true; end; assert denied, 'a coordinator cannot create school accounts';
+    denied := false; begin insert into public.schools (name, district_id) values ('x', asu); exception when insufficient_privilege then denied := true; end; assert denied, 'schools cannot be written directly through the API';
+    reset role;
+
+    -- account creation by Admin and Supervisor, with the safety checks
+    perform set_config('request.jwt.claims', adm, true); set local role authenticated;
+    uid1 := public.app_create_school_account('Alpha.School', 'Alpha IPED School', s1, 'initialpass1');
+    reset role;
+    assert (select role::text = 'school' and school_id = s1 and district_id = asu and education_level is null and active and username = 'alpha.school' from public.profiles where id = uid1), 'profile: school role, own school, its district, username lowercased';
+    assert (select extensions.crypt('initialpass1', encrypted_password) = encrypted_password from auth.users where id = uid1) and exists (select 1 from auth.identities where user_id = uid1), 'the login exists with a hashed password';
+    perform set_config('request.jwt.claims', sup, true); set local role authenticated;
+    denied := false; begin perform public.app_create_school_account('alpha2', 'Dup', s1, 'initialpass1'); exception when others then denied := sqlerrm like '%already has an active account%'; end; assert denied, 'a second active account for the same school is refused';
+    denied := false; begin perform public.app_create_school_account('alpha.school', 'Dup', s2, 'initialpass1'); exception when others then denied := sqlerrm like '%already taken%'; end; assert denied, 'a taken username is refused';
+    denied := false; begin perform public.app_create_school_account('ab', 'Short', s2, 'initialpass1'); exception when others then denied := sqlerrm like '%Username must be%'; end; assert denied, 'bad username refused';
+    denied := false; begin perform public.app_create_school_account('beta.school', 'Weak', s2, 'short'); exception when others then denied := sqlerrm like '%at least 8%'; end; assert denied, 'short password refused';
+    denied := false; begin perform public.app_create_school_account('beta.school', 'Ghost', 999999, 'initialpass1'); exception when others then denied := sqlerrm like '%not found%'; end; assert denied, 'unknown school refused';
+    reset role;
+    select count(*) into cnt from auth.users where email like 'beta.school@%'; assert cnt = 0 and (select count(*) from public.profiles where username = 'beta.school') = 0, 'failed attempts leave nothing behind (no orphan login or profile)';
+    insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000f9', 'orphanlogin@users.mapehdavnor.altasme.app');
+    perform set_config('request.jwt.claims', sup, true); set local role authenticated;
+    denied := false; begin perform public.app_create_school_account('orphanlogin', 'X', s2, 'initialpass1'); exception when others then denied := sqlerrm like '%already taken%'; end; assert denied, 'a username that exists only as a login is refused';
+    uid2 := public.app_create_school_account('beta.school', 'Beta SP School', s2, 'initialpass2');
+    assert (select count(*) from public.app_list_school_accounts()) = 2, 'the Supervisor lists the school accounts with school and programs';
+    reset role;
+    delete from auth.users where id = '00000000-0000-0000-0000-0000000000f9';
+
+    -- fixtures (owner): records for each school, an unlinked record, a MAPEH record
+    insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,baseline_sy,mps,pct75,proficiency_level,created_by,least_learned)
+      values ('2025-2026','Term 1',asu,s1,'Key Stage 1','Grade 3','IPED - English',65,'2024-2025',80,70,'x','00000000-0000-0000-0000-0000000000a1','[{"code":"LC-1","desc":"own competency"}]') returning id into r_s1;
+    insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by,least_learned)
+      values ('2025-2026','Term 1',asu,s2,'Key Stage 3','Grade 8','SPA - Vocal Arts',65,80,70,'x','00000000-0000-0000-0000-0000000000a1','[{"code":"LC-1","desc":"other school"}]') returning id into r_s2;
+    insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by)
+      values ('2025-2026','Term 1',car,s3,'Key Stage 1','Grade 3','IPED - English',65,80,70,'x','00000000-0000-0000-0000-0000000000a1') returning id into r_s3;
+    insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by)
+      values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 3','MAPEH - Overall',65,80,70,'x','00000000-0000-0000-0000-0000000000a1') returning id into r_none;
+    insert into public.assessment_records (sy,term,district_id,school,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by)
+      values ('2025-2026','Term 2',asu,'alpha iped school ','Key Stage 1','Grade 3','IPED - Filipino',65,80,70,'x','00000000-0000-0000-0000-0000000000a1') returning id into r_unl;
+    assert (select school from public.assessment_records where id = r_s1) = 'Alpha IPED School', 'the printed school name follows the school record';
+    assert (select baseline_sy from public.assessment_records where id = r_s1) = '2024-2025' and (select baseline_sy from public.assessment_records where id = r_none) is null, 'baseline SY is stored per record; existing rows stay empty';
+    denied := false; begin update public.assessment_records set baseline_sy = '2024' where id = r_s1; exception when check_violation then denied := true; end; assert denied, 'baseline SY must look like 2024-2025';
+    denied := false; begin insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by) values ('2025-2026','Term 1',asu,s1,'Key Stage 1','Grade 3','SPA - Dance Arts',65,80,70,'x','00000000-0000-0000-0000-0000000000a1'); exception when others then denied := sqlerrm like '%not classified under the program%'; end;
+    assert denied, 'a school cannot be linked to a record of a program it is not classified under';
+    denied := false; begin insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by) values ('2025-2026','Term 1',car,s1,'Key Stage 1','Grade 3','IPED - English',65,80,70,'x','00000000-0000-0000-0000-0000000000a1'); exception when others then denied := sqlerrm like '%different district%'; end;
+    assert denied, 'a school cannot be linked to a record of another district';
+
+    -- THE SCHOOL ACCOUNT (IPED, Alpha, Asuncion)
+    jwt := format('{"sub":"%s","role":"authenticated"}', uid1);
+    perform set_config('request.jwt.claims', jwt, true); set local role authenticated;
+    assert (select count(*) from public.assessment_records) = 1 and (select id from public.assessment_records) = r_s1, 'a school account sees only its own school''s records (not other schools, unlinked or MAPEH rows)';
+    assert (select count(*) from public.assessment_records where id in (r_s2, r_s3, r_none, r_unl)) = 0, 'other record ids are invisible even when asked for by id';
+    assert (select count(*) from public.schools) = 1 and (select count(*) from public.school_programs) = 1, 'it sees only its own school and classification';
+    assert (select count(*) from public.profiles) = 1, 'it reads only its own profile';
+    insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,baseline_sy,mps,pct75,proficiency_level)
+      values ('2025-2026','Term 1',asu,s1,'Key Stage 2','Grade 5','IPED - Mathematics',65,'2024-2025',77,70,'x') returning id into r_new;
+    assert (select school = 'Alpha IPED School' and created_by = uid1 from public.assessment_records where id = r_new), 'it can enter records for its own school and program';
+    denied := false; begin insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level) values ('2025-2026','Term 1',asu,s1,'Key Stage 1','Grade 3','SPA - Vocal Arts',65,80,70,'x'); exception when others then denied := true; end; assert denied, 'it cannot enter a Special Programs record (not its program)';
+    denied := false; begin insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level) values ('2025-2026','Term 1',asu,s2,'Key Stage 1','Grade 3','IPED - English',65,80,70,'x'); exception when others then denied := true; end; assert denied, 'it cannot enter a record for another school';
+    denied := false; begin insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level) values ('2025-2026','Term 1',car,s1,'Key Stage 1','Grade 3','IPED - English',65,80,70,'x'); exception when others then denied := true; end; assert denied, 'it cannot enter a record in another district';
+    denied := false; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level) values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 3','IPED - English',65,80,70,'x'); exception when insufficient_privilege then denied := true; end; assert denied, 'it cannot enter a record without its school';
+    update public.assessment_records set mps = 88 where id = r_s1; get diagnostics n = row_count; assert n = 1, 'it can edit its own record';
+    update public.assessment_records set mps = 1 where id in (r_s2, r_s3, r_none, r_unl); get diagnostics n = row_count; assert n = 0, 'it cannot edit any other record by id';
+    denied := false; begin update public.assessment_records set school_id = s2 where id = r_s1; exception when others then denied := true; end; assert denied, 'it cannot reassign its record to another school';
+    denied := false; begin update public.assessment_records set learning_area = 'SPA - Vocal Arts' where id = r_s1; exception when others then denied := true; end; assert denied, 'it cannot change its record to another program';
+    denied := false; begin update public.assessment_records set district_id = car where id = r_s1; exception when others then denied := true; end; assert denied, 'it cannot move its record to another district';
+    denied := false; begin update public.assessment_records set deleted_at = now() where id = r_s1; exception when insufficient_privilege then denied := true; end; assert denied, 'it cannot set deleted_at';
+    denied := false; begin perform public.app_delete_records(array[r_s1], 'x'); exception when insufficient_privilege then denied := true; end; assert denied, 'it cannot delete (soft or hard)';
+    denied := false; begin delete from public.assessment_records where id = r_s1; exception when insufficient_privilege then denied := true; end; assert denied, 'no direct delete either';
+    assert public.app_edit_competency(r_s1, 0, 'own competency', 'LC-1', 'edited by school') = 1, 'it can correct a competency on its own record';
+    denied := false; begin perform public.app_edit_competency(r_s2, 0, 'other school', 'LC-1', 'x'); exception when others then denied := sqlerrm like '%could not be found%'; end; assert denied, 'but not on another school''s record';
+    denied := false; begin perform public.app_create_school_account('sneaky', 'Sneaky', s2, 'initialpass1'); exception when insufficient_privilege then denied := true; end; assert denied, 'a school account cannot create accounts';
+    denied := false; begin perform public.app_set_school_account_active(uid2, false); exception when insufficient_privilege then denied := true; end; assert denied, 'a school account cannot disable accounts';
+    denied := false; begin perform public.app_save_school(s1, 'Alpha IPED School', asu, array['iped', 'special_programs']); exception when insufficient_privilege then denied := true; end; assert denied, 'a school account cannot change school classification';
+    denied := false; begin perform public.app_import_schools('[{"name":"x","district":"Asuncion","programs":["iped"]}]'); exception when insufficient_privilege then denied := true; end; assert denied, 'a school account cannot import schools';
+    denied := false; begin perform public.app_link_school_records(s1); exception when insufficient_privilege then denied := true; end; assert denied, 'a school account cannot link records';
+    assert (select count(*) from public.app_list_school_accounts()) = 0, 'the account list is empty for a school account';
+    denied := false; begin update public.profiles set school_id = s2 where id = uid1; get diagnostics n = row_count; denied := (n = 0); exception when others then denied := true; end; assert denied, 'it cannot change its own school assignment';
+    denied := false; begin update public.profiles set role = 'admin' where id = uid1; get diagnostics n = row_count; denied := (n = 0); exception when others then denied := true; end; assert denied, 'it cannot change its own role';
+    denied := false; begin update public.profiles set active = true, school_id = null where id = uid1; get diagnostics n = row_count; denied := (n = 0); exception when others then denied := true; end; assert denied, 'it cannot edit any profile field';
+    update public.districts set coordinator_name = 'x' where id = asu; get diagnostics n = row_count; assert n = 0, 'it cannot edit districts';
+    update public.app_settings set data = data; get diagnostics n = row_count; assert n = 0, 'it cannot edit settings';
+    assert (select count(*) from public.comparative_notes) = 0 and (select count(*) from public.audit_log) = 0, 'it sees no notes and no audit log';
+    denied := false; begin insert into public.comparative_notes (sy,district_scope,education_level,subject,term,analysis,interventions) values ('2025-2026','Asuncion','all','ALL','T1','x','x'); exception when insufficient_privilege then denied := true; end; assert denied, 'it cannot write notes';
+    reset role;
+    -- a deleted record is invisible to it
+    update public.assessment_records set deleted_at = now() where id = r_new;
+    perform set_config('request.jwt.claims', jwt, true); set local role authenticated;
+    assert (select count(*) from public.assessment_records) = 1, 'a soft-deleted record disappears for the school account';
+    reset role;
+
+    -- an existing coordinator still sees the linked record of their district and level
+    perform set_config('request.jwt.claims', coord, true); set local role authenticated;
+    assert (select count(*) from public.assessment_records where id = r_s1) = 1 and (select count(*) from public.assessment_records where id = r_s3) = 0, 'a district coordinator keeps their access (own district and level)';
+    denied := false; begin perform public.app_set_school_account_active(uid1, false); exception when insufficient_privilege then denied := true; end; assert denied, 'a coordinator cannot disable school accounts';
+    reset role;
+
+    -- linking existing free-text records (explicit, per school)
+    perform set_config('request.jwt.claims', sup, true); set local role authenticated;
+    assert public.app_count_linkable_records(s1) = 1, 'one existing record carries this school name as text';
+    assert public.app_link_school_records(s1) = 1, 'linking attaches it (same district, matching program)';
+    assert public.app_count_linkable_records(s1) = 0, 'and only once';
+    assert (select school_id = s1 and school = 'Alpha IPED School' from public.assessment_records where id = r_unl), 'the record is now linked and its name matches the school';
+    -- removing a program that has records is refused; moving a school with records is refused
+    denied := false; begin perform public.app_save_school(s1, 'Alpha IPED School', asu, array['special_programs']); exception when others then denied := sqlerrm like '%Cannot remove a program%'; end; assert denied, 'a program with records cannot be removed';
+    denied := false; begin perform public.app_save_school(s1, 'Alpha IPED School', car, array['iped']); exception when others then denied := sqlerrm like '%cannot be moved%'; end; assert denied, 'a school with records cannot be moved to another district';
+    assert public.app_save_school(s1, 'Alpha IPED School', asu, array['iped', 'special_programs']) = s1, 'saving an existing school with another program succeeds';
+    assert (select count(*) from public.school_programs where school_id = s1) = 2, 'a program can be added to an existing school (no duplicate school)';
+    assert (select count(*) from public.schools where district_id = asu and lower(name) = 'alpha iped school') = 1, 'still one school row';
+    -- bulk import is all-or-nothing and merges into existing schools
+    select count(*) into cnt from public.schools;
+    denied := false; begin perform public.app_import_schools('[{"name":"Delta","district":"Carmen","programs":["iped"]},{"name":"Eps","district":"Nowhere","programs":["iped"]}]'); exception when others then denied := sqlerrm like '%Nothing was imported%'; end;
+    assert denied and (select count(*) from public.schools) = cnt, 'an import with one bad row creates nothing';
+    res := public.app_import_schools('[{"name":"Delta","district":"Carmen","programs":["iped"]},{"name":"gamma school","district":"carmen","programs":["iped"]},{"name":"Delta","district":"Carmen","programs":["special_programs"]}]');
+    assert (res ->> 'created')::int = 1 and (res ->> 'updated')::int = 2 and (select count(*) from public.schools) = cnt + 1, 'import creates new schools, merges programs into existing ones, never duplicates';
+    assert (select count(*) from public.school_programs sp join public.schools s on s.id = sp.school_id where s.name = 'Delta') = 2, 'a school listed for both programs ends up with both';
+    -- disable and re-enable
+    perform public.app_set_school_account_active(uid1, false);
+    reset role;
+    assert (select banned_until > now() from auth.users where id = uid1) and (select not active from public.profiles where id = uid1), 'disabling bans the login and deactivates the profile';
+    perform set_config('request.jwt.claims', jwt, true); set local role authenticated;
+    assert (select count(*) from public.assessment_records) = 0, 'a disabled account sees nothing';
+    denied := false; begin insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level) values ('2025-2026','Term 1',asu,s1,'Key Stage 1','Grade 3','IPED - English',65,80,70,'x'); exception when others then denied := true; end; assert denied, 'and cannot write';
+    reset role;
+    perform set_config('request.jwt.claims', adm, true); set local role authenticated;
+    uid2 := public.app_create_school_account('alpha.second', 'Alpha replacement', s1, 'initialpass3');
+    denied := false; begin perform public.app_set_school_account_active(uid1, true); exception when others then denied := sqlerrm like '%already has another active account%'; end; assert denied, 'only one active account per school, even when re-enabling';
+    reset role;
+    assert exists (select 1 from public.audit_log where table_name = 'profiles' and action = 'INSERT') and exists (select 1 from public.audit_log where table_name = 'schools'), 'account and school changes are in the audit log';
+    raise notice 'PASS schools, programs, baseline SY and school accounts';
   end;
 
   -- ===== Signed out =====
