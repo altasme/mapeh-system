@@ -2203,8 +2203,6 @@ async function renderDistrictProfileView(container) {
     const activeSubjectsInDistrict = SUBJECTS.filter(s => distRecords.some(r => r.learningArea === s));
     const subjectsToDisplay = activeSubjectsInDistrict;
     const noMatch = distRecords.length === 0;
-    const allDistrictNote = userDist === "ALL" && filters.district === "ALL"
-        ? `<div class="ctx-note" style="font-size:0.8rem;color:var(--text-muted);margin:-10px 0 14px;">The District filter is set to All Districts, so this profile shows ${esc(selectedDistrict)}. Choose another district above to switch.</div>` : "";
 
     const subjMatrixRows = subjectsToDisplay.map(s => {
         const sRecs = distRecords.filter(r => r.learningArea === s);
@@ -2243,7 +2241,6 @@ async function renderDistrictProfileView(container) {
             <strong style="color:var(--deped-dark); font-size:0.95rem; margin-left: 6px;">${esc(coordInfo.name)}</strong> (${esc(coordInfo.position)})
         </div>
     </div>
-    ${allDistrictNote}
     <div class="kpi-grid">
         <div class="kpi-card" style="border-top-color: var(--deped-blue);">
             <div class="kpi-title">${esc(selectedDistrict)} District Average MPS</div>

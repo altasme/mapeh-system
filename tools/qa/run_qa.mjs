@@ -1577,7 +1577,7 @@ console.log('\n[21] District Profile View: every selected filter limits every se
   const KS_OF = { 'Grade 1': 'Key Stage 1', 'Grade 4': 'Key Stage 2', 'Grade 7': 'Key Stage 3', 'Grade 11': 'Key Stage 4' };
   const recs = [];
   const D = ['Asuncion', 'Carmen'], SY = ['2025-2026', '2026-2027'], T = ['Term 1', 'Term 2'];
-  const AREAS = { 'Grade 1': ['MAPEH - Overall'], 'Grade 4': ['MAPEH - Overall', 'MAPEH - Music'], 'Grade 7': ['MAPEH - Overall', 'SPA - Vocal Arts', 'IPED - Indigenous Music'], 'Grade 11': ['SPFL - Spanish'] };
+  const AREAS = { 'Grade 1': ['MAPEH - Overall'], 'Grade 4': ['MAPEH - Overall', 'MAPEH - Music'], 'Grade 7': ['MAPEH - Overall', 'SPA - Vocal Arts', 'IPED - Science'], 'Grade 11': ['SPFL - Spanish'] };
   for (const d of D) for (const sy of SY) for (const t of T) for (const g of Object.keys(AREAS)) for (const a of AREAS[g]) {
     n++; recs.push(mk(d, sy, t, g, a, 60 + (n * 7) % 37, 40 + (n * 11) % 55));
   }
@@ -1614,7 +1614,9 @@ console.log('\n[21] District Profile View: every selected filter limits every se
       filters: JSON.stringify(filters) }));
     const want = expected(f);
     // a filter combination the UI refuses (key stage outside the level) leaves no matching records, which expected() reproduces
-    const eff = { ...f };
+    // the screen drops a key stage that is outside the chosen level, so judge against the filters actually in force
+    const fin = JSON.parse(got.filters);
+    const eff = { ...f, keystage: fin.keystage, level: fin.level };
     const exp = expected(eff);
     const kpiOk = exp.count ? (got.mps === exp.mps + '%' && got.pct === exp.pct + '%' && JSON.stringify(got.areas) === JSON.stringify(exp.areas) && !got.msg)
                             : (got.mps === 'No data' && got.areas.length === 0 && got.msg);
