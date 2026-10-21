@@ -2,7 +2,7 @@
 
 **Built by:** Altaventures Business Development Services
 **Handover date:** 2026-10-11 (live)  ·  **Spec version built:** v1.2
-**Test URL:** https://mapeh-system.pages.dev  ·  **Repo:** https://github.com/altasme/mapeh-system (private)
+**Test URL:** https://mapehdavnor.com  (fallback: https://mapeh-system.pages.dev)  ·  **Repo:** https://github.com/altasme/mapeh-system (private)
 
 ## 1. What was delivered
 - Existing app, unchanged in behavior, ready for Cloudflare Pages. All 9 views, formulas, print layout and Excel template preserved.
@@ -31,7 +31,7 @@ No build step.
 **Cloudflare Pages**
 6. `public/config.js` and `public/_headers` already hold the project URL, publishable key and ref (done).
 7. DONE: Cloudflare Pages project `mapeh-system` from this repo (framework None, no build command, output `public`). Deploys on every push to `main`.
-8. Supabase Authentication > URL Configuration: Site URL must be https://mapeh-system.pages.dev (to be confirmed by Altaventures; it is not readable through the API).
+8. Supabase Authentication > URL Configuration: Site URL is https://mapehdavnor.com (set by Altaventures; it is not readable through the API).
 9. **Real-project checks before handing over:** sign in as each of the 13 accounts; confirm a coordinator sees only their district; run one Excel import, one manual entry, one baseline edit; print one report; run `tools/verify-sri.sh`.
 
 - Config: public/config.js (public values only). Pinned versions: supabase-js 2.117.3, SheetJS 0.20.3, Chart.js 4.4.1 (all with SRI).
@@ -61,7 +61,7 @@ All flags are reserved and unwired.
 - Star 10: division MPS is computed two ways in the original (AUDIT M3). Not changed. Client to confirm the method.
 - N1 in the audit: copy says "8 IPED" but there are 9 IPED offers. Client to confirm the wording.
 - Star 7: assumed no real data in any browser. If any exists, the legacy export tool (spec 9.8) must be built before cutover.
-- Star 9: default `*.pages.dev` address; custom domain not set.
+- Star 9: resolved. The main website is https://mapehdavnor.com (also www.mapehdavnor.com); the `*.pages.dev` address remains as a fallback.
 
 ## 6. Data-integrity status
 - [x] Demo rows present: 1,452 (loaded before the MAPEH restructure, so they use the legacy combined areas; to switch to the current structure purge and reload, see section 12). Purge: `delete from public.assessment_records where is_demo;`
@@ -81,7 +81,7 @@ All flags are reserved and unwired.
 - Current accounts after section 11 is applied: 2 division accounts (Admin, Supervisor; their passwords are still the ones in the client's original file) and 22 level coordinators (initial passwords per section 11, replaced by their owners at first sign-in). The original 11 district-wide coordinators are retired, not deleted. Recommend new passwords before any real data goes in (AUDIT R2).
 
 ## 8. Accounts & infrastructure (pointers, NOT secrets)
-- Cloudflare Pages: Altaventures account / project `mapeh-system` (https://mapeh-system.pages.dev)
+- Cloudflare Pages: Altaventures account / project `mapeh-system` (main site https://mapehdavnor.com; fallback https://mapeh-system.pages.dev)
 - Supabase: Altaventures dedicated account / project ref `yesnxycbzwaaugqbwowd` / region ap-southeast-1 (confirm in dashboard) / plan TBD
 - Inactivity pause behavior and backups: check the plan at creation. Free projects have historically paused after about a week of inactivity and have no automated backups. Record the chosen plan here, and take a manual export (Dashboard > Database > Backups, or `pg_dump`) before any client session if the plan has no backups.
 - Repo: https://github.com/altasme/mapeh-system
