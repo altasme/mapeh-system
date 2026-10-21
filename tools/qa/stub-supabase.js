@@ -4,10 +4,12 @@
    It proves the app's logic. It does NOT replace supabase/tests/rls_matrix.sql, which tests the real policies. */
 (function () {
   const S = window.__STUB;              // { districts, profiles, passwords, records, notes, settings }
+  S.schools = S.schools || []; S.school_programs = S.school_programs || [];
   const T = {
     districts: S.districts, profiles: S.profiles, assessment_records: S.records,
-    comparative_notes: S.notes, app_settings: [{ id: 1, data: S.settings }]
+    comparative_notes: S.notes, app_settings: [{ id: 1, data: S.settings }], schools: S.schools, school_programs: S.school_programs
   };
+  let nextSchoolId = Math.max(0, ...S.schools.map(x => x.id)) + 1;
   let nextId = Math.max(0, ...S.records.map(r => r.id || 0)) + 1;
   let nextNoteId = 1;
   const listeners = [];
@@ -23,7 +25,7 @@
   const coordScope = (districtId, level) => { const p = me(); return sessionOk() && p.role === 'district_coordinator' && districtId === p.district_id && !!level && level === p.education_level; };
 
   const isDel = r => r.deleted_at !== undefined && r.deleted_at !== null;
-  const WRITABLE = ['sy','term','district_id','school','key_stage','grade_level','learning_area','baseline_mps','mps','pct75','proficiency_level','least_learned'];
+  const WRITABLE = ['sy','term','district_id','school','key_stage','grade_level','learning_area','baseline_mps','mps','pct75','proficiency_level','least_learned','school_id','baseline_sy'];
   const pl = m => m >= 90 ? 'Advanced' : m >= 85 ? 'Proficient' : m >= 80 ? 'Approaching Proficiency' : m >= 75 ? 'Developing' : 'Beginning';
   // mirror of public.app_mapeh_rule_problem()
   const LEG = ['MAPEH - Music & Arts', 'MAPEH - PE & Health'], COMP = ['MAPEH - Music', 'MAPEH - Arts', 'MAPEH - PE', 'MAPEH - Health'];
@@ -35,11 +37,32 @@
     return null;
   };
   const canSeeRecord = r => (isDivision() || coordScope(r.district_id, levelOf(r.grade_level)));
+  // school accounts (migration 0010): one school, its program(s) only, its district, never deleted rows
+  const isSchoolUser = () => { const p = me(); return sessionOk() && !!p && p.role === 'school'; };
+  const progOf = a => /^(SPA|SPS|SPFL) - /.test(a || '') ? 'special_programs' : /^IPED - /.test(a || '') ? 'iped' : null;
+  const schoolProgs = id => T.school_programs.filter(x => x.school_id === id).map(x => x.program);
+  const schoolDistrict = id => (T.schools.find(x => x.id === id) || {}).district_id;
+  const schoolOk = r => { if (!isSchoolUser() || r.school_id == null) return false; const p = me(); const pr = progOf(r.learning_area); const sc = T.schools.find(x => x.id === p.school_id);
+    return r.school_id === p.school_id && !!sc && sc.active && !!pr && schoolProgs(p.school_id).includes(pr) && !isDel(r); };
+  const schoolWriteOk = r => schoolOk(r) && r.district_id === schoolDistrict(me().school_id);
 
+  // mirror of the school rules in app_records_guard()
+  function schoolGuard(row, old) {
+    if (row.school_id == null) return null;
+    const sc = T.schools.find(x => x.id === row.school_id);
+    if (!sc) return 'That school was not found.';
+    if (sc.district_id !== row.district_id) return 'That school belongs to a different district.';
+    if ((!old || old.school_id !== row.school_id) && !sc.active) return 'That school is inactive.';
+    const pr = progOf(row.learning_area);
+    if (pr && (!old || old.school_id !== row.school_id || old.learning_area !== row.learning_area) && !schoolProgs(sc.id).includes(pr)) return 'That school is not classified under the program of this learning area.';
+    row.school = sc.name; return null;
+  }
   function canRead(table, row) {
     const p = me(); if (!p) return false;
     if (table === 'profiles') return row.id === p.id;
-    if (table === 'assessment_records') return canSeeRecord(row) && (!isDel(row) || isDivision());
+    if (table === 'assessment_records') return (canSeeRecord(row) && (!isDel(row) || isDivision())) || schoolOk(row);
+    if (table === 'schools') return isDivision() || (sessionOk() && p.role === 'district_coordinator' && row.district_id === p.district_id) || (isSchoolUser() && row.id === p.school_id);
+    if (table === 'school_programs') return canRead('schools', T.schools.find(x => x.id === row.school_id) || {});
     if (table === 'comparative_notes') return isDivision() || (sessionOk() && p.role === 'district_coordinator' && row.district_scope === distName(p.district_id) && row.education_level === p.education_level);
     return true; // districts, app_settings
   }
@@ -47,9 +70,10 @@
     const p = me(); if (!p) return false;
     if (table === 'assessment_records') {
       if (op === 'delete') return false;   // direct DELETE is revoked; deleting goes through the app_delete_* functions
-      return isDivision() || coordScope(row.district_id, levelOf(row.grade_level));
+      return isDivision() || coordScope(row.district_id, levelOf(row.grade_level)) || schoolWriteOk(row);
     }
     if (table === 'comparative_notes') return op !== 'delete' && canRead('comparative_notes', row);
+    if (table === 'schools' || table === 'school_programs') return false;   // written only through the app_save_school / app_import_schools functions
     if (table === 'districts' || table === 'app_settings') return op === 'update' && isDivision();
     return false;
   }
@@ -59,6 +83,7 @@
     const bad = c => err('23514', 'new row for relation "assessment_records" violates check constraint "assessment_records_' + c + '_check"');
     if (!/^[0-9]{4}-[0-9]{4}$/.test(r.sy)) return bad('sy');
     if (!['Term 1', 'Term 2', 'Term 3'].includes(r.term)) return bad('term');
+    if (r.baseline_sy != null && !/^[0-9]{4}-[0-9]{4}$/.test(r.baseline_sy)) return bad('baseline_sy');
     for (const c of ['baseline_mps', 'mps', 'pct75']) {
       if (r[c] === null || r[c] === undefined || Number.isNaN(r[c])) return err('23502', 'null value in column "' + c + '" violates not-null constraint');
       if (r[c] < 0 || r[c] > 100) return bad(c);
@@ -118,6 +143,7 @@
             if (Object.keys(r0).some(k => !WRITABLE.includes(k))) return { data: null, error: err('42501', 'permission denied for table assessment_records'), count: null };
             const rp = ruleProblem(r.grade_level, r.learning_area);
             if (rp) return { data: null, error: err('23514', rp), count: null };
+            const sg = schoolGuard(r, null); if (sg) return { data: null, error: err('P0001', sg), count: null };
             r.created_by = me().id; r.education_level = levelOf(r.grade_level); r.is_demo = false;
             if (typeof r.mps === 'number') r.proficiency_level = pl(r.mps);
           }
@@ -143,6 +169,9 @@
         if (this.table === 'assessment_records' && Object.keys(this.vals).some(k => !WRITABLE.includes(k))) return { data: null, error: err('42501', 'permission denied for table assessment_records'), count: null };
         const hits = tbl.filter(r => canRead(this.table, r) && match(r) && !(this.table === 'assessment_records' && isDel(r)));
         if (this.table === 'assessment_records') {
+          for (const r of hits) { const sg = schoolGuard(Object.assign({}, r, this.vals), r); if (sg) return { data: null, error: err('P0001', sg), count: null }; }
+        }
+        if (this.table === 'assessment_records') {
           for (const r of hits) {
             if ((this.vals.grade_level !== undefined && this.vals.grade_level !== r.grade_level) || (this.vals.learning_area !== undefined && this.vals.learning_area !== r.learning_area)) {
               const rp = ruleProblem(this.vals.grade_level !== undefined ? this.vals.grade_level : r.grade_level, this.vals.learning_area !== undefined ? this.vals.learning_area : r.learning_area);
@@ -153,6 +182,7 @@
         for (const r of hits) { if (!canWrite(this.table, 'update', Object.assign({}, r, this.vals)) && canRead(this.table, r) && this.table !== 'districts' && this.table !== 'app_settings' && this.table !== 'profiles') return { data: null, error: err('42501', 'new row violates row-level security policy for table "' + this.table + '"'), count: null }; }
         const upd = hits.filter(r => canWrite(this.table, 'update', Object.assign({}, r, this.vals)));
         upd.forEach(r => { if (this.table === 'assessment_records' && this.vals.grade_level) this.vals.education_level = levelOf(this.vals.grade_level); });
+        if (this.table === 'assessment_records' && this.vals.school_id != null) { const sc = T.schools.find(x => x.id === this.vals.school_id); if (sc) this.vals.school = sc.name; }
         if (this.table === 'assessment_records') { if (typeof this.vals.mps === 'number') this.vals.proficiency_level = pl(this.vals.mps); this.vals.updated_by = me().id; }
         for (const r of upd) { const c = check(this.table, Object.assign({}, r, this.vals)); if (c) return { data: null, error: c, count: null }; }
         upd.forEach(r => Object.assign(r, this.vals));
@@ -194,12 +224,75 @@
               const rows = T2.filter(r => !isDel(r) && (name === 'app_delete_all_records' || r.sy === a.p_sy));
               return { data: mark(rows, name === 'app_delete_all_records' ? 'Bulk delete: all records' : 'Bulk delete: school year ' + a.p_sy), error: null };
             }
+            const need = () => isDivision() ? null : { data: null, error: err('42501', 'Only a Supervisor or Admin can manage schools.') };
+            const fail = m => ({ data: null, error: err('P0001', m) });
+            if (name === 'app_save_school') {
+              const d0 = need(); if (d0) return d0;
+              const nm = String(a.p_name || '').trim(); const progs = Array.from(new Set(a.p_programs || []));
+              if (!nm) return fail('Enter the school name (200 characters at most).');
+              if (!T.districts.find(x => x.id === a.p_district_id)) return fail('Choose a district.');
+              if (!progs.length || progs.some(x => !['special_programs', 'iped'].includes(x))) return fail('Choose Special Programs, IPED, or both.');
+              const dup = T.schools.find(x => x.district_id === a.p_district_id && x.name.trim().toLowerCase() === nm.toLowerCase() && x.id !== a.p_id);
+              let sc;
+              if (a.p_id == null) { if (dup) return fail('A school with that name already exists in this district. Open it and add the program there instead.'); sc = { id: nextSchoolId++, name: nm, district_id: a.p_district_id, active: a.p_active !== false }; T.schools.push(sc); }
+              else { sc = T.schools.find(x => x.id === a.p_id); if (!sc) return fail('School not found.');
+                const linked = T2.filter(x => x.school_id === sc.id);
+                if (sc.district_id !== a.p_district_id && linked.length) return fail('This school has linked records, so it cannot be moved to another district.');
+                if (T.school_programs.some(x => x.school_id === sc.id && !progs.includes(x.program) && linked.some(r => !isDel(r) && progOf(r.learning_area) === x.program))) return fail('Cannot remove a program that this school already has records for.');
+                if (dup) return fail('A school with that name already exists in this district.');
+                sc.name = nm; sc.district_id = a.p_district_id; if (a.p_active != null) sc.active = a.p_active; }
+              for (let i = T.school_programs.length - 1; i >= 0; i--) if (T.school_programs[i].school_id === sc.id && !progs.includes(T.school_programs[i].program)) T.school_programs.splice(i, 1);
+              progs.forEach(pg => { if (!T.school_programs.some(x => x.school_id === sc.id && x.program === pg)) T.school_programs.push({ school_id: sc.id, program: pg }); });
+              return { data: sc.id, error: null };
+            }
+            if (name === 'app_import_schools') {
+              const d0 = need(); if (d0) return d0;
+              const rows = a.p_rows || [], bad = [], plan = [];
+              rows.forEach((r, i) => { const nm = String(r.name || '').trim(); const d = T.districts.find(x => x.name.toLowerCase() === String(r.district || '').trim().toLowerCase()); const pg = Array.from(new Set(r.programs || []));
+                if (!nm) bad.push('row ' + (i + 2) + ': school name'); else if (!d) bad.push('row ' + (i + 2) + ': unknown district "' + (r.district || '') + '"'); else if (!pg.length) bad.push('row ' + (i + 2) + ': program must be Special Programs, IPED or Both'); else plan.push({ nm, d, pg }); });
+              if (bad.length) return fail('Nothing was imported. ' + bad.length + ' row(s) have problems: ' + bad.slice(0, 5).join('; '));
+              let created = 0, updated = 0;
+              plan.forEach(({ nm, d, pg }) => { let sc = T.schools.find(x => x.district_id === d.id && x.name.trim().toLowerCase() === nm.toLowerCase());
+                if (!sc) { sc = { id: nextSchoolId++, name: nm, district_id: d.id, active: true }; T.schools.push(sc); created++; } else updated++;
+                pg.forEach(p2 => { if (!T.school_programs.some(x => x.school_id === sc.id && x.program === p2)) T.school_programs.push({ school_id: sc.id, program: p2 }); }); });
+              return { data: { created, updated }, error: null };
+            }
+            if (name === 'app_count_linkable_records' || name === 'app_link_school_records') {
+              if (!isDivision()) return name === 'app_count_linkable_records' ? { data: 0, error: null } : { data: null, error: err('42501', 'Only a Supervisor or Admin can link records.') };
+              const sc = T.schools.find(x => x.id === a.p_school_id); if (!sc) return { data: 0, error: null };
+              const rows = T2.filter(r => r.school_id == null && !isDel(r) && r.district_id === sc.district_id && String(r.school || '').trim().toLowerCase() === sc.name.trim().toLowerCase() && progOf(r.learning_area) && schoolProgs(sc.id).includes(progOf(r.learning_area)));
+              if (name === 'app_link_school_records') rows.forEach(r => { r.school_id = sc.id; r.school = sc.name; });
+              return { data: rows.length, error: null };
+            }
+            if (name === 'app_create_school_account') {
+              if (!isDivision()) return { data: null, error: err('42501', 'Only a Supervisor or Admin can create school accounts.') };
+              const u = String(a.p_username || '').trim().toLowerCase(), dn = String(a.p_display_name || '').trim();
+              if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(u)) return fail('Username must be 3 to 40 characters: lowercase letters, numbers, dot, dash or underscore.');
+              if (!dn) return fail('Enter a display name (120 characters at most).');
+              if (String(a.p_password || '').length < 8) return fail('The password must be at least 8 characters.');
+              const sc = T.schools.find(x => x.id === a.p_school_id); if (!sc) return fail('School not found.'); if (!sc.active) return fail('That school is inactive.');
+              if (!schoolProgs(sc.id).length) return fail('Classify the school as Special Programs or IPED first.');
+              if (T.profiles.some(x => x.school_id === sc.id && x.active)) return fail('This school already has an active account.');
+              if (T.profiles.some(x => x.username.toLowerCase() === u)) return fail('That username is already taken.');
+              const id = 'school-' + u; T.profiles.push({ id, username: u, display_name: dn, role: 'school', district_id: sc.district_id, education_level: null, school_id: sc.id, active: true, must_change_password: false }); S.passwords[u] = a.p_password;
+              return { data: id, error: null };
+            }
+            if (name === 'app_set_school_account_active') {
+              if (!isDivision()) return { data: null, error: err('42501', 'Only a Supervisor or Admin can change school accounts.') };
+              const pr = T.profiles.find(x => x.id === a.p_profile_id && x.school_id != null); if (!pr) return fail('That is not a school account.');
+              if (a.p_active && T.profiles.some(x => x.school_id === pr.school_id && x.active && x.id !== pr.id)) return fail('This school already has another active account.');
+              pr.active = !!a.p_active; return { data: null, error: null };
+            }
+            if (name === 'app_list_school_accounts') {
+              if (!isDivision()) return { data: [], error: null };
+              return { data: T.profiles.filter(x => x.school_id != null).map(x => { const sc = T.schools.find(y => y.id === x.school_id) || {}; return { profile_id: x.id, username: x.username, display_name: x.display_name, active: x.active, school_id: x.school_id, school_name: sc.name, district_name: (T.districts.find(d => d.id === sc.district_id) || {}).name, programs: schoolProgs(x.school_id) }; }), error: null };
+            }
             if (name === 'app_edit_competency') {
               const code = String(a.p_code || '').trim(), desc = String(a.p_desc || '').trim();
               if (!desc) return { data: null, error: err('P0001', 'The competency description cannot be empty.') };
               if (desc.length > 500) return { data: null, error: err('P0001', 'The competency description is too long (500 characters at most).') };
               if (!code) return { data: null, error: err('P0001', 'Enter a competency code.') };
-              const r = T2.find(x => x.id === a.p_id && !isDel(x) && canSeeRecord(x));
+              const r = T2.find(x => x.id === a.p_id && !isDel(x) && (canSeeRecord(x) || schoolOk(x)));
               const ll = r && Array.isArray(r.least_learned) ? r.least_learned : null;
               if (!ll || a.p_index < 0 || a.p_index >= ll.length) return { data: null, error: err('P0001', 'That competency could not be found. Reload the page and try again.') };
               const el = ll[a.p_index], cur = typeof el === 'string' ? el : (el.desc || el.description || el.competency || '');

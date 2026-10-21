@@ -71,7 +71,7 @@ const settingsSeed = (() => { // parse supabase/seed/settings.sql json
 const gradeLevelOf = g => ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'].includes(g) ? 'elementary' : 'secondary';
 const toRowish = r => ({ education_level: gradeLevelOf(r.gradeLevel), sy: r.sy, term: r.term, district_id: districts.find(d => d.name === r.district).id, school: r.school,
   key_stage: r.keyStage, grade_level: r.gradeLevel, learning_area: r.learningArea, baseline_mps: r.baselineMps, mps: r.mps,
-  pct75: r.pct75, proficiency_level: r.proficiencyLevel, least_learned: r.leastLearned, is_demo: r.isDemo !== false });
+  pct75: r.pct75, proficiency_level: r.proficiencyLevel, least_learned: r.leastLearned, is_demo: r.isDemo !== false, school_id: r.schoolId ?? null, baseline_sy: r.baselineSy ?? null });
 
 // ---------- browser plumbing ----------
 const browser = await chromium.launch();
@@ -127,11 +127,12 @@ async function openNew(username, records, extra = {}, viewport) {
   let { passwords: pw } = await readPasswords();
   const ctx = await context('new', viewport); const page = await ctx.newPage();
   const errors = []; page.on('pageerror', e => errors.push(String(e)));
-  const allPw = Object.assign({}, pw, Object.fromEntries(LEVEL_ACCOUNTS.map(a => [a.username, a.password])));
-  const profs = JSON.parse(JSON.stringify(profiles)).map(p => Object.assign(p, { must_change_password: p.must_change_password || (extra.mustChange || []).includes(p.username) }));
+  const allPw = Object.assign({}, pw, Object.fromEntries(LEVEL_ACCOUNTS.map(a => [a.username, a.password])), extra.passwords || {});
+  const profs = JSON.parse(JSON.stringify(profiles)).concat(JSON.parse(JSON.stringify(extra.profiles || []))).map(p => Object.assign(p, { must_change_password: p.must_change_password || (extra.mustChange || []).includes(p.username) }));
   pw = allPw;
   const stub = { districts: JSON.parse(JSON.stringify(districts)), profiles: profs, passwords: allPw, records: records.map((r, i) => Object.assign({ id: i + 1 }, toRowish(r))),
-    notes: extra.notes || [], settings: JSON.parse(JSON.stringify(settingsSeed)) };
+    notes: extra.notes || [], settings: JSON.parse(JSON.stringify(settingsSeed)),
+    schools: JSON.parse(JSON.stringify(extra.schools || [])), school_programs: JSON.parse(JSON.stringify(extra.schoolPrograms || [])) };
   await page.addInitScript(s => { window.__STUB = s; }, stub);
   await page.goto(`${BASE}/public/index.html`);
   if (!extra.noLogin) {
@@ -179,7 +180,7 @@ function canonLegacy(t) {
     .replace(/consolidated mapeh total \(music & arts \+ pe & health\)/g, 'consolidated mapeh total (overall mapeh)')
     .replace(/tracked specializations \d+ \d+ mapeh,/g, 'tracked specializations N N mapeh,');
 }
-function canonPorted(t) { return t.toLowerCase().replace(/\s+/g, ' ').trim().replace(/no data no data/g, 'nd').replace(/no data/g, 'nd').replace(/tracked specializations \d+ \d+ mapeh,/g, 'tracked specializations N N mapeh,'); }
+function canonPorted(t) { return t.toLowerCase().replace(/\s+/g, ' ').replace(/ ?sy not recorded/g, '').trim().replace(/no data no data/g, 'nd').replace(/no data/g, 'nd').replace(/tracked specializations \d+ \d+ mapeh,/g, 'tracked specializations N N mapeh,'); }
 function firstDiff(a, b) {
   const A = a.split(' '), B = b.split(' ');
   for (let i = 0; i < Math.max(A.length, B.length); i++) if (A[i] !== B[i]) return `    legacy: ...${A.slice(Math.max(0, i - 6), i + 8).join(' ')}\n    ported: ...${B.slice(Math.max(0, i - 6), i + 8).join(' ')}`;
@@ -241,10 +242,10 @@ console.log('\n[3] Regression fixture: hand-computed expectations (fixtures/regr
   ok(new RegExp('(^|[^\\d.])' + E.dashboard.pct75 + '(\\.00)?%').test(t), `Dashboard shows % learners >= 75 at ${E.dashboard.pct75.toFixed(2)}%`);
   await N.page.evaluate(() => switchView('comparative')); await settled(N.page); t = await text(N.page);
   const baselines = await N.page.evaluate(() => Array.from(document.querySelectorAll('.editable-baseline-input')).map(i => i.value));
-  Object.entries(E.comparativeByKeyStage).forEach(([ks, v], idx) => {
-    const row = t.split('\n').find(l => l.startsWith(ks)) || '';
+  for (const [idx, [ks, v]] of Object.entries(E.comparativeByKeyStage).entries()) {
+    const row = await N.page.evaluate(i2 => document.querySelectorAll('table.excel-table tbody tr')[i2].innerText.replace(/\s+/g, ' '), idx);
     ok(Number(baselines[idx]) === v.baseline && row.includes(v.mps.toFixed(2) + '%') && row.includes((v.variance > 0 ? '+' : '') + v.variance.toFixed(2) + '%'), `Comparative ${ks}: baseline ${v.baseline}, MPS ${v.mps}, variance ${v.variance}`);
-  });
+  }
   const plChecks = await N.page.evaluate(c => Object.fromEntries(Object.keys(c).map(k => [k, getPL(Number(k))])), E.proficiencyCutoffs);
   ok(JSON.stringify(plChecks) === JSON.stringify(E.proficiencyCutoffs), 'getPL cutoffs 90/85/80/75 unchanged');
   // Same fixture in both apps: only empty-state rendering may differ
@@ -369,7 +370,7 @@ console.log('\n[7] Unsaved-changes guard, keyboard access, login errors, sample-
   await N.page.focus('.nav-item:has-text("Grade Level Breakdown")'); await N.page.keyboard.press('Enter');
   await settled(N.page);
   ok((await N.page.evaluate(() => currentView)) === 'grade-view', 'nav item works from the keyboard (Enter)');
-  ok(await N.page.evaluate(() => document.querySelectorAll('.nav-item[role=button][tabindex="0"]').length === 10), 'all 10 nav items have role=button and tabindex=0');
+  ok(await N.page.evaluate(() => document.querySelectorAll('.nav-item[role=button][tabindex="0"]').length === 11), 'all 11 nav items have role=button and tabindex=0');
   ok(await N.page.evaluate(() => !document.getElementById('env-banner').hidden), 'test-environment banner is visible');
   await N.page.emulateMedia({ media: 'print' });
   ok(await N.page.evaluate(() => getComputedStyle(document.getElementById('print-sample-line')).display === 'block' && getComputedStyle(document.getElementById('env-banner')).display === 'none'), 'print: "SAMPLE DATA" line shown when sample rows are in view; banner not printed');
@@ -437,11 +438,11 @@ console.log('\n[10] Print output: PDFs of the original and the ported app for di
     // ported is printed twice: as shipped (with the SAMPLE DATA line) and with the flag cleared (must equal the original)
     for (const [pg, tag, clear] of [[L.page, 'legacy', false], [N.page, 'ported', false], [N.page, 'ported-noflag', true]]) {
       await pg.emulateMedia({ media: 'print' });
-      if (clear) await pg.evaluate(() => document.body.classList.remove('sample-in-view'));
+      if (clear) await pg.evaluate(() => { document.body.classList.remove('sample-in-view'); const st = document.createElement('style'); st.textContent = '.bl-sy-note{display:none!important}'; document.head.appendChild(st); });   // the baseline SY notes are a new, intended addition to the printed sheet; everything else must match
       const f = `${OUT}/print-${label}-${tag}.pdf`;
       await pg.pdf({ path: f, format: 'A4', printBackground: true }); files.push(f);
     }
-    const txt = f => execSync(`pdftotext -layout ${f} -`).toString().replace(/\s+/g, ' ').trim().replace(/\(Music & Arts \+ PE & Health\)/g, '(Overall MAPEH)').replace(/\(Music & Arts \+ PE\)/g, '(Overall MAPEH)');
+    const txt = f => execSync(`pdftotext -layout ${f} -`).toString().replace(/\s+/g, ' ').trim().replace(/\(Music & Arts \+ PE & Health\)/g, '(Overall MAPEH)').replace(/\(Music & Arts \+ PE\)/g, '(Overall MAPEH)').replace(/ ?SY not recorded/g, '');
     ok(/SAMPLE DATA/.test(txt(files[1])), `print ${label}/${view}: ported report carries the SAMPLE DATA line (sample rows in view)`);
     ok(!/SAMPLE DATA/.test(txt(files[2])), `print ${label}/${view}: flag off removes the line`);
     ok(txt(files[0]) === txt(files[2]), `print ${label}/${view}: printed text identical to the original (same filters)`);
@@ -474,7 +475,7 @@ console.log('\n[11] Download CSV (Admin and Supervisor) and the aligned signator
     ok(raw.charCodeAt(0) === 0xFEFF, `${user}: UTF-8 byte order mark so Excel reads it correctly`);
     ok(rows.length === 1 + rowsIn.length, `${user}: header plus every record (${rows.length - 1} of ${rowsIn.length} rows)`);
     const h = rows[0];
-    const want = ['School Year', 'Term', 'District', 'School Name', 'Key Stage', 'Grade Level', 'Learning Area', 'SY Baseline MPS', 'Mean Percentage Score (MPS%)', '% Learners Scoring >= 75%'];
+    const want = ['School Year', 'Term', 'District', 'School Name', 'Key Stage', 'Grade Level', 'Learning Area', 'Baseline SY', 'SY Baseline MPS', 'Mean Percentage Score (MPS%)', '% Learners Scoring >= 75%'];
     ok(want.every((w, i) => h[i] === w), `${user}: columns start with the import template's names, so the file can be re-imported`);
     ok(h.includes('Least Learned Competency 4 Description') && h.includes('Sample Data') && h.includes('Record ID'), `${user}: competency columns expand to the longest list; sample flag and id included`);
     ok(rows.every(r => r.length === h.length), `${user}: every row has exactly ${h.length} columns (quoting is sound)`);
@@ -1011,6 +1012,287 @@ console.log('\n[18] Chart colours, and editing least learned competencies');
     await D.page.evaluate(([i]) => openCompetencyEditor(i, 0), [id]);
     await D.page.fill('#comp-desc', user + ' fix'); await D.page.click('#comp-save'); await D.page.waitForSelector('.toast-success');
     ok(await D.page.evaluate(i => window.__STUB.records.find(r => r.id === i).least_learned[0].desc, id) === user + ' fix', `${user} can edit competencies anywhere`);
+    await D.ctx.close();
+  }
+}
+
+
+console.log('\n[19] Baseline school year, Special Programs / IPED classification, school accounts');
+{
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const SCH = [{ id: 1, name: 'Alpha IPED School', district_id: 1, active: true }, { id: 2, name: 'Beta SP School', district_id: 1, active: true }, { id: 3, name: 'Gamma School', district_id: 3, active: true },
+    { id: 4, name: 'Asuncion IPED Central Elementary School', district_id: 1, active: true }];
+  const PRG = [{ school_id: 1, program: 'iped' }, { school_id: 2, program: 'special_programs' }, { school_id: 3, program: 'special_programs' }, { school_id: 3, program: 'iped' }, { school_id: 4, program: 'iped' }];
+  const isSP = a => /^(SPA|SPS|SPFL) - /.test(a), isIP = a => /^IPED - /.test(a);
+  // baseline SY: Key Stage 1 recorded, Key Stage 2 not recorded, Key Stage 3 a mix
+  const recs = demoNew.map((r, i) => {
+    const o = Object.assign({}, r);
+    o.baselineSy = r.keyStage === 'Key Stage 1' ? '2024-2025' : r.keyStage === 'Key Stage 3' ? (i % 2 ? '2024-2025' : '2023-2024') : null;
+    if (r.district === 'Asuncion' && isSP(r.learningArea)) o.schoolId = 2;
+    if (r.district === 'Carmen' && isIP(r.learningArea)) o.schoolId = 3;
+    if (r.district === 'Asuncion' && isIP(r.learningArea) && r.term === 'Term 3') { o.schoolId = 1; o.school = 'Alpha IPED School'; }   // Asuncion IPED rows stay unlinked (school name text only)
+    return o;
+  });
+  const ex = { schools: SCH, schoolPrograms: PRG, passwords: { 'alpha.iped': 'alphapass1', 'gamma.school': 'gammapass1' },
+    profiles: [{ id: 'sch-alpha', username: 'alpha.iped', display_name: 'Alpha IPED School', role: 'school', district_id: 1, education_level: null, school_id: 1, active: true, must_change_password: false }] };
+
+  // ---- baseline SY on the comparative sheet
+  {
+    const N = await openNew('admin', recs, ex);
+    await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
+    const cells = await N.page.evaluate(() => Array.from(document.querySelectorAll('table.excel-table tbody tr')).slice(0, 4).map(tr => [tr.children[0].textContent.trim(), tr.children[3].innerText.replace(/\s+/g, ' ').trim(), tr.children[3].querySelector('input') ? tr.children[3].querySelector('input').value : '']));
+    const ks = k => recs.filter(r => r.keyStage === k);
+    ok(/SY 2024-2025/.test(cells[0][1]) && !/Mixed/.test(cells[0][1]), 'Key Stage 1 shows the baseline SY recorded on its records (SY 2024-2025)');
+    ok(/SY not recorded/.test(cells[1][1]), 'Key Stage 2 (no baseline SY on its records) says "SY not recorded" - nothing is invented');
+    ok(/Mixed: SY 2023-2024, SY 2024-2025/.test(cells[2][1]), 'Key Stage 3 with two different baseline SYs is labelled "Mixed" with both');
+    ok(Number(cells[0][2]) === Number(mean(ks('Key Stage 1').map(r => r.baselineMps)).toFixed(2)), 'the baseline MPS value itself is unchanged by the SY label');
+    // set the baseline SY of Key Stage 2
+    N.page.on('dialog', d => d.accept());
+    const before = await N.page.evaluate(() => window.__STUB.records.filter(r => ['Grade 4', 'Grade 5', 'Grade 6'].includes(r.grade_level)).map(r => r.baseline_mps));
+    await N.page.selectOption('table.excel-table tbody tr:nth-child(2) .bl-sy-select', '2024-2025'); await N.page.waitForSelector('.toast-success'); await settled(N.page);
+    const after = await N.page.evaluate(() => window.__STUB.records.filter(r => ['Grade 4', 'Grade 5', 'Grade 6'].includes(r.grade_level)));
+    ok(after.every(r => r.baseline_sy === '2024-2025') && JSON.stringify(after.map(r => r.baseline_mps)) === JSON.stringify(before) && await N.page.evaluate(() => window.__STUB.records.filter(r => r.grade_level === 'Grade 1').every(r => r.baseline_sy === '2024-2025')), 'setting the baseline SY of a key stage updates only that stage\'s records and no baseline MPS');
+    ok(/SY 2024-2025/.test(await N.page.evaluate(() => document.querySelectorAll('table.excel-table tbody tr')[1].children[3].innerText)), 'the sheet then shows the new baseline SY');
+    // consolidated rows carry the note too
+    ok(/SY 2024-2025|Mixed|SY not recorded/.test(await N.page.evaluate(() => document.querySelector('tr.mapeh-row td:nth-child(2)').innerText)), 'consolidated total rows identify the baseline SY as well');
+    // manual entry: baseline SY follows the SY, is stored, and bad values are refused by the database
+    await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page);
+    await N.page.click('text=Method 2: Fast Manual Entry');
+    await N.page.selectOption('#m-sy', '2026-2027');
+    ok(await N.page.inputValue('#m-baseline-sy') === '2025-2026', 'manual entry: the baseline SY defaults to the year before the chosen SY');
+    await N.page.selectOption('#m-sy', '2025-2026'); await N.page.selectOption('#m-baseline-sy', '2023-2024');
+    await N.page.selectOption('#m-district', 'Carmen'); await N.page.selectOption('#m-grade', 'Grade 4'); await N.page.selectOption('#m-subject', 'MAPEH - Music');
+    await N.page.fill('#m-mps', '81'); await N.page.fill('#m-pct75', '70'); await N.page.click('button:has-text("Save District Record")'); await N.page.waitForSelector('.toast-success');
+    ok(await N.page.evaluate(() => window.__STUB.records[window.__STUB.records.length - 1].baseline_sy) === '2023-2024', 'the chosen baseline SY is saved with the record');
+    ok(await N.page.evaluate(async () => (await sb().from('assessment_records').update({ baseline_sy: '2024' }).eq('id', 1)).error?.code) === '23514', 'the database refuses a malformed baseline SY');
+    // import: column kept when given, default (year before) when absent
+    const xlsx = rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
+    const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': '', 'Key Stage': 'Key Stage 2', 'Grade Level': 'Grade 5', 'Learning Area': 'MAPEH - Arts', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'x' };
+    await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page);
+    await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xlsx([Object.assign({ 'Baseline SY': '2022-2023' }, base), base])) });
+    await N.page.waitForSelector('.toast-success');
+    const last2 = await N.page.evaluate(() => window.__STUB.records.slice(-2).map(r => r.baseline_sy));
+    ok(JSON.stringify(last2) === JSON.stringify(['2022-2023', '2024-2025']), 'import: "Baseline SY" column kept; when absent the year before the record\'s SY is used');
+    const tpl = await N.page.evaluate(() => { let got = null; XLSX.writeFile = wb => { got = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]); }; downloadExcelTemplate(); return got.map(r => r['Baseline SY']); });
+    ok(tpl.length >= 2 && tpl.every(v => /^\d{4}-\d{4}$/.test(v)), 'the Excel template has a Baseline SY column');
+    const [dl] = await Promise.all([N.page.waitForEvent('download'), N.page.click('#csv-btn')]); await dl.saveAs(`${OUT}/bsy.csv`);
+    const head = fs.readFileSync(`${OUT}/bsy.csv`, 'utf8').replace(/^﻿/, '').split(/\r?\n/)[0].split(',');
+    ok(head.indexOf('Baseline SY') > 0 && head.indexOf('Baseline SY') === head.indexOf('SY Baseline MPS') - 1, 'the CSV export has a Baseline SY column next to the baseline MPS');
+    // Manage Records edit
+    await N.page.evaluate(() => { formDirty = false; switchView('manage-records'); }); await settled(N.page);
+    await N.page.evaluate(() => openRecordEditor(1));
+    ok(await N.page.inputValue('#e-baseline-sy') === '2024-2025', 'the edit form loads the record\'s own baseline SY');
+    await N.page.selectOption('#e-baseline-sy', ''); await N.page.click('#rec-save'); await N.page.waitForSelector('.toast-success');
+    ok(await N.page.evaluate(() => window.__STUB.records.find(r => r.id === 1).baseline_sy) == null, 'it can be cleared to "not recorded" again');
+    ok(N.errors.length === 0, 'no page errors' + (N.errors[0] ? ': ' + N.errors[0] : ''));
+    await N.ctx.close();
+  }
+
+  // ---- program filter and the Schools & Accounts view
+  {
+    const N = await openNew('admin', recs, ex);
+    await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
+    const total = async () => Number((/TOTAL DISTRICT RECORDS\s+(\d+)/i.exec(await text(N.page)) || [])[1]);
+    ok(await total() === recs.length, 'dashboard total before filtering');
+    await N.page.selectOption('#flt-program', 'special_programs'); await settled(N.page);
+    ok(await total() === recs.filter(r => isSP(r.learningArea)).length, 'Program filter "Special Programs": only SPA, SPS and SPFL records');
+    await N.page.selectOption('#flt-program', 'iped'); await settled(N.page);
+    ok(await total() === recs.filter(r => isIP(r.learningArea)).length, 'Program filter "IPED": only IPED records');
+    await N.page.click('text=Clear Filters'); await settled(N.page);
+    ok(await N.page.inputValue('#flt-program') === 'ALL' && await total() === recs.length, 'Clear Filters resets the program filter');
+    await N.page.evaluate(() => { document.getElementById('flt-program').value = 'iped'; applyFilters(); }); await settled(N.page);
+    await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
+    ok(await N.page.evaluate(() => Array.from(document.querySelectorAll('tr.mapeh-row')).filter(tr => /SPA|SPS|SPFL/.test(tr.children[0].textContent)).every(tr => !/[0-9]%/.test(tr.innerText))) && /IPED/.test(await text(N.page)), 'the comparative sheet honours the program filter (Special Programs totals are empty under IPED)');
+    await N.page.evaluate(() => { resetFilters(); });
+    await N.page.evaluate(() => switchView('schools')); await settled(N.page);
+    const kp = await N.page.evaluate(() => Array.from(document.querySelectorAll('.sv-kpi')).map(k => [k.querySelector('span').textContent, Number(k.querySelector('strong').textContent)]));
+    ok(JSON.stringify(kp) === JSON.stringify([['Special Programs schools', 2], ['IPED schools', 3], ['In both programs', 1], ['Schools in the list', 4], ['With an active account', 1]]), 'school counts come from the list and the classifications: ' + JSON.stringify(kp.map(k => k[1])));
+    await N.page.selectOption('#sv-program', 'iped');
+    const names = async () => N.page.evaluate(() => Array.from(document.querySelectorAll('#sv-table tbody tr td:first-child')).map(t => t.textContent.trim()));
+    ok(JSON.stringify((await names()).sort()) === JSON.stringify(['Alpha IPED School', 'Asuncion IPED Central Elementary School', 'Gamma School']), 'IPED list: exactly the IPED schools (a school in both programs appears in both lists)');
+    await N.page.selectOption('#sv-program', 'special_programs');
+    ok(JSON.stringify((await names()).sort()) === JSON.stringify(['Beta SP School', 'Gamma School']), 'Special Programs list: exactly those schools');
+    await N.page.selectOption('#sv-program', 'ALL'); await N.page.selectOption('#sv-district', 'Carmen');
+    ok(JSON.stringify(await names()) === JSON.stringify(['Gamma School']), 'district filter');
+    await N.page.selectOption('#sv-district', 'ALL');
+    // add: duplicate refused, new school saved once
+    await N.page.click('button:has-text("Add school")'); await N.page.fill('#sc-name', '  beta sp SCHOOL '); await N.page.selectOption('#sc-district', 'Asuncion'); await N.page.check('#sc-iped'); await N.page.click('#school-save');
+    await N.page.waitForFunction(() => document.getElementById('rec-error').textContent.length > 0);
+    ok(/already exists/.test(await N.page.textContent('#rec-error')) && await N.page.evaluate(() => window.__STUB.schools.length) === 4, 'a duplicate school (same district and name) is refused, not added');
+    await N.page.fill('#sc-name', 'Delta School'); await N.page.uncheck('#sc-iped'); await N.page.click('#school-save');
+    await N.page.waitForFunction(() => document.getElementById('rec-error').textContent.length > 0);
+    ok(/Special Programs, IPED, or both/.test(await N.page.textContent('#rec-error')), 'a school needs a program');
+    await N.page.check('#sc-sp'); await N.page.check('#sc-iped'); await N.page.click('#school-save'); await N.page.waitForSelector('.toast-success');
+    ok(await N.page.evaluate(() => window.__STUB.schools.filter(s => s.name === 'Delta School').length === 1 && window.__STUB.school_programs.filter(p => p.school_id === 5).length === 2), 'a new school in both programs is saved once with both classifications');
+    // edit: add a program to an existing school
+    await N.page.evaluate(() => openSchoolEditor(2)); await N.page.check('#sc-iped'); await N.page.click('#school-save'); await N.page.waitForSelector('.toast-success');
+    ok(await N.page.evaluate(() => window.__STUB.schools.filter(s => s.name === 'Beta SP School').length === 1 && window.__STUB.school_programs.filter(p => p.school_id === 2).length === 2), 'assigning a second program updates the school (no duplicate school record)');
+    // removing a program that has records is refused
+    await N.page.evaluate(() => openSchoolEditor(2)); await N.page.uncheck('#sc-sp'); await N.page.click('#school-save'); await N.page.waitForFunction(() => document.getElementById('rec-error').textContent.length > 0);
+    ok(/Cannot remove a program/.test(await N.page.textContent('#rec-error')), 'a program that the school already has records for cannot be removed');
+    await N.page.evaluate(() => closeRecordModal());
+    // link existing records by exact name (explicit action)
+    const unlinked = recs.filter(r => r.district === 'Asuncion' && r.school === 'Asuncion IPED Central Elementary School' && !r.schoolId).length;
+    await N.page.evaluate(() => openSchoolEditor(4)); await N.page.waitForSelector('text=Link them to this school');
+    ok(new RegExp(unlinked + ' existing record').test(await N.page.textContent('#record-modal')) && unlinked > 0, `the school editor offers to link the ${unlinked} existing records that carry its name`);
+    N.page.on('dialog', d => d.accept());
+    await N.page.click('text=Link them to this school'); await N.page.waitForSelector('.toast-success');
+    ok(await N.page.evaluate(() => window.__STUB.records.filter(r => r.school_id === 4).length) === unlinked && await N.page.evaluate(() => window.__STUB.records.filter(r => r.school === 'Asuncion IPED Central Elementary School' && r.school_id == null).length) === 0, 'linking attaches exactly those records and no others');
+    // import: merges and is all-or-nothing
+    const sx = rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
+    const cnt = () => N.page.evaluate(() => [window.__STUB.schools.length, window.__STUB.school_programs.length]);
+    const c0 = await cnt();
+    await N.page.evaluate(() => { formDirty = false; switchView('schools'); }); await settled(N.page);
+    await N.page.setInputFiles('#sv-import', { name: 's.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await sx([{ 'School Name': 'Epsilon', District: 'Carmen', Program: 'IPED' }, { 'School Name': 'Zeta', District: 'Atlantis', Program: 'IPED' }])) });
+    await N.page.waitForSelector('.toast-error');
+    ok(JSON.stringify(await cnt()) === JSON.stringify(c0) && /Nothing was imported/.test(await N.page.textContent('#toast-host')), 'an import with an unknown district creates nothing');
+    await N.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
+    await N.page.setInputFiles('#sv-import', { name: 's.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await sx([{ 'School Name': 'Epsilon', District: 'Carmen', Program: 'IPED' }, { 'School Name': 'alpha iped school', District: 'asuncion', Program: 'Both' }, { 'School Name': 'Eta', District: 'Langilan', Program: 'Special Programs' }])) });
+    await N.page.waitForSelector('.toast-success');
+    const c1 = await cnt();
+    ok(c1[0] === c0[0] + 2 && /2 new, 1 already listed/.test(await N.page.textContent('#toast-host')) && await N.page.evaluate(() => window.__STUB.school_programs.filter(p => p.school_id === 1).length) === 2, 'import creates new schools, merges the program into an existing school (no duplicate), counts reported');
+    await N.ctx.close();
+  }
+
+  // ---- account creation: allowed only for Supervisor/Admin; school accounts and coordinators cannot
+  {
+    const S = await openNew('supervisor', recs, ex);
+    await S.page.evaluate(() => switchView('schools')); await settled(S.page);
+    ok(await S.page.locator('#nav-schools').isVisible(), 'the Supervisor sees Schools & Accounts');
+    await S.page.evaluate(() => openSchoolAccountCreate(3));
+    ok(await S.page.inputValue('#ac-user') === 'gamma.school', 'the username is suggested from the school name');
+    await S.page.fill('#ac-user', 'Ab'); await S.page.fill('#ac-pass', 'gammapass1'); await S.page.click('#acct-save');
+    ok(/Username must be/.test(await S.page.textContent('#rec-error')), 'invalid username refused with a clear message');
+    await S.page.fill('#ac-user', 'gamma.school'); await S.page.fill('#ac-pass', 'short'); await S.page.click('#acct-save');
+    ok(/at least 8/.test(await S.page.textContent('#rec-error')), 'short password refused');
+    await S.page.fill('#ac-pass', 'gammapass1'); await S.page.click('#acct-save'); await S.page.waitForSelector('.toast-success');
+    const prof = await S.page.evaluate(() => window.__STUB.profiles.find(p => p.username === 'gamma.school'));
+    ok(prof && prof.role === 'school' && prof.school_id === 3 && prof.district_id === 3 && prof.education_level == null, 'the account is created for the right school, in its district, with the school role');
+    await S.page.evaluate(() => openSchoolAccountCreate(1));
+    await S.page.fill('#ac-user', 'alpha.two'); await S.page.fill('#ac-pass', 'gammapass1'); await S.page.click('#acct-save');
+    await S.page.waitForFunction(() => document.getElementById('rec-error').textContent.length > 0);
+    ok(/already has an active account/.test(await S.page.textContent('#rec-error')), 'a second active account for the same school is refused');
+    await S.page.evaluate(() => closeRecordModal());
+    ok(await S.page.evaluate(() => !Array.from(document.querySelectorAll('#sv-table tbody tr')).find(r => r.children[0].textContent.includes('Alpha')).querySelector('button.btn-primary')), 'a school with an account has no "Create account" button');
+    await S.ctx.close();
+    for (const user of ['asuncion_elemcoord']) {
+      const C = await openNew(user, recs, ex);
+      ok(!(await C.page.locator('#nav-schools').isVisible()), `${user}: no Schools & Accounts menu`);
+      await C.page.evaluate(() => switchView('schools')); await settled(C.page);
+      ok(/Access Restricted/.test(await text(C.page)), `${user}: the Schools & Accounts screen refuses them`);
+      const r = await C.page.evaluate(async () => ({
+        create: (await sb().rpc('app_create_school_account', { p_username: 'sneaky.one', p_display_name: 'x', p_school_id: 2, p_password: 'longenough1' })).error?.code,
+        save: (await sb().rpc('app_save_school', { p_id: null, p_name: 'Hack', p_district_id: 1, p_programs: ['iped'] })).error?.code,
+        disable: (await sb().rpc('app_set_school_account_active', { p_profile_id: 'sch-alpha', p_active: false })).error?.code,
+        direct: (await sb().from('schools').insert({ name: 'x', district_id: 1 })).error?.code,
+        seeOwn: (await sb().from('schools').select('id')).data.map(s => s.id).sort().join(),
+        profile: window.__STUB.profiles.some(p => p.username === 'sneaky.one')
+      }));
+      ok(r.create === '42501' && r.save === '42501' && r.disable === '42501' && r.direct === '42501' && !r.profile, `${user}: cannot call the account or school functions directly, and nothing was created`);
+      ok(r.seeOwn === '1,2,4', `${user}: sees only the schools of own district (${r.seeOwn})`);
+      // school picker when entering a record
+      await C.page.evaluate(() => switchView('data-input')); await settled(C.page);
+      await C.page.click('text=Method 2: Fast Manual Entry');
+      await C.page.selectOption('#m-subject', 'IPED - English');
+      const opts = await C.page.evaluate(() => Array.from(document.querySelectorAll('#m-school-pick option')).map(o => o.textContent));
+      ok(opts.includes('Alpha IPED School') && opts.includes('Asuncion IPED Central Elementary School') && !opts.includes('Beta SP School') && !opts.includes('Gamma School'), `${user}: the school list for an IPED area shows only IPED schools of their district`);
+      await C.page.selectOption('#m-subject', 'SPA - Vocal Arts');
+      const opts2 = await C.page.evaluate(() => Array.from(document.querySelectorAll('#m-school-pick option')).map(o => o.textContent));
+      ok(opts2.includes('Beta SP School') && !opts2.includes('Alpha IPED School'), `${user}: and only Special Programs schools for an SPA area`);
+      await C.page.selectOption('#m-subject', 'IPED - English'); await C.page.selectOption('#m-school-pick', { label: 'Alpha IPED School' });
+      await C.page.selectOption('#m-grade', 'Grade 3'); await C.page.fill('#m-mps', '82'); await C.page.fill('#m-pct75', '70'); await C.page.click('button:has-text("Save District Record")'); await C.page.waitForSelector('.toast-success');
+      const saved = await C.page.evaluate(() => window.__STUB.records[window.__STUB.records.length - 1]);
+      ok(saved.school_id === 1 && saved.school === 'Alpha IPED School' && saved.learning_area === 'IPED - English', `${user}: the record is saved linked to the chosen school`);
+      const wrong = await C.page.evaluate(async () => (await sb().from('assessment_records').insert({ sy: '2025-2026', term: 'Term 1', district_id: 1, school_id: 2, key_stage: 'Key Stage 1', grade_level: 'Grade 3', learning_area: 'IPED - English', baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' })).error?.message);
+      ok(/not classified under the program/.test(wrong), `${user}: the backend refuses linking a Special Programs school to an IPED record`);
+      await C.ctx.close();
+    }
+  }
+
+  // ---- the school account itself
+  {
+    const A = await openNew('alpha.iped', recs, ex, { width: 1280, height: 900 });
+    const mine = recs.filter(r => r.schoolId === 1).length;
+    ok(await A.page.evaluate(() => currentUser.isSchool && currentUser.school.name === 'Alpha IPED School' && currentUser.district === 'Asuncion'), 'the school account signs in as that school, in its district');
+    ok((await A.page.textContent('#u-role')).includes('Alpha IPED School') && (await A.page.textContent('#u-role')).includes('IPED'), 'the header shows its school and program');
+    ok(await A.page.evaluate(() => Array.from(document.querySelectorAll('.nav-item')).filter(e => e.style.display !== 'none').map(e => e.textContent.trim()).join('|')) === 'Performance Dashboard|Fast Data Entry & Upload|Manage Records|Least Learned Competencies|Grade Level Breakdown', 'it sees only Dashboard, Data Entry, Manage Records, Least Learned and Grade Level Breakdown');
+    ok(!(await A.page.locator('#csv-btn').isVisible()) && !(await A.page.locator('#nav-settings').isVisible()) && !(await A.page.locator('#nav-schools').isVisible()), 'no CSV download, no Settings, no Schools & Accounts');
+    await A.page.evaluate(() => switchView('settings')); await settled(A.page);
+    ok(/Performance|Mean Percentage Score/i.test(await text(A.page)) && !/Access Restricted/.test(await text(A.page)) || await A.page.evaluate(() => currentView) === 'dashboard', 'opening a restricted screen lands on the dashboard');
+    await A.page.evaluate(() => switchView('dashboard')); await settled(A.page);
+    ok(new RegExp('TOTAL DISTRICT RECORDS\\s+' + mine + '\\b', 'i').test(await text(A.page)) || mine === 0, `dashboard counts only this school's records (${mine})`);
+    const ids = await A.page.evaluate(async () => (await getAllRecords()).map(r => r.schoolId).filter((v, i, a) => a.indexOf(v) === i));
+    ok(JSON.stringify(ids) === '[1]' || ids.length === 0, 'every record it can load belongs to its school');
+    // other schools' records by id
+    const api = await A.page.evaluate(async () => {
+      const R = window.__STUB.records, other = R.find(r => r.school_id === 2), carmen = R.find(r => r.school_id === 3), none = R.find(r => r.school_id == null && r.learning_area.startsWith('MAPEH'));
+      const out = {};
+      out.readOther = (await sb().from('assessment_records').select('id').in('id', [other.id, carmen.id, none.id])).data.length;
+      out.editOther = (await sb().from('assessment_records').update({ mps: 1 }).eq('id', other.id).select('id')).data.length;
+      out.unchanged = R.find(r => r.id === other.id).mps !== 1;
+      out.insertOther = (await sb().from('assessment_records').insert({ sy: '2025-2026', term: 'Term 1', district_id: 1, school_id: 2, key_stage: 'Key Stage 1', grade_level: 'Grade 3', learning_area: 'SPA - Vocal Arts', baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' })).error?.code;
+      out.insertNoSchool = (await sb().from('assessment_records').insert({ sy: '2025-2026', term: 'Term 1', district_id: 1, key_stage: 'Key Stage 1', grade_level: 'Grade 3', learning_area: 'IPED - English', baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' })).error?.code;
+      out.insertWrongProgram = (await sb().from('assessment_records').insert({ sy: '2025-2026', term: 'Term 1', district_id: 1, school_id: 1, key_stage: 'Key Stage 1', grade_level: 'Grade 3', learning_area: 'SPA - Vocal Arts', baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' })).error?.code;
+      out.create = (await sb().rpc('app_create_school_account', { p_username: 'sneaky.two', p_display_name: 'x', p_school_id: 2, p_password: 'longenough1' })).error?.code;
+      out.disable = (await sb().rpc('app_set_school_account_active', { p_profile_id: 'sch-alpha', p_active: false })).error?.code;
+      out.del = (await sb().rpc('app_delete_records', { p_ids: [R.find(r => r.school_id === 1).id] })).error?.code;
+      out.hardDel = (await sb().from('assessment_records').delete().eq('id', R.find(r => r.school_id === 1).id)).error?.code;
+      out.profile = (await sb().from('profiles').update({ school_id: 2, role: 'admin' }).eq('id', 'sch-alpha').select('id')).data?.length ?? 0;
+      out.moveOwn = (await sb().from('assessment_records').update({ school_id: 2 }).eq('id', R.find(r => r.school_id === 1).id).select('id')).error?.code;
+      out.schools = (await sb().from('schools').select('id')).data.map(s => s.id).join();
+      out.accounts = (await sb().rpc('app_list_school_accounts')).data.length;
+      out.notes = (await sb().from('comparative_notes').select('id')).data.length;
+      return out;
+    });
+    ok(api.readOther === 0 && api.editOther === 0 && api.unchanged, 'other schools\', other districts\' and unlinked records are invisible and cannot be edited, even by record id');
+    ok(api.insertOther != null && api.insertNoSchool != null && api.insertWrongProgram != null, 'it cannot enter records for another school, without a school, or in the wrong program (database refuses)');
+    ok(api.create === '42501' && api.disable === '42501' && api.accounts === 0, 'a school account cannot create or disable accounts, and sees no account list');
+    ok(api.del === '42501' && api.hardDel === '42501', 'a school account cannot delete records');
+    ok(api.profile === 0 && api.moveOwn != null, 'it cannot change its own role or school assignment, or move its records to another school');
+    ok(api.schools === '1' && api.notes === 0, 'it sees only its own school, and no notes');
+    // manual entry is locked to the school and program
+    await A.page.evaluate(() => switchView('data-input')); await settled(A.page);
+    await A.page.click('text=Method 2: Fast Manual Entry');
+    ok(await A.page.evaluate(() => document.getElementById('m-district').disabled && document.getElementById('m-district').value === 'Asuncion' && document.getElementById('m-school-pick').disabled && document.getElementById('m-school-pick').selectedOptions[0].textContent === 'Alpha IPED School'), 'manual entry: district and school are locked to the account\'s own');
+    const subj = await A.page.evaluate(() => Array.from(document.querySelectorAll('#m-subject option')).map(o => o.value));
+    ok(subj.length > 0 && subj.every(v => v.startsWith('IPED - ')), 'manual entry: only IPED learning areas (its program)');
+    await A.page.selectOption('#m-grade', 'Grade 4'); await A.page.fill('#m-mps', '79'); await A.page.fill('#m-pct75', '60'); await A.page.click('button:has-text("Save District Record")'); await A.page.waitForSelector('.toast-success');
+    const sv = await A.page.evaluate(() => window.__STUB.records[window.__STUB.records.length - 1]);
+    ok(sv.school_id === 1 && sv.district_id === 1 && sv.created_by === 'sch-alpha', 'the record is saved for its own school and district');
+    // import: school and district forced, wrong program rejected
+    const ax = rows => A.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
+    const row = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Carmen', 'School Name': 'Some Other School', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 3', 'Learning Area': 'IPED - Science', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70 };
+    const n0 = await A.page.evaluate(() => window.__STUB.records.length);
+    await A.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(A.page);
+    await A.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await ax([Object.assign({}, row, { 'Learning Area': 'SPA - Vocal Arts' })])) });
+    await A.page.waitForSelector('.toast-error');
+    ok(/not a learning area of your program/.test(await A.page.textContent('#toast-host')) && await A.page.evaluate(() => window.__STUB.records.length) === n0, 'import: a learning area outside its program rejects the file, nothing saved');
+    await A.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
+    await A.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await ax([row])) });
+    await A.page.waitForSelector('.toast-success');
+    const imp = await A.page.evaluate(() => window.__STUB.records[window.__STUB.records.length - 1]);
+    ok(imp.school_id === 1 && imp.district_id === 1 && imp.school === 'Alpha IPED School', 'import: whatever school or district the file names, rows are filed under the account\'s own school');
+    // manage: edit yes, delete no; competency edit works
+    await A.page.evaluate(() => { formDirty = false; switchView('manage-records'); }); await settled(A.page);
+    ok(await A.page.locator('#mr-table button:has-text("Delete")').count() === 0 && await A.page.locator('#mr-table button:has-text("Edit")').count() > 0 && await A.page.locator('#mr-tab-deleted').count() === 0, 'Manage Records: Edit is available, Delete and the Deleted tab are not');
+    await A.page.evaluate(() => openRecordEditor(window.__STUB.records.find(r => r.school_id === 1).id));
+    ok(await A.page.evaluate(() => document.getElementById('e-district').disabled && document.getElementById('e-school').disabled && Array.from(document.querySelectorAll('#e-subject option')).every(o => o.value.startsWith('IPED - '))), 'the edit form locks district and school and offers only its program\'s areas');
+    await A.page.fill('#e-mps', '90'); await A.page.click('#rec-save'); await A.page.waitForSelector('.toast-success');
+    await A.page.evaluate(() => { formDirty = false; switchView('least-learned'); }); await settled(A.page);
+    ok(await A.page.locator('#view-container button:has-text("Edit")').count() > 0, 'Least Learned Competencies: Edit buttons are available to a school account');
+    ok(A.errors.length === 0, 'no page errors' + (A.errors[0] ? ': ' + A.errors[0] : ''));
+    await A.ctx.close();
+    // a school account for a school with both programs sees both; a disabled account cannot sign in
+    const G = await openNew('supervisor', recs, ex);
+    await G.page.evaluate(() => switchView('schools')); await settled(G.page);
+    G.page.on('dialog', d => d.accept());
+    await G.page.evaluate(() => toggleSchoolAccount('sch-alpha', false)); await G.page.waitForSelector('.toast-success');
+    ok(await G.page.evaluate(() => window.__STUB.profiles.find(p => p.id === 'sch-alpha').active === false), 'the Supervisor can disable a school account');
+    await G.ctx.close();
+    const D = await openNew('alpha.iped', recs, Object.assign({}, ex, { noLogin: true, profiles: [Object.assign({}, ex.profiles[0], { active: false })] }));
+    await D.page.fill('#login-username', 'alpha.iped'); await D.page.fill('#login-password', 'alphapass1'); await D.page.click('#login-screen button[type=submit]');
+    await D.page.waitForFunction(() => /disabled or retired/.test(document.getElementById('login-error').textContent));
+    ok(await D.page.evaluate(() => document.getElementById('login-screen').style.display !== 'none' && !sessionStorage.getItem('stub_session')), 'a disabled school account cannot sign in (clear message, no session)');
     await D.ctx.close();
   }
 }
