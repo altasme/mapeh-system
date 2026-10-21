@@ -1568,6 +1568,77 @@ console.log('\n[20] Admin panel (/admin)');
   }
 }
 
+console.log('\n[21] District Profile View: every selected filter limits every section');
+{
+  const base = demoNew[0];
+  let n = 0;
+  const mk = (district, sy, term, grade, area, mps, pct, school) => Object.assign({}, base, { district, sy, term, gradeLevel: grade,
+    keyStage: (KS_OF[grade]), learningArea: area, mps, pct75: pct, baselineMps: 65, school: school || (area.startsWith('SPA') || area.startsWith('IPED') ? `${district} ${area} School` : ''), leastLearned: [], isDemo: false });
+  const KS_OF = { 'Grade 1': 'Key Stage 1', 'Grade 4': 'Key Stage 2', 'Grade 7': 'Key Stage 3', 'Grade 11': 'Key Stage 4' };
+  const recs = [];
+  const D = ['Asuncion', 'Carmen'], SY = ['2025-2026', '2026-2027'], T = ['Term 1', 'Term 2'];
+  const AREAS = { 'Grade 1': ['MAPEH - Overall'], 'Grade 4': ['MAPEH - Overall', 'MAPEH - Music'], 'Grade 7': ['MAPEH - Overall', 'SPA - Vocal Arts', 'IPED - Indigenous Music'], 'Grade 11': ['SPFL - Spanish'] };
+  for (const d of D) for (const sy of SY) for (const t of T) for (const g of Object.keys(AREAS)) for (const a of AREAS[g]) {
+    n++; recs.push(mk(d, sy, t, g, a, 60 + (n * 7) % 37, 40 + (n * 11) % 55));
+  }
+  // import left the Key Stage column at its default: a Grade 7 row labelled Key Stage 1
+  recs.push(Object.assign(mk('Asuncion', '2025-2026', 'Term 1', 'Grade 7', 'MAPEH - Overall', 99, 99), { keyStage: 'Key Stage 1' }));
+  const N = await openNew('admin', recs);
+  const lvl = g => ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'].includes(g) ? 'secondary' : 'elementary';
+  const prog = a => /^(SPA|SPS|SPFL) - /.test(a) ? 'special_programs' : /^IPED - /.test(a) ? 'iped' : null;
+  const KSG = { 'Key Stage 1': ['Grade 1', 'Grade 2', 'Grade 3'], 'Key Stage 2': ['Grade 4', 'Grade 5', 'Grade 6'], 'Key Stage 3': ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'], 'Key Stage 4': ['Grade 11', 'Grade 12'] };
+  const expected = f => {
+    const m = recs.filter(r => r.district === f.district && (f.sy === 'ALL' || r.sy === f.sy) && (f.term === 'ALL' || r.term === f.term)
+      && (f.level === 'ALL' || lvl(r.gradeLevel) === f.level) && (f.keystage === 'ALL' || KSG[f.keystage].includes(r.gradeLevel))
+      && (f.subject === 'ALL' || r.learningArea === f.subject) && (f.program === 'ALL' || prog(r.learningArea) === f.program));
+    return { count: m.length, mps: m.length ? (m.reduce((a, c) => a + c.mps, 0) / m.length).toFixed(2) : null, pct: m.length ? (m.reduce((a, c) => a + c.pct75, 0) / m.length).toFixed(2) : null,
+      areas: Array.from(new Set(m.map(r => r.learningArea))).sort() };
+  };
+  const combos = [];
+  for (const district of D) for (const sy of ['ALL', ...SY]) for (const term of ['ALL', 'Term 2']) for (const level of ['ALL', 'elementary', 'secondary'])
+    for (const keystage of ['ALL', 'Key Stage 1', 'Key Stage 3']) for (const program of ['ALL', 'special_programs', 'iped']) for (const subject of ['ALL', 'MAPEH - Overall', 'SPA - Vocal Arts'])
+      if ((district + sy + term + level + keystage + program + subject).length % 3 !== 0 || (sy === 'ALL' && level === 'ALL' && keystage === 'ALL')) combos.push({ district, sy, term, level, keystage, program, subject });
+  let bad = 0, empties = 0, checked = 0;
+  await N.page.evaluate(() => { resetFilters(); switchView('district-view'); }); await settled(N.page);
+  for (const f of combos) {
+    await N.page.evaluate(f => {
+      const set = (id, v) => { document.getElementById(id).value = v; };
+      set('flt-district', f.district); set('flt-sy', f.sy); set('flt-term', f.term); set('flt-level', f.level);
+      syncKeyStageOptions(); set('flt-keystage', f.keystage); set('flt-program', f.program); set('flt-subject', f.subject); applyFilters();
+    }, f);
+    await settled(N.page);
+    const got = await N.page.evaluate(() => ({
+      mps: document.querySelectorAll('.kpi-value')[0].innerText.trim(), pct: document.querySelectorAll('.kpi-value')[1].innerText.trim(),
+      areas: Array.from(document.querySelectorAll('#view-container .data-table tbody tr')).map(r => r.children[0].innerText.trim()).sort(),
+      msg: !!document.querySelector('#view-container .empty-state') && /No data available for the selected filters/.test(document.querySelector('#view-container .empty-state').innerText),
+      filters: JSON.stringify(filters) }));
+    const want = expected(f);
+    // a filter combination the UI refuses (key stage outside the level) leaves no matching records, which expected() reproduces
+    const eff = { ...f };
+    const exp = expected(eff);
+    const kpiOk = exp.count ? (got.mps === exp.mps + '%' && got.pct === exp.pct + '%' && JSON.stringify(got.areas) === JSON.stringify(exp.areas) && !got.msg)
+                            : (got.mps === 'No data' && got.areas.length === 0 && got.msg);
+    checked++; if (!exp.count) empties++;
+    if (!kpiOk) { bad++; if (bad < 6) console.log('   mismatch', JSON.stringify(f), JSON.stringify(got), JSON.stringify(exp)); }
+  }
+  ok(bad === 0, `${checked} filter combinations (district x year x term x level x key stage x program x learning area): KPIs, % target and matrix rows match an independent calculation`);
+  ok(empties > 0, `${empties} of those combinations matched nothing and showed "No data available for the selected filters" with no unrelated rows`);
+  await N.page.evaluate(() => { resetFilters(); switchView('district-view'); }); await settled(N.page);
+  await N.page.evaluate(() => { document.getElementById('flt-district').value = 'Asuncion'; document.getElementById('flt-keystage').value = 'Key Stage 1'; applyFilters(); }); await settled(N.page);
+  ok(await N.page.evaluate(() => !/99\.00%/.test(document.getElementById('view-container').innerText)), 'a Grade 7 row mislabelled Key Stage 1 does not appear under the Key Stage 1 filter');
+  await N.page.evaluate(() => { document.getElementById('flt-keystage').value = 'Key Stage 3'; applyFilters(); }); await settled(N.page);
+  ok(await N.page.evaluate(() => document.querySelector('#view-container .data-table').innerText.includes('MAPEH - Overall')), '...and does appear under Key Stage 3, where its grade belongs');
+  // coordinator follows the level implied by the filters
+  await N.page.evaluate(() => { window.__STUB.districts[0].elem_coordinator_name = 'Elena Elementary'; window.__STUB.districts[0].sec_coordinator_name = 'Sam Secondary'; return initDB(); });
+  await N.page.evaluate(() => { resetFilters(); document.getElementById('flt-district').value = 'Asuncion'; document.getElementById('flt-keystage').value = 'Key Stage 3'; applyFilters(); }); await settled(N.page);
+  const ctx1 = await N.page.evaluate(() => document.querySelector('#view-container .ctx-bar').innerText);
+  ok(/Sam Secondary/.test(ctx1) && !/Elena Elementary/.test(ctx1), 'Key Stage 3 (no level chosen): the Secondary coordinator is shown');
+  await N.page.evaluate(() => { document.getElementById('flt-keystage').value = 'Key Stage 2'; applyFilters(); }); await settled(N.page);
+  ok(/Elena Elementary/.test(await N.page.evaluate(() => document.querySelector('#view-container .ctx-bar').innerText)), 'Key Stage 2: the Elementary coordinator is shown');
+  ok(N.errors.length === 0, 'no page errors' + (N.errors[0] ? ': ' + N.errors[0] : ''));
+  await N.ctx.close();
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await browser.close(); server.close();
 process.exit(fail ? 1 : 0);

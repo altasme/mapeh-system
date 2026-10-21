@@ -1305,6 +1305,23 @@ const baselineSyNote = recs => recs.length ? `<br><small class="bl-sy-note">${es
 const PROGRAM_LABELS = { special_programs: "Special Programs", iped: "IPED" };
 const areaProgram = a => /^(SPA|SPS|SPFL) - /.test(a || "") ? "special_programs" : /^IPED - /.test(a || "") ? "iped" : null;
 const programOk = r => filters.program === "ALL" || areaProgram(r.learningArea) === filters.program;
+// Key Stage means a band of grades. It is judged from the record's grade (as the Comparative Analysis does), because the
+// stored keyStage text can disagree with the grade after an Excel import that left the column blank (AUDIT M8).
+const keyStageOk = r => {
+    if (filters.keystage === "ALL") return true;
+    const ks = KEY_STAGES.find(k => k.code === filters.keystage);
+    return ks ? ks.grades.includes(r.gradeLevel) : false;
+};
+// The one filter every report section uses. `district` is the district in scope ("ALL" for the whole division).
+function matchesFilters(r, district) {
+    if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
+    if (filters.term !== "ALL" && r.term !== filters.term) return false;
+    if (district !== "ALL" && r.district !== district) return false;
+    if (!levelOk(r)) return false;
+    if (!keyStageOk(r)) return false;
+    if (filters.subject !== "ALL" && r.learningArea !== filters.subject) return false;
+    return programOk(r);
+}
 const meanMps = list => list.length ? list.reduce((a, c) => a + c.mps, 0) / list.length : 0;
 const hasMapehNew = recs => recs.some(r => r.learningArea === MAPEH_OVERALL || isMapehComponent(r.learningArea));
 
@@ -1329,12 +1346,12 @@ const ALL_GRADES = [
 // The coordinator to show for a district on the current screen or report. A level view (a coordinator's own level, or
 // the Education Level filter) uses that level's coordinator. With both levels in view, one name is shown when both
 // levels have the same details (as before), otherwise both are shown ("Elementary name / Secondary name").
-function coordFor(district, fallbackPosition) {
+function coordFor(district, fallbackPosition, levelOverride) {
     const c = districtCoordinators[district];
     if (!c || !c.elementary) return { name: "Unassigned", position: fallbackPosition || "District Coordinator" };
     // Position and Title are stored separately; everything that prints a coordinator shows "Position, Title".
     const show = x => ({ name: x.name, position: [x.position, x.title].filter(v => v && v.trim()).join(", ") });
-    const L = effectiveLevel();
+    const L = levelOverride || effectiveLevel();
     if (L !== "ALL") return show(c[L]);
     const e = show(c.elementary), sc = show(c.secondary);
     if (e.name === sc.name && e.position === sc.position) return e;
@@ -1691,16 +1708,7 @@ async function getFilteredData() {
     const userDist = currentUser ? currentUser.district : "ALL";
     const effectiveDistrict = userDist !== "ALL" ? userDist : filters.district;
 
-    const filtered = data.filter(r => {
-        if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
-        if (filters.term !== "ALL" && r.term !== filters.term) return false;
-        if (effectiveDistrict !== "ALL" && r.district !== effectiveDistrict) return false;
-        if (!levelOk(r)) return false;
-        if (filters.keystage !== "ALL" && r.keyStage !== filters.keystage) return false;
-        if (filters.subject !== "ALL" && r.learningArea !== filters.subject) return false;
-        if (!programOk(r)) return false;
-        return true;
-    });
+    const filtered = data.filter(r => matchesFilters(r, effectiveDistrict));
     markSample(filtered);
     return filtered;
 }
@@ -2179,19 +2187,12 @@ async function renderDistrictProfileView(container) {
     let selectedDistrict = userDist !== "ALL" ? userDist : (filters.district !== "ALL" ? filters.district : DEFAULT_DISTRICTS[0]);
     
     const allRecords = await getAllRecords();
-    const distRecords = allRecords.filter(r => {
-        if (r.district !== selectedDistrict) return false;
-        if (!levelOk(r)) return false;
-        if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
-        if (filters.term !== "ALL" && r.term !== filters.term) return false;
-        if (filters.keystage !== "ALL" && r.keyStage !== filters.keystage) return false;
-        if (filters.subject !== "ALL" && r.learningArea !== filters.subject) return false;
-        if (!programOk(r)) return false;
-        return true;
-    });
+    const distRecords = allRecords.filter(r => matchesFilters(r, selectedDistrict));
 
     markSample(distRecords);
-    const coordInfo = coordFor(selectedDistrict, "District Supervisor");
+    // The coordinator follows the level in view; a Key Stage filter also fixes the level when none is chosen.
+    const ksLevel = filters.keystage === "ALL" ? "ALL" : (LEVELS.elementary.keyStages.includes(filters.keystage) ? "elementary" : "secondary");
+    const coordInfo = coordFor(selectedDistrict, "District Supervisor", effectiveLevel() !== "ALL" ? effectiveLevel() : ksLevel);
     const avgMPS = distRecords.length ? (distRecords.reduce((a,c) => a + c.mps, 0) / distRecords.length).toFixed(2) : "0.00";
     const avgPct75 = distRecords.length ? (distRecords.reduce((a,c) => a + c.pct75, 0) / distRecords.length).toFixed(2) : "0.00";
     const distPL = getPL(parseFloat(avgMPS));
@@ -2200,7 +2201,10 @@ async function renderDistrictProfileView(container) {
         .map(d => `<option value="${esc(d)}" ${d === selectedDistrict ? 'selected' : ''}>${esc(d)}</option>`).join('');
 
     const activeSubjectsInDistrict = SUBJECTS.filter(s => distRecords.some(r => r.learningArea === s));
-    const subjectsToDisplay = activeSubjectsInDistrict.length > 0 ? activeSubjectsInDistrict : SUBJECTS.filter(x => !isMapehLegacy(x)).slice(0, 15);
+    const subjectsToDisplay = activeSubjectsInDistrict;
+    const noMatch = distRecords.length === 0;
+    const allDistrictNote = userDist === "ALL" && filters.district === "ALL"
+        ? `<div class="ctx-note" style="font-size:0.8rem;color:var(--text-muted);margin:-10px 0 14px;">The District filter is set to All Districts, so this profile shows ${esc(selectedDistrict)}. Choose another district above to switch.</div>` : "";
 
     const subjMatrixRows = subjectsToDisplay.map(s => {
         const sRecs = distRecords.filter(r => r.learningArea === s);
@@ -2239,6 +2243,7 @@ async function renderDistrictProfileView(container) {
             <strong style="color:var(--deped-dark); font-size:0.95rem; margin-left: 6px;">${esc(coordInfo.name)}</strong> (${esc(coordInfo.position)})
         </div>
     </div>
+    ${allDistrictNote}
     <div class="kpi-grid">
         <div class="kpi-card" style="border-top-color: var(--deped-blue);">
             <div class="kpi-title">${esc(selectedDistrict)} District Average MPS</div>
@@ -2261,7 +2266,8 @@ async function renderDistrictProfileView(container) {
         <div class="card-box-header">
             <h3>${esc(selectedDistrict)} District Performance Matrix by Specialization Area</h3>
         </div>
-        <div class="table-scroll"><table class="data-table">
+        ${noMatch ? '<div class="empty-state" role="status" style="padding:28px;text-align:center;color:var(--text-muted);">No data available for the selected filters.</div>' : ''}
+        <div class="table-scroll" ${noMatch ? 'hidden' : ''}><table class="data-table">
             <thead>
                 <tr>
                     <th>Program / Specialization Area</th>
