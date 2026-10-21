@@ -1387,8 +1387,9 @@ function toRow(r) {
         pct75: r.pct75,
         proficiency_level: r.proficiencyLevel,
         least_learned: r.leastLearned || [],
-        baseline_sy: r.baselineSy || null,
-        school_id: r.schoolId || null
+        // only sent when set, so the app also works against a database that has not had migration 0010 yet
+        ...(r.baselineSy ? { baseline_sy: r.baselineSy } : {}),
+        ...(r.schoolId ? { school_id: r.schoolId } : {})
     };
 }
 
@@ -1424,6 +1425,9 @@ async function loadSchools() {
         sb().from("schools").select("id, name, district_id, active").order("name").range(0, 4999),
         sb().from("school_programs").select("school_id, program").range(0, 9999)
     ]);
+    // before migration 0010 the school tables do not exist: the app still loads, with an empty school list
+    const missing = e => e && (e.code === "42P01" || e.code === "PGRST205" || /schools|school_programs/.test(e.message || "") && /not find|does not exist/i.test(e.message || ""));
+    if (missing(a.error) || missing(b.error)) { SCHOOLS = []; return; }
     if (a.error) throw a.error;
     if (b.error) throw b.error;
     const progs = {};
