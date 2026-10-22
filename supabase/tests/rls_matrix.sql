@@ -215,11 +215,11 @@ begin
     ok_rows text[][] := array[
       ['Grade 1','MAPEH - Overall'],['Grade 3','MAPEH - Overall'],['Grade 4','MAPEH - Overall'],['Grade 4','MAPEH - Music'],
       ['Grade 6','MAPEH - Arts'],['Grade 7','MAPEH - PE'],['Grade 10','MAPEH - Health'],['Grade 10','MAPEH - Overall'],
+      ['Grade 4','MAPEH - Music & Arts'],['Grade 8','MAPEH - PE & Health'],['Grade 10','MAPEH - Music & Arts'],['Grade 5','MAPEH - PE & Health'],
       ['Grade 1','IPED - Music'],['Grade 2','Filipino'],['Grade 11','Empowerment Technologies'],['Grade 12','MAPEH-looking but not family']];
     bad_rows text[][] := array[
       ['Grade 1','MAPEH - Music'],['Grade 2','MAPEH - Arts'],['Grade 3','MAPEH - PE'],['Grade 3','MAPEH - Health'],
       ['Grade 2','MAPEH - Music & Arts'],['Grade 1','MAPEH - PE & Health'],
-      ['Grade 4','MAPEH - Music & Arts'],['Grade 8','MAPEH - PE & Health'],['Grade 10','MAPEH - Music & Arts'],
       ['Grade 11','MAPEH - Overall'],['Grade 12','MAPEH - Music'],['Grade 11','MAPEH - Music & Arts']];
     i int;
   begin
@@ -243,7 +243,10 @@ begin
     denied := false; begin update public.assessment_records set grade_level = 'Grade 2' where id = rid; exception when check_violation then denied := true; end;
     assert denied, 'moving a Music record to Grade 2 is refused';
     denied := false; begin update public.assessment_records set learning_area = 'MAPEH - Music & Arts' where id = rid; exception when check_violation then denied := true; end;
-    assert denied, 'switching a Grade 5 record to a legacy combined area is refused';
+    assert not denied, 'switching a Grade 5 record to the combined Music & Arts area is accepted (migration 0012)';
+    denied := false; begin update public.assessment_records set learning_area = 'MAPEH - Music & Arts', grade_level = 'Grade 2' where id = rid; exception when check_violation then denied := true; end;
+    assert denied, 'but the combined area in Grade 2 is still refused';
+    update public.assessment_records set learning_area = 'MAPEH - Music', grade_level = 'Grade 5' where id = rid;
     update public.assessment_records set learning_area = 'MAPEH - Arts', mps = 76 where id = rid; get diagnostics n = row_count; assert n = 1, 'a valid edit passes';
     assert (select proficiency_level from public.assessment_records where id = rid) = 'Developing', 'proficiency recomputed after an edit';
     assert (select updated_by from public.assessment_records where id = rid) = '00000000-0000-0000-0000-0000000000a1', 'editor is stamped';

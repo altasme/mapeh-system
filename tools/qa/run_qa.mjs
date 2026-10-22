@@ -211,7 +211,7 @@ const FILTERS = [null, { 'flt-term': 'Term 1' }, { 'flt-term': 'ALL', 'flt-keyst
 
 // =================================================================
 console.log('\n[1] Seed fidelity: districts, coordinators, settings and constants match the original');
-{
+if (want(1)) {
   const { legacyCoords, legacySettings, legacyDistricts } = await readPasswords();
   ok(JSON.stringify(districts.map(d => d.name)) === JSON.stringify(legacyDistricts), 'district list and order identical');
   ok(districts.every(d => legacyCoords[d.name].name === d.coordinator_name && legacyCoords[d.name].position === d.coordinator_position), 'coordinator defaults identical (seed vs original)');
@@ -220,7 +220,7 @@ console.log('\n[1] Seed fidelity: districts, coordinators, settings and constant
 }
 
 console.log('\n[2] Parity on the 1,452-row sample set (admin): every view, 5 filter combinations');
-{
+if (want(2)) {
   const L = await openLegacy('admin', demo); const N = await openNew('admin', demo);
   await legacyReady(L.page);
   for (const f of FILTERS) {
@@ -242,7 +242,7 @@ console.log('\n[2] Parity on the 1,452-row sample set (admin): every view, 5 fil
 }
 
 console.log('\n[3] Regression fixture: hand-computed expectations (fixtures/regression.json)');
-{
+if (want(3)) {
   const recs = fixture.records.map(r => Object.assign({ proficiencyLevel: '', isDemo: false, leastLearned: [] }, r));
   const E = fixture.expected;
   const N = await openNew('admin', recs); const L = await openLegacy('admin', recs); await legacyReady(L.page);
@@ -272,7 +272,7 @@ console.log('\n[3] Regression fixture: hand-computed expectations (fixtures/regr
 }
 
 console.log('\n[4] Security: stored XSS is neutralised (and was live in the original)');
-{
+if (want(4)) {
   const evil = Object.assign({}, demo[0], { school: '<img src=x onerror="window.__pwned=1">', learningArea: 'SPA - Vocal Arts',
     leastLearned: [{ code: '<b>X</b>', desc: '</td><img src=x onerror="window.__pwned=1">' }] });
   const L = await openLegacy('admin', [evil]); await legacyReady(L.page);
@@ -293,7 +293,7 @@ console.log('\n[4] Security: stored XSS is neutralised (and was live in the orig
 }
 
 console.log('\n[5] Roles: coordinator scope, settings access, destructive actions');
-{
+if (want(5)) {
   const N = await openNew('carmen_elemcoord', demo);
   await N.page.evaluate(() => switchView('division')); await settled(N.page);
   let t = await text(N.page);
@@ -324,7 +324,7 @@ console.log('\n[5] Roles: coordinator scope, settings access, destructive action
 }
 
 console.log('\n[6] Writes: confirmed saves, constraint errors, all-or-nothing import, unknown district');
-{
+if (want(6)) {
   const N = await openNew('admin', demo.slice(0, 20));
   const xlsx = async rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
   const upload = async rows => { await N.page.evaluate(() => switchView('data-input')); await settled(N.page);
@@ -370,7 +370,7 @@ console.log('\n[6] Writes: confirmed saves, constraint errors, all-or-nothing im
 }
 
 console.log('\n[7] Unsaved-changes guard, keyboard access, login errors, sample-data flag');
-{
+if (want(7)) {
   const N = await openNew('admin', demo.slice(0, 50));
   await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
   await N.page.fill('#comp-analysis-input', 'draft');
@@ -415,7 +415,7 @@ console.log('\n[7] Unsaved-changes guard, keyboard access, login errors, sample-
 }
 
 console.log('\n[8] Phone width (360 px): no page-level horizontal scroll, drawer navigation');
-{
+if (want(8)) {
   const N = await openNew('admin', demo, {}, { width: 360, height: 740 });
   const widths = {};
   for (const v of ['division', 'district-view', 'comparative', 'dashboard', 'data-input', 'least-learned', 'grade-view', 'reports', 'settings']) {
@@ -433,7 +433,7 @@ console.log('\n[8] Phone width (360 px): no page-level horizontal scroll, drawer
 }
 
 console.log('\n[9] Print CSS: the original @media print block is byte-identical');
-{
+if (want(9)) {
   const grab = f => { const s = fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/\r\n/g, '\n'); const i = s.indexOf('/* PRINT STYLES */'); return s.slice(i, s.indexOf('.print-only-header, .print-only-footer, .print-signatories { display: none; }', i)); };
   const legacyPrint = grab('legacy/mapehDavNor.original.html');
   const portedAll = fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8').replace(/\r\n/g, '\n');
@@ -441,7 +441,7 @@ console.log('\n[9] Print CSS: the original @media print block is byte-identical'
 }
 
 console.log('\n[10] Print output: PDFs of the original and the ported app for division and district scope');
-{
+if (want(10)) {
   for (const [user, label, view, filt] of [['admin', 'division', 'comparative', null], ['admin', 'district', 'comparative', { 'flt-district': 'Carmen' }], ['admin', 'division-dashboard', 'dashboard', null]]) {
     const L = await openLegacy(user, demo); const N = await openNew(user, demo);
     await legacyReady(L.page);
@@ -467,7 +467,7 @@ console.log('\n[10] Print output: PDFs of the original and the ported app for di
 }
 
 console.log('\n[11] Download CSV (Admin and Supervisor) and the aligned signatory rows');
-{
+if (want(11)) {
   const parseCsv = text => { // RFC 4180 parser (quotes, doubled quotes, newlines inside quotes)
     const rows = []; let row = [], cell = '', q = false;
     for (let i = 0; i < text.length; i++) { const c = text[i];
@@ -537,7 +537,7 @@ console.log('\n[11] Download CSV (Admin and Supervisor) and the aligned signator
 }
 
 console.log('\n[12] Elementary and Secondary coordinators: 22 accounts, separation, initial passwords as is');
-{
+if (want(12)) {
   const LV = { elementary: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'], secondary: ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'] };
   const LABEL = { elementary: 'Elementary', secondary: 'Secondary' };
   ok(LEVEL_ACCOUNTS.length === 22 && new Set(LEVEL_ACCOUNTS.map(a => a.username)).size === 22, '22 distinct accounts: one Elementary and one Secondary coordinator for each of the 11 districts');
@@ -676,7 +676,7 @@ console.log('\n[12] Elementary and Secondary coordinators: 22 accounts, separati
 
 
 console.log('\n[16] MAPEH components, grade rules, and record edit / delete');
-{
+if (want(16)) {
   const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
   const f2 = v => v.toFixed(2) + '%';
   const meanOf = f => mean(demoNew.filter(f).map(r => r.mps));
@@ -725,32 +725,32 @@ console.log('\n[16] MAPEH components, grade rules, and record edit / delete');
     const opts = async g => { await N.page.selectOption('#m-grade', g); return N.page.evaluate(() => Array.from(document.querySelectorAll('#m-subject option')).map(o => o.value)); };
     const o1 = await opts('Grade 2'), o5 = await opts('Grade 5'), o11 = await opts('Grade 11');
     ok(o1.includes('MAPEH - Overall') && !o1.some(v => /MAPEH - (Music|Arts|PE|Health)/.test(v)) && o1.includes('IPED - English'), 'manual entry Grade 2: overall MAPEH only (no components, no combined areas); IPED untouched');
-    ok(['MAPEH - Overall', 'MAPEH - Music', 'MAPEH - Arts', 'MAPEH - PE', 'MAPEH - Health'].every(v => o5.includes(v)) && !o5.some(v => /&/.test(v) && /^MAPEH/.test(v)), 'manual entry Grade 5: overall plus four components, no combined areas');
+    ok(['MAPEH - Overall', 'MAPEH - Music', 'MAPEH - Arts', 'MAPEH - PE', 'MAPEH - Health'].every(v => o5.includes(v)) && o5.includes('MAPEH - Music & Arts') && o5.includes('MAPEH - PE & Health'), 'manual entry Grade 5: overall, the four components and the combined Music & Arts (MA) and PE & Health (PEH)');
     ok(!o11.some(v => /^MAPEH/.test(v)) && o11.includes('SPA - Vocal Arts'), 'manual entry Grade 11: no MAPEH areas');
     const filterOpts = await N.page.evaluate(() => Array.from(document.querySelectorAll('#flt-subject option')).map(o => o.value));
-    ok(filterOpts.includes('MAPEH - Music') && filterOpts.includes('MAPEH - Music & Arts'), 'the subject filter lists new areas and still lists the legacy ones');
+    ok(filterOpts.includes('MAPEH - Music') && filterOpts.includes('MAPEH - Music & Arts') && filterOpts.includes('MAPEH - PE & Health'), 'the subject filter lists the components and the combined areas');
 
     const xlsx = async rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
     const upload = async rows => { await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page); await N.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
       await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xlsx(rows)) }); };
     const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'X', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 1', 'Learning Area': 'MAPEH - Overall', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'lc' };
     const count = () => N.page.evaluate(() => window.__STUB.records.length);
-    const bad = [['Grade 2', 'MAPEH - Music'], ['Grade 3', 'MAPEH - Health'], ['Grade 1', 'MAPEH - Music & Arts'], ['Grade 5', 'MAPEH - PE & Health'], ['Grade 11', 'MAPEH - Overall'], ['Grade 12', 'MAPEH - Arts']];
+    const bad = [['Grade 2', 'MAPEH - Music'], ['Grade 3', 'MAPEH - Health'], ['Grade 1', 'MAPEH - Music & Arts'], ['Grade 3', 'MAPEH - PE & Health'], ['Grade 11', 'MAPEH - Overall'], ['Grade 12', 'MAPEH - Arts']];
     for (const [gr, area] of bad) {
       await upload([base, Object.assign({}, base, { 'Grade Level': gr, 'Learning Area': area })]);
       await N.page.waitForSelector('.toast-error');
       const m = await N.page.textContent('#toast-host');
       ok(/Nothing was saved/.test(m) && /row 3/.test(m) && await count() === 20, `import refuses ${gr} / ${area} with its row number, and saves nothing (the valid row 2 is not saved either)`);
     }
-    await upload([Object.assign({}, base, { 'Grade Level': 'Grade 2', 'Learning Area': 'IPED - MAPEH (Music & Arts)' }), Object.assign({}, base, { 'Grade Level': 'Grade 5', 'Key Stage': 'Key Stage 2', 'Learning Area': 'MAPEH - Music' }), Object.assign({}, base, { 'Grade Level': 'Grade 9', 'Key Stage': 'Key Stage 3', 'Learning Area': 'MAPEH - Overall' })]);
+    await upload([Object.assign({}, base, { 'Grade Level': 'Grade 2', 'Learning Area': 'IPED - MAPEH (Music & Arts)' }), Object.assign({}, base, { 'Grade Level': 'Grade 5', 'Key Stage': 'Key Stage 2', 'Learning Area': 'MAPEH - Music' }), Object.assign({}, base, { 'Grade Level': 'Grade 9', 'Key Stage': 'Key Stage 3', 'Learning Area': 'MAPEH - Overall' }), Object.assign({}, base, { 'Grade Level': 'Grade 5', 'Key Stage': 'Key Stage 2', 'Learning Area': 'MAPEH - PE & Health' }), Object.assign({}, base, { 'Grade Level': 'Grade 6', 'Key Stage': 'Key Stage 2', 'Learning Area': 'MAPEH - Music & Arts' })]);
     await N.page.waitForSelector('.toast-success');
-    ok(await count() === 23, 'import accepts IPED in Grade 2 (unrestricted), Music in Grade 5 and Overall in Grade 9');
+    ok(await count() === 25, 'import accepts IPED in Grade 2 (unrestricted), Music in Grade 5, Overall in Grade 9, and the combined PE & Health (Grade 5) and Music & Arts (Grade 6)');
     // the backend refuses the same combinations when the app is bypassed
     const api = await N.page.evaluate(async () => {
       const row = (g, a) => ({ sy: '2025-2026', term: 'Term 1', district_id: 1, school: '', key_stage: 'Key Stage 1', grade_level: g, learning_area: a, baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' });
       const r = {};
       r.g1music = (await sb().from('assessment_records').insert(row('Grade 1', 'MAPEH - Music'))).error;
-      r.g4legacy = (await sb().from('assessment_records').insert(row('Grade 4', 'MAPEH - Music & Arts'))).error;
+      r.g2legacy = (await sb().from('assessment_records').insert(row('Grade 2', 'MAPEH - Music & Arts'))).error;
       r.g12 = (await sb().from('assessment_records').insert(row('Grade 12', 'MAPEH - Overall'))).error;
       r.iped = (await sb().from('assessment_records').insert(row('Grade 1', 'IPED - MAPEH (PE & Health)'))).error;
       const id = (await sb().from('assessment_records').insert(row('Grade 5', 'MAPEH - Music')).select('id')).data[0].id;
@@ -758,7 +758,7 @@ console.log('\n[16] MAPEH components, grade rules, and record edit / delete');
       r.msg = friendlyError(r.g1music);
       return r;
     });
-    ok(api.g1music?.code === '23514' && api.g4legacy?.code === '23514' && api.g12?.code === '23514' && api.iped === null && api.move?.code === '23514', 'backend refuses Grade 1 Music, Grade 4 legacy, Grade 12 MAPEH and editing Music into Grade 2; IPED passes');
+    ok(api.g1music?.code === '23514' && api.g2legacy?.code === '23514' && api.g12?.code === '23514' && api.iped === null && api.move?.code === '23514', 'backend refuses Grade 1 Music, Grade 2 combined Music & Arts, Grade 12 MAPEH and editing Music into Grade 2; IPED passes');
     ok(/^Grades 1 to 3 are recorded as overall MAPEH only/.test(api.msg), 'the backend rule is shown in plain English');
     await N.ctx.close();
   }
@@ -889,7 +889,7 @@ console.log('\n[16] MAPEH components, grade rules, and record edit / delete');
 
 
 console.log('\n[17] Settings: coordinators grouped by district, one Elementary and one Secondary each');
-{
+if (want(17)) {
   const N = await openNew('admin', demo.slice(0, 40));
   await N.page.evaluate(() => switchView('settings')); await settled(N.page);
   const cards = await N.page.evaluate(() => Array.from(document.querySelectorAll('.coord-card')).map(c => ({
@@ -939,7 +939,7 @@ console.log('\n[17] Settings: coordinators grouped by district, one Elementary a
 
 
 console.log('\n[18] Chart colours, and editing least learned competencies');
-{
+if (want(18)) {
   // ---- colours: distinct, consistent, readable; data unchanged (parity tests above already compare the values)
   const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
   const lin = c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
@@ -1031,7 +1031,7 @@ console.log('\n[18] Chart colours, and editing least learned competencies');
 
 
 console.log('\n[19] Baseline school year, Special Programs / IPED classification, school accounts');
-{
+if (want(19)) {
   const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
   const SCH = [{ id: 1, name: 'Alpha IPED School', district_id: 1, active: true }, { id: 2, name: 'Beta SP School', district_id: 1, active: true }, { id: 3, name: 'Gamma School', district_id: 3, active: true },
     { id: 4, name: 'Asuncion IPED Central Elementary School', district_id: 1, active: true }];
@@ -1312,7 +1312,7 @@ console.log('\n[19] Baseline school year, Special Programs / IPED classification
 
 
 console.log('\n[20] Admin panel (/admin)');
-{
+if (want(20)) {
   const SCH = [{ id: 1, name: 'Alpha IPED School', district_id: 1, active: true }, { id: 2, name: 'Beta SP School', district_id: 1, active: true }];
   const PRG = [{ school_id: 1, program: 'iped' }, { school_id: 2, program: 'special_programs' }];
   const base = { schools: SCH, schoolPrograms: PRG };
@@ -1571,7 +1571,7 @@ console.log('\n[20] Admin panel (/admin)');
 }
 
 console.log('\n[21] District Profile View: every selected filter limits every section');
-{
+if (want(21)) {
   const base = demoNew[0];
   let n = 0;
   const mk = (district, sy, term, grade, area, mps, pct, school) => Object.assign({}, base, { district, sy, term, gradeLevel: grade,
@@ -1707,6 +1707,69 @@ if (want(22)) {
   await C.page.evaluate(() => switchView('division')); await settled(C.page);
   ok(await C.page.evaluate(() => document.querySelectorAll('.program-overall').length) === 0, 'district coordinator: the Overall SP / IPED administrator summaries are not shown');
   await C.ctx.close();
+}
+
+console.log('\n[23] Fast Data Entry: Music & Arts (MA) and PE & Health (PEH) are selectable, saved and reported');
+if (want(23)) {
+  const N = await openNew('admin', demoNew.slice(0, 30));
+  const stubCount = a => N.page.evaluate(area => window.__STUB.records.filter(r => r.learning_area === area).length, a);
+  await N.page.evaluate(() => switchView('data-input')); await settled(N.page);
+  await N.page.click('text=Method 2: Fast Manual Entry');
+  const opts = async g => { await N.page.selectOption('#m-grade', g); return N.page.evaluate(() => Array.from(document.querySelectorAll('#m-subject option')).map(o => ({ v: o.value, t: o.textContent.trim() }))); };
+  const MA = 'MAPEH - Music & Arts', PEH = 'MAPEH - PE & Health';
+  const o4 = await opts('Grade 4'), o10 = await opts('Grade 10'), o2 = await opts('Grade 2'), o11 = await opts('Grade 11');
+  ok([MA, PEH].every(v => o4.some(o => o.v === v)) && [MA, PEH].every(v => o10.some(o => o.v === v)), 'Grades 4 and 10: Music & Arts and PE & Health are in the Learning Area / Program Track dropdown');
+  ok(o4.find(o => o.v === MA).t.endsWith('(MA)') && o4.find(o => o.v === PEH).t.endsWith('(PEH)'), 'they are labelled (MA) and (PEH)');
+  const have = (list, v) => list.some(o => o.v === v);
+  ok(['MAPEH - Overall', 'MAPEH - Music', 'MAPEH - Arts', 'MAPEH - PE', 'MAPEH - Health', 'SPA - Vocal Arts', 'IPED - English', 'IPED - MAPEH (Music & Arts)', 'IPED - MAPEH (PE & Health)'].every(v => have(o4, v)) && o4.some(o => o.v.startsWith('SPS - ')) && o4.some(o => o.v.startsWith('SPFL - ')), 'Overall MAPEH, the four components and every SPA / SPS / SPFL / IPED option are still there');
+  ok(!have(o2, MA) && !have(o2, PEH) && !o11.some(o => o.v.startsWith('MAPEH')), 'not offered where they do not apply: Grade 2 (overall only) and Grade 11 (no MAPEH)');
+  ok(await N.page.evaluate(() => !/value="MAPEH - /.test(programOptionsHTML(['iped'])) && !/value="MAPEH - /.test(programOptionsHTML(['special_programs']))), 'a school account\'s program list (Special Programs / IPED) does not contain them');
+  // select each, check the form, save
+  for (const [area, mps, grade] of [[MA, '84.5', 'Grade 5'], [PEH, '77.25', 'Grade 7']]) {
+    await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page); await N.page.click('text=Method 2: Fast Manual Entry');
+    await N.page.selectOption('#m-grade', grade); await N.page.selectOption('#m-subject', area);
+    ok(await N.page.evaluate(() => getComputedStyle(document.getElementById('m-school-group')).display === 'none') && await N.page.isVisible('#m-mps') && await N.page.isVisible('#m-pct75'), `${area}: district-level form (no school field), MPS and % fields shown`);
+    await N.page.selectOption('#m-district', 'Carmen');
+    await N.page.fill('#m-mps', mps); await N.page.fill('#m-pct75', '66');
+    await N.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
+    const before = await stubCount(area);
+    await N.page.click('button:has-text("Save District Record")');
+    await N.page.waitForSelector('.toast-success', { timeout: 8000 }).catch(() => {});
+    const saved = await N.page.evaluate(a => window.__STUB.records.filter(r => r.learning_area === a).slice(-1)[0], area);
+    ok(await stubCount(area) === before + 1 && saved.mps === parseFloat(mps) && saved.grade_level === grade && saved.school === '', `${area}: saved after a database confirmation (Carmen, ${grade}, MPS ${mps})`);
+  }
+  // retrieval and reporting
+  await N.page.evaluate(() => { formDirty = false; resetFilters(); document.getElementById('flt-district').value = 'Carmen'; applyFilters(); switchView('district-view'); }); await settled(N.page);
+  const prof = await N.page.evaluate(() => document.getElementById('view-container').innerText);
+  ok(prof.includes(MA) && prof.includes(PEH), 'District Profile lists both combined areas with the saved records');
+  await N.page.evaluate(() => { document.getElementById('flt-subject').value = 'MAPEH - Music & Arts'; applyFilters(); }); await settled(N.page);
+  ok(await N.page.evaluate(() => /84\.50%/.test(document.getElementById('view-container').innerText) && !/PE & Health/.test(document.getElementById('view-container').innerText)), 'the learning-area filter returns only Music & Arts records (84.50%)');
+  await N.page.evaluate(() => { document.getElementById('flt-subject').value = 'ALL'; applyFilters(); switchView('manage-records'); }); await settled(N.page);
+  await N.page.fill('#mr-search', 'MAPEH - Music &'); await N.page.waitForTimeout(300);
+  ok(/84\.5/.test(await N.page.textContent('#view-container')), 'Manage Records finds the Music & Arts record');
+  await N.page.evaluate(() => { formDirty = false; resetFilters(); switchView('dashboard'); }); await settled(N.page);
+  ok(await N.page.evaluate(() => /MAPEH Consolidated Total MPS/i.test(document.getElementById('view-container').innerText)), 'dashboard MAPEH total renders with the new records included (combined records count in the MAPEH total, as before)');
+  // validation: a combined area is still refused in Grade 2 by the form
+  await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page);
+  await N.page.click('text=Method 2: Fast Manual Entry');
+  const errMsg = await N.page.evaluate(async () => { const r = await sb().from('assessment_records').insert({ sy: '2025-2026', term: 'Term 1', district_id: 1, school: '', key_stage: 'Key Stage 1', grade_level: 'Grade 2', learning_area: 'MAPEH - Music & Arts', baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' }); return r.error && r.error.code; });
+  ok(errMsg === '23514', 'the database still refuses the combined areas in Grade 2');
+  // existing options keep working: IPED and SPA save
+  for (const [grade, area, school] of [['Grade 4', 'IPED - English', 'Test IPED School'], ['Grade 7', 'SPA - Vocal Arts', 'Test SPA School']]) {
+    await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page); await N.page.click('text=Method 2: Fast Manual Entry');
+    await N.page.selectOption('#m-grade', grade); await N.page.selectOption('#m-subject', area);
+    await N.page.selectOption('#m-district', 'Carmen');
+    if (await N.page.isVisible('#m-school')) await N.page.fill('#m-school', school);
+    else await N.page.evaluate(() => { const s = document.getElementById('m-school-pick'); if (s && s.options.length > 1) { s.selectedIndex = 1; s.dispatchEvent(new Event('change')); } });
+    await N.page.fill('#m-mps', '80'); await N.page.fill('#m-pct75', '70');
+    await N.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
+    const b = await stubCount(area);
+    await N.page.click('button:has-text("Save District Record")');
+    await N.page.waitForSelector('.toast-success, .toast-error');
+    ok(await stubCount(area) === b + 1, `${area} still saves`);
+  }
+  ok(N.errors.length === 0, 'no page errors' + (N.errors[0] ? ': ' + N.errors[0] : ''));
+  await N.ctx.close();
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

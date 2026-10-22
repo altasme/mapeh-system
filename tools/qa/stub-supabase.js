@@ -34,8 +34,7 @@
   const LEG = ['MAPEH - Music & Arts', 'MAPEH - PE & Health'], COMP = ['MAPEH - Music', 'MAPEH - Arts', 'MAPEH - PE', 'MAPEH - Health'];
   const ruleProblem = (g, a) => {
     if (a !== 'MAPEH - Overall' && !COMP.includes(a) && !LEG.includes(a)) return null;
-    if (['Grade 1','Grade 2','Grade 3'].includes(g) && a !== 'MAPEH - Overall') return 'Grades 1 to 3 are recorded as overall MAPEH only. Music, Arts, PE and Health are not recorded separately for these grades.';
-    if (['Grade 4','Grade 5','Grade 6','Grade 7','Grade 8','Grade 9','Grade 10'].includes(g) && LEG.includes(a)) return 'Grades 4 to 10 are recorded as overall MAPEH plus Music, Arts, PE and Health. The combined Music & Arts and PE & Health areas are no longer used.';
+    if (['Grade 1','Grade 2','Grade 3'].includes(g) && a !== 'MAPEH - Overall') return 'Grades 1 to 3 are recorded as overall MAPEH only. Music, Arts, PE, Health and the combined Music & Arts and PE & Health areas are not recorded separately for these grades.';
     if (['Grade 11','Grade 12'].includes(g)) return 'MAPEH is not assessed in Grades 11 and 12.';
     return null;
   };

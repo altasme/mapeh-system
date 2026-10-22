@@ -1265,14 +1265,13 @@ const isMapehConsolidated = a => a === MAPEH_OVERALL || isMapehLegacy(a);
 function mapehRuleProblem(grade, area) {
     if (!isMapehFamily(area)) return "";
     if (["Grade 1", "Grade 2", "Grade 3"].includes(grade) && area !== MAPEH_OVERALL)
-        return "Grades 1 to 3 are recorded as overall MAPEH only. Music, Arts, PE and Health are not recorded separately for these grades.";
-    if (["Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10"].includes(grade) && isMapehLegacy(area))
-        return "Grades 4 to 10 are recorded as overall MAPEH plus Music, Arts, PE and Health. The combined Music & Arts and PE & Health areas are no longer used.";
+        return "Grades 1 to 3 are recorded as overall MAPEH only. Music, Arts, PE, Health and the combined Music & Arts and PE & Health areas are not recorded separately for these grades.";
     if (["Grade 11", "Grade 12"].includes(grade)) return "MAPEH is not assessed in Grades 11 and 12.";
     return "";
 }
+// What Fast Data Entry offers for a grade: Overall MAPEH, the four components and the two combined areas, as the grade allows.
 function mapehAreasForGrade(grade) {
-    return [MAPEH_OVERALL, ...MAPEH_COMPONENTS.map(c => c.area)].filter(a => !mapehRuleProblem(grade, a));
+    return [MAPEH_OVERALL, ...MAPEH_COMPONENTS.map(c => c.area), ...MAPEH_LEGACY].filter(a => !mapehRuleProblem(grade, a));
 }
 /* CHART COLOURS. One categorical palette for every chart. Districts keep the same colour whatever the filter shows
    (colour follows the district's place in the list); program tracks use the colours of their dashboard cards;
@@ -1764,13 +1763,14 @@ function extractCompetencyItems(records) {
 // MAPEH options. Filters list everything (legacy areas marked); a grade-aware list offers only what that grade allows,
 // plus the record's current area when editing so an old record can be saved unchanged.
 function mapehOptgroupHTML(forGrade, keepArea) {
-    const opt = (a, note) => `<option value="${esc(a)}">${esc(a)}${note || ""}</option>`;
+    const tag = a => a === MAPEH_LEGACY[0] ? " (MA)" : a === MAPEH_LEGACY[1] ? " (PEH)" : "";
+    const opt = (a, note) => `<option value="${esc(a)}">${esc(a)}${note || tag(a)}</option>`;
     let areas;
     if (forGrade) {
         areas = mapehAreasForGrade(forGrade).map(a => opt(a));
         if (keepArea && isMapehFamily(keepArea) && !mapehAreasForGrade(forGrade).includes(keepArea)) areas.push(opt(keepArea, " (existing, needs correction)"));
     } else {
-        areas = [MAPEH_OVERALL, ...MAPEH_COMPONENTS.map(c => c.area)].map(a => opt(a)).concat(MAPEH_LEGACY.map(a => opt(a, " (legacy)")));
+        areas = [MAPEH_OVERALL, ...MAPEH_COMPONENTS.map(c => c.area)].map(a => opt(a)).concat(MAPEH_LEGACY.map(a => opt(a)));
     }
     return areas.length ? `<optgroup label="MAPEH Learning Components">${areas.join("")}</optgroup>` : "";
 }
@@ -1821,6 +1821,8 @@ function refreshSchoolPicker() {
         return;
     }
     const prog = areaProgram(document.getElementById("m-subject").value), dist = (document.getElementById("m-district") || {}).value;
+    // MAPEH areas are district-level: no school is asked for, so the (hidden) school box must not be required.
+    if (!prog) { pick.style.display = "none"; pick.innerHTML = ""; input.required = false; return; }
     const list = SCHOOLS.filter(x => x.active && x.district === dist && prog && x.programs.includes(prog));
     if (!list.length) { pick.style.display = "none"; pick.innerHTML = ""; input.style.display = ""; input.required = true; return; }
     const prev = pick.value;
@@ -3285,7 +3287,7 @@ function renderDataInputView(container) {
         <div class="ctx-bar" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; background: white; padding: 12px 18px; border-radius: 6px; border: 1px solid var(--border-color);">
             <div>
                 <strong style="color: var(--deped-dark); font-size: 0.9rem;">Excel Data Import Workflow ${userDist !== "ALL" ? `(${esc(userDist)} District Scope)` : ''}</strong>
-                <p style="font-size: 0.78rem; color: var(--text-muted);">MAPEH rule: Grades 1 to 3 use "MAPEH - Overall" only; Grades 4 to 10 use "MAPEH - Overall" plus Music, Arts, PE and Health; Grades 11 to 12 have no MAPEH. Download the pre-formatted Excel template for MAPEH, 7 SPA Disciplines, 30 SPS Sports Tracks, 10 SPFL Foreign Languages, and 8 IPED Subjects, fill in district data, and upload it below.</p>
+                <p style="font-size: 0.78rem; color: var(--text-muted);">MAPEH rule: Grades 1 to 3 use "MAPEH - Overall" only; Grades 4 to 10 use "MAPEH - Overall", Music, Arts, PE, Health, and the combined Music &amp; Arts (MA) and PE &amp; Health (PEH); Grades 11 to 12 have no MAPEH. Download the pre-formatted Excel template for MAPEH, 7 SPA Disciplines, 30 SPS Sports Tracks, 10 SPFL Foreign Languages, and 8 IPED Subjects, fill in district data, and upload it below.</p>
             </div>
             <button class="btn btn-success" type="button" onclick="downloadExcelTemplate()">
                 Download Excel Template (.XLSX)
@@ -3867,7 +3869,7 @@ function mapehMeanFor(recs, area) {
     return list.length ? parseFloat(meanMps(list).toFixed(2)) : null;
 }
 const pctCell = v => v ? `${v.toFixed(2)}%` : '<span class="no-data">No data</span>';
-const COMP_NOTE = `<p class="comp-note">Overall MAPEH is the official figure reported by the district. It is not calculated from the four components. Records filed under the older combined areas (Music & Arts, PE & Health) are counted in the MAPEH totals elsewhere but are not shown here.</p>`;
+const COMP_NOTE = `<p class="comp-note">Overall MAPEH is the official figure reported by the district. It is not calculated from the four components. Records filed under the combined Music & Arts or PE & Health areas are counted in the MAPEH totals elsewhere but are not split into these columns.</p>`;
 
 function mapehComponentsByGradeCard(data, grades, scopeLabel) {
     if (!hasMapehNew(data)) {
