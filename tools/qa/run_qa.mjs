@@ -1133,10 +1133,9 @@ if (want(19)) {
     await N.page.click('button:has-text("Add school")'); await N.page.fill('#sc-name', '  beta sp SCHOOL '); await N.page.selectOption('#sc-district', 'Asuncion'); await N.page.check('#sc-iped'); await N.page.click('#school-save');
     await N.page.waitForFunction(() => document.getElementById('rec-error').textContent.length > 0);
     ok(/already exists/.test(await N.page.textContent('#rec-error')) && await N.page.evaluate(() => window.__STUB.schools.length) === 4, 'a duplicate school (same district and name) is refused, not added');
-    await N.page.fill('#sc-name', 'Delta School'); await N.page.uncheck('#sc-iped'); await N.page.click('#school-save');
-    await N.page.waitForFunction(() => document.getElementById('rec-error').textContent.length > 0);
-    ok(/Special Programs, IPED, or both/.test(await N.page.textContent('#rec-error')), 'a school needs a program');
-    await N.page.check('#sc-sp'); await N.page.check('#sc-iped'); await N.page.click('#school-save'); await N.page.waitForSelector('.toast-success');
+    await N.page.fill('#sc-name', 'Delta School'); await N.page.uncheck('#sc-iped'); await N.page.click('#school-save'); await N.page.waitForSelector('.toast-success');
+    ok(await N.page.evaluate(() => window.__STUB.schools.filter(s => s.name === 'Delta School').length === 1 && window.__STUB.school_programs.filter(p => p.school_id === 5).length === 0), 'a school can be saved with no program (MAPEH-only; the master list does not assign programs)');
+    await N.page.evaluate(() => openSchoolEditor(5)); await N.page.check('#sc-sp'); await N.page.check('#sc-iped'); await N.page.click('#school-save'); await N.page.waitForSelector('.toast-success');
     ok(await N.page.evaluate(() => window.__STUB.schools.filter(s => s.name === 'Delta School').length === 1 && window.__STUB.school_programs.filter(p => p.school_id === 5).length === 2), 'a new school in both programs is saved once with both classifications');
     // edit: add a program to an existing school
     await N.page.evaluate(() => openSchoolEditor(2)); await N.page.check('#sc-iped'); await N.page.click('#school-save'); await N.page.waitForSelector('.toast-success');
@@ -1768,6 +1767,9 @@ if (want(24)) {
   await A.page.evaluate(() => switchView('grade-view')); await settled(A.page);
   const gh = await A.page.evaluate(() => Array.from(Array.from(document.querySelectorAll('#view-container .card-box')).find(c => c.querySelector('h3').textContent.includes('MAPEH Components by Grade Level')).querySelectorAll('thead th')).map(t => t.innerText.trim()));
   ok(JSON.stringify(gh) === JSON.stringify(['Grade Level', 'Music and Arts MPS (%)', 'Physical Education (PE) and Health MPS (%)', 'Overall MAPEH MPS (%)', 'Overall Proficiency']), 'Grade Level Breakdown uses the same two components');
+  const gRows = await A.page.evaluate(() => { const c = Array.from(document.querySelectorAll('#view-container .card-box')).find(x => x.querySelector('h3').textContent.includes('MAPEH Components by Grade Level')); return Array.from(c.querySelectorAll('tbody tr')).map(tr => Array.from(tr.children).map(td => td.innerText.replace(/\s+/g, ' ').trim())); });
+  const g5 = gRows.find(r => r[0] === 'Grade 5');
+  ok(g5.length === 5 && g5[1].startsWith(f2(meanA([80, 90, 84, 70, 90]))) && g5[2].startsWith(f2(meanA([70, 60, 66, 72]))) && g5[3].startsWith(f2(meanA([75, 78, 80, 85]))), 'Grade 5 row has exactly five cells: Music and Arts ' + f2(meanA([80, 90, 84, 70, 90])) + ', P.E. and Health ' + f2(meanA([70, 60, 66, 72])) + ', Overall ' + f2(meanA([75, 78, 80, 85])));
   // 3b. filters on the new group option
   const ma = await A.page.evaluate(async () => { resetFilters(); document.getElementById('flt-subject').value = 'MAPEH - MA'; applyFilters(); return (await getFilteredData()).map(r => r.learningArea + ':' + r.mps).sort(); });
   ok(ma.length === 5 && !ma.includes('MAPEH - Music & Arts:50') && ma.includes('MAPEH - Music:80') && ma.includes('MAPEH - Arts:90') && ma.includes('MAPEH - Music & Arts:84'), 'the Music and Arts filter returns Music, Arts and combined records once each (the covered duplicate is dropped): ' + ma.join(', '));

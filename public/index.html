@@ -3923,16 +3923,11 @@ function mapehComponentsByGradeCard(data, grades, scopeLabel) {
     if (!hasMapehNew(data)) {
         return `<p class="comp-note screen-only">MAPEH component figures (Music and Arts, P.E. and Health, and Overall MAPEH) appear here once records are entered.</p>`;
     }
-    const cell = (recs, g, area) => {
-        if (g && mapehRuleProblem(g, area)) return '<span class="no-data">Not recorded</span>';
-        const v = mapehMeanFor(recs, area);
-        return v === null ? '<span class="no-data">No data</span>' : `${v.toFixed(2)}%`;
-    };
     const row = (label, recs, g) => {
         const ov = mapehMeanFor(recs, MAPEH_OVERALL);
         return `<tr>
             <td><strong>${label}</strong></td>
-            ${MAPEH_COMPONENTS.map(c => `<td class="num">${cell(recs, g, c.area)}</td>`).join('')}
+            ${MAPEH_GROUPS.map(gr => `<td class="num">${groupCell(recs, gr, g)}</td>`).join('')}
             <td class="num">${g && mapehRuleProblem(g, MAPEH_OVERALL) ? '<span class="no-data">Not recorded</span>' : ov === null ? '<span class="no-data">No data</span>' : `<div class="ruler-cell"><strong>${ov.toFixed(2)}%</strong>${profRuler(ov, true)}</div>`}</td>
             <td>${ov === null ? '<span class="no-data">No data</span>' : `<span class="badge ${getBadgeClass(getPL(ov))}">${getPL(ov)}</span>`}</td>
         </tr>`;
