@@ -686,33 +686,34 @@ if (want(16)) {
     return card ? Array.from(card.querySelectorAll('tbody tr')).map(tr => Array.from(tr.children).map(td => td.innerText.replace(/\s+/g, ' ').trim())) : null;
   }, title);
 
-  // ---- component breakdown
+  // ---- component breakdown (two combined components since the October 2026 revision)
   {
     const N = await openNew('admin', demoNew);
+    const isMA = r => r.learningArea === 'MAPEH - Music' || r.learningArea === 'MAPEH - Arts', isPEH = r => r.learningArea === 'MAPEH - PE' || r.learningArea === 'MAPEH - Health';
     await N.page.evaluate(() => switchView('grade-view')); await settled(N.page);
     const g = await cardRows(N.page, 'MAPEH Components by Grade Level');
     ok(!!g && g.length === 13, 'Grade Level Breakdown has the component table (12 grades + all-grades row)');
     const g4 = g.find(r => r[0] === 'Grade 4'), g1 = g.find(r => r[0] === 'Grade 1'), g11 = g.find(r => r[0] === 'Grade 11');
-    ok(g4[1].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Music'))) && g4[2].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Arts')))
-      && g4[3].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - PE'))) && g4[4].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Health'))), 'Grade 4: Music, Arts, PE and Health MPS shown separately and correct');
+    ok(g4[1].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && isMA(r)))) && g4[2].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 4' && isPEH(r)))), 'Grade 4: Music and Arts = mean of its Music and Arts records, P.E. and Health = mean of its PE and Health records');
     const ov4 = meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Overall');
     const avgParts = mean(['Music', 'Arts', 'PE', 'Health'].map(c => meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - ' + c)));
-    ok(g4[5].startsWith(f2(ov4)) && f2(ov4) !== f2(avgParts), 'Grade 4: Overall MAPEH is the official record (' + f2(ov4) + '), not the average of the components (' + f2(avgParts) + ')');
-    ok(g1[1].includes('Not recorded') && g1[4].includes('Not recorded') && g1[5].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 1' && r.learningArea === 'MAPEH - Overall'))), 'Grade 1: components not recorded, overall MAPEH only');
-    ok(g11.slice(1, 6).every(c => c.includes('Not recorded')), 'Grade 11: no MAPEH');
+    ok(g4[3].startsWith(f2(ov4)) && f2(ov4) !== f2(avgParts), 'Grade 4: Overall MAPEH is the official record (' + f2(ov4) + '), not derived from the components (' + f2(avgParts) + ')');
+    ok(g1[1].includes('Not recorded') && g1[2].includes('Not recorded') && g1[3].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 1' && r.learningArea === 'MAPEH - Overall'))), 'Grade 1: components not recorded, overall MAPEH only');
+    ok(g11.slice(1, 4).every(c => c.includes('Not recorded')), 'Grade 11: no MAPEH');
     await N.page.evaluate(() => switchView('division')); await settled(N.page);
     const d = await cardRows(N.page, 'MAPEH Components by District');
     const asu = d.find(r => r[1] === 'Asuncion');
-    ok(!!d && asu[2].startsWith(f2(termMean(r => r.district === 'Asuncion' && r.learningArea === 'MAPEH - Music'))) && asu[6].startsWith(f2(termMean(r => r.district === 'Asuncion' && r.learningArea === 'MAPEH - Overall'))), 'Division Summary: district component table (mean of term means) matches');
+    const tmean = (pred) => { const v = ['Term 1', 'Term 2', 'Term 3'].map(tt => meanOf(r => r.district === 'Asuncion' && pred(r) && r.term === tt)).filter(x => x > 0); return v.reduce((a, b) => a + b, 0) / v.length; };
+    ok(!!d && asu[2].startsWith(f2(tmean(isMA))) && asu[3].startsWith(f2(tmean(isPEH))) && asu[4].startsWith(f2(termMean(r => r.district === 'Asuncion' && r.learningArea === 'MAPEH - Overall'))), 'Division Summary: district component table (mean of term means) matches');
     await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
     const ch = await N.page.evaluate(() => Object.values(activeCharts).map(c => [c.data.labels, c.data.datasets[0].data]));
-    ok(ch.length === 3 && JSON.stringify(ch[2][0]) === JSON.stringify(['Music', 'Arts', 'Physical Education (PE)', 'Health', 'Overall MAPEH']) && Math.abs(ch[2][1][4] - meanOf(r => r.learningArea === 'MAPEH - Overall')) < 0.006, 'Dashboard: MAPEH components chart with the overall as its own bar');
+    ok(ch.length === 3 && JSON.stringify(ch[2][0]) === JSON.stringify(['Music and Arts', 'P.E. and Health', 'Overall MAPEH']) && Math.abs(ch[2][1][2] - meanOf(r => r.learningArea === 'MAPEH - Overall')) < 0.006, 'Dashboard: MAPEH components chart (two combined components and the overall as its own bar)');
     ok(new RegExp('MAPEH Consolidated Total MPS\\s+' + meanOf(r => r.learningArea === 'MAPEH - Overall').toFixed(2) + '%', 'i').test(await text(N.page)), 'Dashboard MAPEH total = official overall records only (components are not double counted)');
     await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
-    const ct = await text(N.page);
-    ok(/MAPEH component: Music/.test(ct) && /MAPEH component: Physical Education \(PE\)/.test(ct) && /CONSOLIDATED MAPEH TOTAL \(Overall MAPEH\)/.test(ct), 'Comparative sheet: component rows under the MAPEH total');
+    const ct = await N.page.evaluate(() => document.getElementById('view-container').innerText);
+    ok(/MAPEH component: Music and Arts/.test(ct) && /MAPEH component: P\.E\. and Health/.test(ct) && /CONSOLIDATED MAPEH TOTAL \(Overall MAPEH\)/.test(ct), 'Comparative sheet: component rows under the MAPEH total');
     await N.page.evaluate(() => { resetFilters(); switchView('district-view'); }); await settled(N.page);
-    ok(/MAPEH - Health/.test(await text(N.page)), 'District Profile lists the new MAPEH areas as subject rows');
+    { const t = await N.page.evaluate(() => document.getElementById('view-container').innerText); ok(/Music and Arts/.test(t) && /P\.E\. and Health/.test(t) && !/MAPEH - (Music|Arts|PE|Health)\b/.test(t), 'District Profile lists Music and Arts and P.E. and Health rows'); }
     ok(N.errors.length === 0, 'no page errors while rendering the component views' + (N.errors[0] ? ': ' + N.errors[0] : ''));
     await N.ctx.close();
   }
@@ -953,7 +954,7 @@ if (want(18)) {
   let c1 = await cols();
   ok(c1.distMps.labels.length === 11 && new Set(c1.distMps.colors).size === 11 && minDE(c1.distMps.colors) >= 20, 'district chart: 11 bars, 11 different colours, none too similar (min colour distance ' + minDE(c1.distMps.colors).toFixed(1) + ')');
   ok(new Set(c1.subMps.colors).size === 5 && minDE(c1.subMps.colors) >= 20, 'program track chart: 5 distinct colours');
-  ok(new Set(c1.mapehComp.colors).size === 5 && minDE(c1.mapehComp.colors) >= 20, 'MAPEH components chart: 5 distinct colours');
+  ok(new Set(c1.mapehComp.colors).size === 3 && minDE(c1.mapehComp.colors) >= 20, 'MAPEH components chart: 3 distinct colours');
   const allCols = [...c1.distMps.colors, ...c1.subMps.colors, ...c1.mapehComp.colors];
   ok(allCols.every(c => 1.05 / (lum(c) + 0.05) >= 3), 'every bar colour has at least 3:1 contrast against the white chart background');
   ok(JSON.stringify(c1.subMps.colors) === JSON.stringify(await N.page.evaluate(() => TRACK_COLORS)) && c1.distMps.colors[2] === (await N.page.evaluate(() => districtColor('Carmen'))), 'colours come from the one shared palette');
@@ -1074,7 +1075,7 @@ if (want(19)) {
     await N.page.selectOption('#m-sy', '2026-2027');
     ok(await N.page.inputValue('#m-baseline-sy') === '2025-2026', 'manual entry: the baseline SY defaults to the year before the chosen SY');
     await N.page.selectOption('#m-sy', '2025-2026'); await N.page.selectOption('#m-baseline-sy', '2023-2024');
-    await N.page.selectOption('#m-district', 'Carmen'); await N.page.selectOption('#m-grade', 'Grade 4'); await N.page.selectOption('#m-subject', 'MAPEH - Music & Arts'); await N.page.fill('#m-school', 'Test School');
+    await N.page.selectOption('#m-district', 'Carmen'); await N.page.selectOption('#m-grade', 'Grade 4'); await N.page.selectOption('#m-subject', 'MAPEH - Music & Arts'); await N.page.evaluate(() => { const p = document.getElementById('m-school-pick'); if (p && p.style.display !== 'none') { p.selectedIndex = 1; p.dispatchEvent(new Event('change')); } else document.getElementById('m-school').value = 'Test School'; });
     await N.page.fill('#m-mps', '81'); await N.page.fill('#m-pct75', '70'); await N.page.click('button:has-text("Save District Record")'); await N.page.waitForSelector('.toast-success');
     ok(await N.page.evaluate(() => window.__STUB.records[window.__STUB.records.length - 1].baseline_sy) === '2023-2024', 'the chosen baseline SY is saved with the record');
     ok(await N.page.evaluate(async () => (await sb().from('assessment_records').update({ baseline_sy: '2024' }).eq('id', 1)).error?.code) === '23514', 'the database refuses a malformed baseline SY');
