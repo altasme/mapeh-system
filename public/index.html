@@ -862,6 +862,7 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
             <label>Program</label>
             <select id="flt-program" onchange="applyFilters()">
                 <option value="ALL">All Programs</option>
+                <option value="mapeh">MAPEH</option>
                 <option value="special_programs">Special Programs (SPA, SPS, SPFL)</option>
                 <option value="iped">IPED</option>
             </select>
@@ -1259,7 +1260,40 @@ const MAPEH_LEGACY = ["MAPEH - Music & Arts", "MAPEH - PE & Health"];
 const isMapehComponent = a => MAPEH_COMPONENTS.some(c => c.area === a);
 const isMapehLegacy = a => MAPEH_LEGACY.includes(a);
 const isMapehFamily = a => a === MAPEH_OVERALL || isMapehComponent(a) || isMapehLegacy(a);
-// What the "MAPEH total" figures count: official overall records plus the legacy combined records (unchanged totals).
+/* COMBINED REPORTING GROUPS. Reports show two combined components, Music and Arts and P.E. and Health (client revision of
+   2026-10, replacing the four separate columns). Records stay as entered (Music, Arts, PE, Health, and the older combined areas); nothing is rewritten.
+   Method: the established one, a plain unweighted mean of record MPS over the records in the group. A record filed under the
+   older combined area counts only where the same school, year, term and grade has no Music or Arts (or PE or Health)
+   record, so a figure is never counted twice. A group with only one of its two parts says so beside the figure. */
+const MAPEH_GROUPS = [
+    { key: "MAPEH - MA", short: "Music and Arts", col: "Music and Arts", label: "Music and Arts", parts: ["MAPEH - Music", "MAPEH - Arts"], names: ["Music", "Arts"], legacy: "MAPEH - Music & Arts" },
+    { key: "MAPEH - PEH", short: "P.E. and Health", col: "Physical Education (PE) and Health", label: "P.E. and Health", parts: ["MAPEH - PE", "MAPEH - Health"], names: ["PE", "Health"], legacy: "MAPEH - PE & Health" }
+];
+const groupOfFilter = v => MAPEH_GROUPS.find(g => g.key === v);
+const subjectOk = (r, v = filters.subject) => {
+    if (v === "ALL") return true;
+    const g = groupOfFilter(v);
+    return g ? (g.parts.includes(r.learningArea) || r.learningArea === g.legacy) : r.learningArea === v;
+};
+const groupRecKey = r => [r.sy, r.term, r.district, r.school || "", r.gradeLevel].join("|");
+// The records that make up a group, with older combined records dropped where Music/Arts (or PE/Health) records cover the same key.
+function mapehGroupRecords(recs, g) {
+    const parts = recs.filter(r => g.parts.includes(r.learningArea));
+    const covered = new Set(parts.map(groupRecKey));
+    const legacy = recs.filter(r => r.learningArea === g.legacy && !covered.has(groupRecKey(r)));
+    return parts.concat(legacy);
+}
+function mapehGroupFigure(recs, g) {
+    const list = mapehGroupRecords(recs, g);
+    if (!list.length) return { value: null, note: "" };
+    const present = g.parts.filter(a => list.some(r => r.learningArea === a));
+    const hasLegacy = list.some(r => r.learningArea === g.legacy);
+    const note = !hasLegacy && present.length === 1 ? `${g.names[g.parts.indexOf(present[0])]} only` : "";
+    return { value: parseFloat(meanMps(list).toFixed(2)), note };
+}
+// When the learning-area filter is MA or PEH, keep each combined figure once.
+const dedupGroupFilter = list => { const g = groupOfFilter(filters.subject); return g ? mapehGroupRecords(list, g) : list; };
+// What the "MAPEH total" figures count: official overall records plus the combined records (unchanged totals).
 const isMapehConsolidated = a => a === MAPEH_OVERALL || isMapehLegacy(a);
 // Mirror of public.app_mapeh_rule_problem() in the database, which is the enforcement. Returns "" when the pair is allowed.
 function mapehRuleProblem(grade, area) {
@@ -1271,7 +1305,7 @@ function mapehRuleProblem(grade, area) {
 }
 // What Fast Data Entry offers for a grade: Overall MAPEH, the four components and the two combined areas, as the grade allows.
 function mapehAreasForGrade(grade) {
-    return [MAPEH_OVERALL, ...MAPEH_COMPONENTS.map(c => c.area), ...MAPEH_LEGACY].filter(a => !mapehRuleProblem(grade, a));
+    return [MAPEH_OVERALL, ...MAPEH_LEGACY].filter(a => !mapehRuleProblem(grade, a));
 }
 /* CHART COLOURS. One categorical palette for every chart. Districts keep the same colour whatever the filter shows
    (colour follows the district's place in the list); program tracks use the colours of their dashboard cards;
@@ -1303,7 +1337,8 @@ const baselineSyNote = recs => recs.length ? `<br><small class="bl-sy-note">${es
 /* PROGRAMS. Special Programs (SPA, SPS, SPFL) and IPED are separate classifications of a school; a school can be in one or both. */
 const PROGRAM_LABELS = { special_programs: "Special Programs", iped: "IPED" };
 const areaProgram = a => /^(SPA|SPS|SPFL) - /.test(a || "") ? "special_programs" : /^IPED - /.test(a || "") ? "iped" : null;
-const programOk = r => filters.program === "ALL" || areaProgram(r.learningArea) === filters.program;
+// Program filter: MAPEH (every MAPEH learning area), Special Programs (SPA, SPS, SPFL) or IPED. Programs are judged from the learning area.
+const programOk = r => filters.program === "ALL" || (filters.program === "mapeh" ? isMapehFamily(r.learningArea) : areaProgram(r.learningArea) === filters.program);
 // Key Stage means a band of grades. It is judged from the record's grade (as the Comparative Analysis does), because the
 // stored keyStage text can disagree with the grade after an Excel import that left the column blank (AUDIT M8).
 const keyStageOk = r => {
@@ -1318,7 +1353,7 @@ function matchesFilters(r, district) {
     if (district !== "ALL" && r.district !== district) return false;
     if (!levelOk(r)) return false;
     if (!keyStageOk(r)) return false;
-    if (filters.subject !== "ALL" && r.learningArea !== filters.subject) return false;
+    if (!subjectOk(r)) return false;
     return programOk(r);
 }
 const meanMps = list => list.length ? list.reduce((a, c) => a + c.mps, 0) / list.length : 0;
@@ -1476,10 +1511,12 @@ async function initDB() {
 
 // Schools the signed-in user may see (the database decides: all for the division, own district for a coordinator, own school for a school account).
 async function loadSchools() {
-    const [a, b] = await Promise.all([
-        sb().from("schools").select("id, name, district_id, active").order("name").range(0, 4999),
+    let [a, b] = await Promise.all([
+        sb().from("schools").select("id, name, district_id, active, education_level, deped_school_id").order("name").range(0, 4999),
         sb().from("school_programs").select("school_id, program").range(0, 9999)
     ]);
+    // before migration 0013 the school list has no education level or DepEd ID column: read the older columns
+    if (a.error && a.error.code === "42703") a = await sb().from("schools").select("id, name, district_id, active").order("name").range(0, 4999);
     // before migration 0010 the school tables do not exist: the app still loads, with an empty school list
     const missing = e => e && (e.code === "42P01" || e.code === "PGRST205" || /schools|school_programs/.test(e.message || "") && /not find|does not exist/i.test(e.message || ""));
     if (missing(a.error) || missing(b.error)) { SCHOOLS = []; return; }
@@ -1487,7 +1524,7 @@ async function loadSchools() {
     if (b.error) throw b.error;
     const progs = {};
     b.data.forEach(p => { (progs[p.school_id] = progs[p.school_id] || []).push(p.program); });
-    SCHOOLS = a.data.map(x => ({ id: x.id, name: x.name, districtId: x.district_id, district: districtNameById[x.district_id] || "", active: x.active, programs: (progs[x.id] || []).sort() }));
+    SCHOOLS = a.data.map(x => ({ id: x.id, name: x.name, districtId: x.district_id, district: districtNameById[x.district_id] || "", active: x.active, educationLevel: x.education_level || null, depedId: x.deped_school_id || null, programs: (progs[x.id] || []).sort() }));
 }
 
 async function getAllRecords() {
@@ -1570,7 +1607,9 @@ function applyBaselineFilters(q, ksObj, effectiveDistrict) {
     q = q.is("deleted_at", null);
     if (filters.sy !== "ALL") q = q.eq("sy", filters.sy);
     if (effectiveDistrict !== "ALL") q = q.eq("district_id", districtIdByName[effectiveDistrict]);
-    if (filters.subject !== "ALL") q = q.eq("learning_area", filters.subject);
+    const grp = groupOfFilter(filters.subject);
+    if (grp) q = q.in("learning_area", [...grp.parts, grp.legacy]);
+    else if (filters.subject !== "ALL") q = q.eq("learning_area", filters.subject);
     if (filters.term !== "ALL") q = q.eq("term", filters.term);
     const inLevel = gradesForLevel();
     return q.in("grade_level", ksObj.grades.filter(g => inLevel.includes(g)));
@@ -1707,7 +1746,7 @@ async function getFilteredData() {
     const userDist = currentUser ? currentUser.district : "ALL";
     const effectiveDistrict = userDist !== "ALL" ? userDist : filters.district;
 
-    const filtered = data.filter(r => matchesFilters(r, effectiveDistrict));
+    const filtered = dedupGroupFilter(data.filter(r => matchesFilters(r, effectiveDistrict)));
     markSample(filtered);
     return filtered;
 }
@@ -1763,14 +1802,16 @@ function extractCompetencyItems(records) {
 // MAPEH options. Filters list everything (legacy areas marked); a grade-aware list offers only what that grade allows,
 // plus the record's current area when editing so an old record can be saved unchanged.
 function mapehOptgroupHTML(forGrade, keepArea) {
-    const tag = a => a === MAPEH_LEGACY[0] ? " (MA)" : a === MAPEH_LEGACY[1] ? " (PEH)" : "";
-    const opt = (a, note) => `<option value="${esc(a)}">${esc(a)}${note || tag(a)}</option>`;
+    // the two combined areas are shown with the client's wording; the stored learning-area value is unchanged
+    const label = a => a === MAPEH_LEGACY[0] ? "MAPEH - Music and Arts" : a === MAPEH_LEGACY[1] ? "MAPEH - Physical Education (PE) and Health" : a;
+    const opt = (a, note) => `<option value="${esc(a)}">${esc(label(a))}${note || ""}</option>`;
     let areas;
     if (forGrade) {
         areas = mapehAreasForGrade(forGrade).map(a => opt(a));
-        if (keepArea && isMapehFamily(keepArea) && !mapehAreasForGrade(forGrade).includes(keepArea)) areas.push(opt(keepArea, " (existing, needs correction)"));
+        if (keepArea && isMapehFamily(keepArea) && !mapehAreasForGrade(forGrade).includes(keepArea)) areas.push(opt(keepArea, mapehRuleProblem(forGrade, keepArea) ? " (existing, needs correction)" : " (existing record)"));
     } else {
-        areas = [MAPEH_OVERALL, ...MAPEH_COMPONENTS.map(c => c.area)].map(a => opt(a)).concat(MAPEH_LEGACY.map(a => opt(a)));
+        // the filter offers the reporting structure: Overall MAPEH and the two combined components
+        areas = [opt(MAPEH_OVERALL), ...MAPEH_GROUPS.map(g => `<option value="${g.key}">${esc(g.label)}</option>`)];
     }
     return areas.length ? `<optgroup label="MAPEH Learning Components">${areas.join("")}</optgroup>` : "";
 }
@@ -1811,7 +1852,9 @@ function programOptionsHTML(programs) {
     return h;
 }
 
-// The school field offers the school list (schools of the chosen district and program); typing a name stays possible.
+// The school field offers the school list: schools of the chosen district, of the education level of the chosen grade, and,
+// for Special Programs and IPED, of that program. MAPEH is not a program assignment, so every school of the district and
+// level is offered. Typing a name stays possible. The database repeats the district and level checks.
 function refreshSchoolPicker() {
     const pick = document.getElementById("m-school-pick"), input = document.getElementById("m-school");
     if (!pick || !input) return;
@@ -1821,9 +1864,8 @@ function refreshSchoolPicker() {
         return;
     }
     const prog = areaProgram(document.getElementById("m-subject").value), dist = (document.getElementById("m-district") || {}).value;
-    // MAPEH areas are district-level: no school is asked for, so the (hidden) school box must not be required.
-    if (!prog) { pick.style.display = "none"; pick.innerHTML = ""; input.required = false; return; }
-    const list = SCHOOLS.filter(x => x.active && x.district === dist && prog && x.programs.includes(prog));
+    const lvl = levelOfGrade((document.getElementById("m-grade") || {}).value);
+    const list = SCHOOLS.filter(x => x.active && x.district === dist && (!prog || x.programs.includes(prog)) && (!x.educationLevel || !lvl || x.educationLevel === lvl));
     if (!list.length) { pick.style.display = "none"; pick.innerHTML = ""; input.style.display = ""; input.required = true; return; }
     const prev = pick.value;
     pick.innerHTML = `<option value="">Choose a school from the list</option>${list.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join("")}<option value="__other">Not on the list (type the name)</option>`;
@@ -1838,23 +1880,14 @@ function schoolPickChanged() {
     input.style.display = other ? "" : "none"; input.required = other;
 }
 
+// Every learning area (MAPEH, Special Programs, IPED) is entered for a school of the district: the school list always shows.
 function toggleSchoolField(subjectValue) {
     const schoolGroup = document.getElementById("m-school-group");
     const schoolInput = document.getElementById("m-school");
     if (!schoolGroup) return;
-
-    const isSpecialProgram = subjectValue.startsWith("SPA") || subjectValue.startsWith("SPS") || 
-                             subjectValue.startsWith("SPFL") || subjectValue.startsWith("IPED");
-
-    if (isSpecialProgram) {
-        schoolGroup.style.display = "flex";
-        schoolInput.required = true;
-        refreshSchoolPicker();
-    } else {
-        schoolGroup.style.display = "none";
-        schoolInput.required = false;
-        schoolInput.value = "";
-    }
+    schoolGroup.style.display = "flex";
+    schoolInput.required = true;
+    refreshSchoolPicker();
 }
 
 /* 5. ROUTING & VIEWS */
@@ -2238,7 +2271,7 @@ async function renderDistrictProfileView(container) {
     let selectedDistrict = userDist !== "ALL" ? userDist : (filters.district !== "ALL" ? filters.district : DEFAULT_DISTRICTS[0]);
     
     const allRecords = await getAllRecords();
-    const distRecords = allRecords.filter(r => matchesFilters(r, selectedDistrict));
+    const distRecords = dedupGroupFilter(allRecords.filter(r => matchesFilters(r, selectedDistrict)));
 
     markSample(distRecords);
     // The coordinator follows the level in view; a Key Stage filter also fixes the level when none is chosen.
@@ -2251,12 +2284,18 @@ async function renderDistrictProfileView(container) {
     const districtOptions = (userDist !== "ALL" ? [userDist] : DEFAULT_DISTRICTS)
         .map(d => `<option value="${esc(d)}" ${d === selectedDistrict ? 'selected' : ''}>${esc(d)}</option>`).join('');
 
-    const activeSubjectsInDistrict = SUBJECTS.filter(s => distRecords.some(r => r.learningArea === s));
-    const subjectsToDisplay = activeSubjectsInDistrict;
+    // One row per area with records. Music and Arts (and PE and Health) are reported together as MA and PEH.
+    const rowDefs = [];
+    SUBJECTS.forEach(sub => {
+        if (isMapehComponent(sub) || isMapehLegacy(sub)) return;
+        const sr = distRecords.filter(r => r.learningArea === sub);
+        if (sr.length) rowDefs.push({ label: sub, recs: sr });
+        if (sub === MAPEH_OVERALL) MAPEH_GROUPS.forEach(g => { const gr = mapehGroupRecords(distRecords, g); if (gr.length) rowDefs.push({ label: g.label, recs: gr }); });
+    });
     const noMatch = distRecords.length === 0;
 
-    const subjMatrixRows = subjectsToDisplay.map(s => {
-        const sRecs = distRecords.filter(r => r.learningArea === s);
+    const subjMatrixRows = rowDefs.map(def => {
+        const s = def.label, sRecs = def.recs;
         const t1 = sRecs.filter(r => r.term === "Term 1");
         const t2 = sRecs.filter(r => r.term === "Term 2");
         const t3 = sRecs.filter(r => r.term === "Term 3");
@@ -2351,7 +2390,7 @@ async function renderComparativeView(container) {
     const activeRecords = records.filter(r => {
         if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
         if (currentScope !== "ALL" && r.district !== currentScope) return false;
-        if (currentSubject !== "ALL" && r.learningArea !== currentSubject) return false;
+        if (!subjectOk(r, currentSubject)) return false;
         if (filters.term !== "ALL" && r.term !== filters.term) return false;
         return true;
     });
@@ -2402,23 +2441,24 @@ async function renderComparativeView(container) {
         <td>${mapehRecs.length ? `<span class="badge ${getBadgeClass(getPL(mapehCurrent))}">${getPL(mapehCurrent)}</span>` : '-'}</td>
     </tr>` : '';
 
-    // Component rows (Music, Arts, PE, Health): shown only when such records exist, same columns as the stage rows.
-    const compRowsHTML = (currentSubject === "ALL" || currentSubject.startsWith("MAPEH")) ? MAPEH_COMPONENTS.map(c => {
-        const cr = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && r.learningArea === c.area);
-        if (!cr.length) return "";
+    // Combined component rows (MA, PEH): shown only when such records exist, same columns as the stage rows.
+    const compRowsHTML = MAPEH_GROUPS.map(g => {
+        if (currentSubject !== "ALL" && currentSubject !== g.key) return "";
+        const cr = mapehGroupRecords(records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term)), g);
+        if (!cr.some(r => g.parts.includes(r.learningArea))) return "";   // rows appear with the new component records, as before; historical combined records stay in the MAPEH totals
         const b = cr.reduce((a, x) => a + (x.baselineMps !== undefined ? x.baselineMps : 65.0), 0) / cr.length;
         const cur = meanMps(cr);
         const v = cur - b;
         const st = v > 0 ? '<span class="badge badge-advanced">Increased</span>' : v < 0 ? '<span class="badge badge-critical">Decreased</span>' : '<span class="badge badge-proficient">Maintained</span>';
         return `<tr class="mapeh-comp-row">
-        <td colspan="3" class="text-left">&nbsp;&nbsp;MAPEH component: ${esc(c.label)}</td>
+        <td colspan="3" class="text-left">&nbsp;&nbsp;MAPEH component: ${esc(g.label)}</td>
         <td>${b.toFixed(2)}%${baselineSyNote(cr)}</td>
         <td>${cur.toFixed(2)}%</td>
         <td>${v > 0 ? '+' : ''}${v.toFixed(2)}%</td>
         <td>${st}</td>
         <td><span class="badge ${getBadgeClass(getPL(cur))}">${getPL(cur)}</span></td>
     </tr>`;
-    }).join('') : '';
+    }).join('');
 
     const spaRecs = records.filter(r => (filters.sy === "ALL" || r.sy === filters.sy) && (currentScope === "ALL" || r.district === currentScope) && (filters.term === "ALL" || r.term === filters.term) && r.learningArea.startsWith("SPA"));
     const spaBaseline = spaRecs.length ? (spaRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / spaRecs.length) : 0;
@@ -2714,7 +2754,7 @@ async function renderDashboard(container) {
             <div class="chart-container"><canvas id="c-subj-mps"></canvas></div>
         </div>
         ${hasMapehNew(data) ? `<div class="chart-card">
-            <h4>MAPEH Components and Overall MAPEH (MPS %)</h4>
+            <h4>MA, PEH and Overall MAPEH (MPS %)</h4>
             <div class="chart-container"><canvas id="c-mapeh-comp"></canvas></div>
         </div>` : ''}
     </div>`;
@@ -2777,11 +2817,11 @@ async function renderDashboard(container) {
     });
 
     if (hasMapehNew(data)) {
-        const compLabels = [...MAPEH_COMPONENTS.map(c => c.label), "Overall MAPEH"];
-        const compVals = [...MAPEH_COMPONENTS.map(c => mapehMeanFor(data, c.area)), mapehMeanFor(data, MAPEH_OVERALL)];
+        const compLabels = [...MAPEH_GROUPS.map(g => g.short), "Overall MAPEH"];
+        const compVals = [...MAPEH_GROUPS.map(g => mapehGroupFigure(data, g).value), mapehMeanFor(data, MAPEH_OVERALL)];
         activeCharts['mapehComp'] = new Chart(document.getElementById('c-mapeh-comp'), {
             type: 'bar',
-            data: { labels: compLabels, datasets: [{ label: 'MPS (%)', data: compVals, backgroundColor: MAPEH_PART_COLORS, borderRadius: 3, maxBarThickness: 56 }] },
+            data: { labels: compLabels, datasets: [{ label: 'MPS (%)', data: compVals, backgroundColor: [MAPEH_PART_COLORS[0], MAPEH_PART_COLORS[2], MAPEH_PART_COLORS[4]], borderRadius: 3, maxBarThickness: 56 }] },
             options: chartOptions,
             plugins: [cutoffLines]
         });
@@ -2938,10 +2978,10 @@ function svDraw() {
         const acct = a ? `<strong>${esc(a.username)}</strong><br><small style="color:var(--text-muted);">${a.active ? "Active" : "Disabled"}</small>` : '<span class="no-data">No account</span>';
         const acctBtn = !a ? (x.active && x.programs.length ? `<button class="btn btn-primary btn-sm" onclick="openSchoolAccountCreate(${x.id})">Create account</button>` : '')
             : (a.active ? `<button class="btn btn-danger btn-sm" onclick="toggleSchoolAccount('${esc(a.profile_id)}', false)">Disable</button>` : (x.active ? `<button class="btn btn-secondary btn-sm" onclick="toggleSchoolAccount('${esc(a.profile_id)}', true)">Enable</button><button class="btn btn-primary btn-sm" onclick="openSchoolAccountCreate(${x.id})">New account</button>` : ''));
-        return `<tr><td><strong>${esc(x.name)}</strong></td><td>${esc(x.district)}</td><td>${progBadges(x.programs)}</td><td>${acct}</td><td>${x.active ? "Active" : '<span class="no-data">Inactive</span>'}</td>
+        return `<tr><td><strong>${esc(x.name)}</strong>${x.depedId ? `<br><small style="color:var(--text-muted);">ID ${x.depedId}</small>` : ""}</td><td>${esc(x.district)}</td><td>${x.educationLevel ? LEVELS[x.educationLevel].label : '<span class="no-data">Not set</span>'}</td><td>${progBadges(x.programs)}</td><td>${acct}</td><td>${x.active ? "Active" : '<span class="no-data">Inactive</span>'}</td>
             <td class="mr-actions"><button class="btn btn-secondary btn-sm" onclick="openSchoolEditor(${x.id})">Edit</button>${acctBtn}</td></tr>`;
     }).join("");
-    tbl.innerHTML = `<table class="data-table"><thead><tr><th>School</th><th>District</th><th>Program</th><th>Account</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="no-data">No schools match. Add a school or import a list.</td></tr>'}</tbody></table>`;
+    tbl.innerHTML = `<table class="data-table"><thead><tr><th>School</th><th>District</th><th>Level</th><th>Program</th><th>Account</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="no-data">No schools match. Add a school or import a list.</td></tr>'}</tbody></table>`;
 }
 
 async function openSchoolEditor(id) {
@@ -2953,7 +2993,9 @@ async function openSchoolEditor(id) {
         <form id="school-form" onsubmit="saveSchool(event, ${x ? x.id : "null"})">
             <div class="form-group"><label for="sc-name">School name</label><input type="text" id="sc-name" maxlength="200" value="${esc(x ? x.name : "")}"></div>
             <div class="form-group" style="margin-top:10px;"><label for="sc-district">District</label><select id="sc-district">${DEFAULT_DISTRICTS.map(d => `<option value="${esc(d)}" ${x && x.district === d ? "selected" : ""}>${esc(d)}</option>`).join("")}</select></div>
-            <div class="form-group" style="margin-top:10px;"><label>Program (a school can be in both)</label>
+            <div class="form-group" style="margin-top:10px;"><label for="sc-level">Education level</label><select id="sc-level"><option value="">Not set</option><option value="elementary" ${x && x.educationLevel === "elementary" ? "selected" : ""}>Elementary</option><option value="secondary" ${x && x.educationLevel === "secondary" ? "selected" : ""}>Secondary</option></select></div>
+            <div class="form-group" style="margin-top:10px;"><label for="sc-depedid">DepEd school ID (optional)</label><input type="number" id="sc-depedid" min="1" value="${x && x.depedId ? x.depedId : ""}"></div>
+            <div class="form-group" style="margin-top:10px;"><label>Program (optional; a school can be in both, or in neither)</label>
                 <label style="font-weight:500;"><input type="checkbox" id="sc-sp" style="width:auto;" ${x && x.programs.includes("special_programs") ? "checked" : ""}> Special Programs (SPA, SPS, SPFL)</label>
                 <label style="font-weight:500;"><input type="checkbox" id="sc-iped" style="width:auto;" ${x && x.programs.includes("iped") ? "checked" : ""}> IPED</label></div>
             ${x ? `<label style="font-weight:500;margin-top:8px;"><input type="checkbox" id="sc-active" style="width:auto;" ${x.active ? "checked" : ""}> School is active</label>` : ""}
@@ -2969,11 +3011,11 @@ async function saveSchool(ev, id) {
     const name = document.getElementById("sc-name").value.trim(), dist = document.getElementById("sc-district").value;
     const programs = [document.getElementById("sc-sp").checked ? "special_programs" : null, document.getElementById("sc-iped").checked ? "iped" : null].filter(Boolean);
     if (!name) { err.textContent = "Enter the school name."; return; }
-    if (!programs.length) { err.textContent = "Choose Special Programs, IPED, or both."; return; }
     err.textContent = ""; setBusy(btn, true);
     try {
         const act = document.getElementById("sc-active");
-        const { error } = await sb().rpc("app_save_school", { p_id: id, p_name: name, p_district_id: districtIdByName[dist], p_programs: programs, p_active: act ? act.checked : true });
+        const { error } = await sb().rpc("app_save_school", { p_id: id, p_name: name, p_district_id: districtIdByName[dist], p_programs: programs, p_active: act ? act.checked : true,
+            p_education_level: document.getElementById("sc-level").value || null, p_deped_id: Number(document.getElementById("sc-depedid").value) || null });
         if (error) throw error;
         closeRecordModal(); toast(id ? "School updated." : "School added."); await svReload();
     } catch (e) { err.textContent = friendlyError(e); } finally { setBusy(btn, false); }
@@ -3869,11 +3911,17 @@ function mapehMeanFor(recs, area) {
     return list.length ? parseFloat(meanMps(list).toFixed(2)) : null;
 }
 const pctCell = v => v ? `${v.toFixed(2)}%` : '<span class="no-data">No data</span>';
-const COMP_NOTE = `<p class="comp-note">Overall MAPEH is the official figure reported by the district. It is not calculated from the four components. Records filed under the combined Music & Arts or PE & Health areas are counted in the MAPEH totals elsewhere but are not split into these columns.</p>`;
+const COMP_NOTE = `<p class="comp-note">Music and Arts, and P.E. and Health, are plain averages of the record MPS of their records (the same method as every other figure here). Records entered under the older Music, Arts, PE and Health areas are included where a combined record does not already cover the same school, year, term and grade, so nothing is counted twice. Overall MAPEH is the official figure reported by the district. It is not calculated from the two components.</p>`;
+const groupCell = (recs, g, grade) => {
+    if (grade && mapehRuleProblem(grade, g.parts[0])) return '<span class="no-data">Not recorded</span>';
+    const f = mapehGroupFigure(recs, g);
+    if (f.value === null) return '<span class="no-data">No data</span>';
+    return `${f.value.toFixed(2)}%${f.note ? `<br><small class="bl-sy-note">${esc(f.note)}</small>` : ''}`;
+};
 
 function mapehComponentsByGradeCard(data, grades, scopeLabel) {
     if (!hasMapehNew(data)) {
-        return `<p class="comp-note screen-only">MAPEH component figures (Music, Arts, PE, Health and Overall MAPEH) appear here once records are entered under the new MAPEH structure.</p>`;
+        return `<p class="comp-note screen-only">MAPEH component figures (Music and Arts, P.E. and Health, and Overall MAPEH) appear here once records are entered.</p>`;
     }
     const cell = (recs, g, area) => {
         if (g && mapehRuleProblem(g, area)) return '<span class="no-data">Not recorded</span>';
@@ -3892,9 +3940,9 @@ function mapehComponentsByGradeCard(data, grades, scopeLabel) {
     const rows = grades.map(g => row(g, data.filter(r => r.gradeLevel === g), g)).join('');
     return `
     <div class="card-box">
-        <div class="card-box-header"><h3>MAPEH Components by Grade Level - ${scopeLabel}</h3></div>
+        <div class="card-box-header"><h3>MAPEH Components by Grade Level (MA, PEH, Overall) - ${scopeLabel}</h3></div>
         <div class="table-scroll"><table class="data-table">
-            <thead><tr><th>Grade Level</th>${MAPEH_COMPONENTS.map(c => `<th class="num">${c.label} MPS (%)</th>`).join('')}<th class="num">Overall MAPEH MPS (%)</th><th>Overall Proficiency</th></tr></thead>
+            <thead><tr><th>Grade Level</th>${MAPEH_GROUPS.map(gr => `<th class="num">${gr.col} MPS (%)</th>`).join('')}<th class="num">Overall MAPEH MPS (%)</th><th>Overall Proficiency</th></tr></thead>
             <tbody>${rows}${row('All grades in view', data.filter(r => grades.includes(r.gradeLevel)), null)}</tbody>
         </table></div>
         ${COMP_NOTE}
@@ -3904,17 +3952,18 @@ function mapehComponentsByGradeCard(data, grades, scopeLabel) {
 // Division / district summary: per district, mean of term means (the method of the matrix above it).
 function mapehComponentsByDistrictCard(data, districts, scopeLabel) {
     if (!hasMapehNew(data)) return "";
-    const areas = [...MAPEH_COMPONENTS.map(c => c.area), MAPEH_OVERALL];
     const termMean = (recs) => {
         const tm = ["Term 1", "Term 2", "Term 3"].map(t => meanMps(recs.filter(r => r.term === t))).filter(v => v > 0);
         return tm.length ? tm.reduce((a, b) => a + b, 0) / tm.length : 0;
     };
-    const vals = districts.map(d => areas.map(a => termMean(data.filter(r => r.district === d && r.learningArea === a))));
+    const areas = [...MAPEH_GROUPS, MAPEH_OVERALL];
+    const forDistrict = (d, a) => a === MAPEH_OVERALL ? data.filter(r => r.district === d && r.learningArea === a) : mapehGroupRecords(data.filter(r => r.district === d), a);
+    const vals = districts.map(d => areas.map(a => termMean(forDistrict(d, a))));
     const rows = districts.map((d, i) => {
-        const ov = vals[i][4];
+        const ov = vals[i][2];
         return `<tr>
             <td><strong>${i + 1}</strong></td><td><strong>${esc(d)}</strong></td>
-            ${vals[i].slice(0, 4).map(v => `<td class="num">${pctCell(v)}</td>`).join('')}
+            ${vals[i].slice(0, 2).map(v => `<td class="num">${pctCell(v)}</td>`).join('')}
             <td class="num">${ov ? `<strong>${ov.toFixed(2)}%</strong>` : '<span class="no-data">No data</span>'}</td>
             <td>${ov ? `<span class="badge ${getBadgeClass(getPL(ov))}">${getPL(ov)}</span>` : '<span class="no-data">No data</span>'}</td>
         </tr>`;
@@ -3922,15 +3971,15 @@ function mapehComponentsByDistrictCard(data, districts, scopeLabel) {
     const tot = areas.map((a, j) => { const nz = vals.map(v => v[j]).filter(v => v > 0); return nz.length ? nz.reduce((x, y) => x + y, 0) / nz.length : 0; });
     const totRow = districts.length > 1 ? `<tr class="mapeh-row">
         <td colspan="2"><strong>${scopeLabel}</strong></td>
-        ${tot.slice(0, 4).map(v => `<td class="num">${pctCell(v)}</td>`).join('')}
-        <td class="num">${tot[4] ? `<strong>${tot[4].toFixed(2)}%</strong>` : '<span class="no-data">No data</span>'}</td>
-        <td>${tot[4] ? `<span class="badge ${getBadgeClass(getPL(tot[4]))}">${getPL(tot[4])}</span>` : '<span class="no-data">No data</span>'}</td>
+        ${tot.slice(0, 2).map(v => `<td class="num">${pctCell(v)}</td>`).join('')}
+        <td class="num">${tot[2] ? `<strong>${tot[2].toFixed(2)}%</strong>` : '<span class="no-data">No data</span>'}</td>
+        <td>${tot[2] ? `<span class="badge ${getBadgeClass(getPL(tot[2]))}">${getPL(tot[2])}</span>` : '<span class="no-data">No data</span>'}</td>
     </tr>` : '';
     return `
     <div class="card-box">
-        <div class="card-box-header"><h3>MAPEH Components by District - ${scopeLabel}</h3></div>
+        <div class="card-box-header"><h3>MAPEH Components by District (MA, PEH, Overall) - ${scopeLabel}</h3></div>
         <div class="table-scroll"><table class="data-table">
-            <thead><tr><th>#</th><th>District Name</th>${MAPEH_COMPONENTS.map(c => `<th class="num">${c.label} MPS (%)</th>`).join('')}<th class="num">Overall MAPEH MPS (%)</th><th>Overall Proficiency</th></tr></thead>
+            <thead><tr><th>#</th><th>District Name</th>${MAPEH_GROUPS.map(gr => `<th class="num">${gr.col} MPS (%)</th>`).join('')}<th class="num">Overall MAPEH MPS (%)</th><th>Overall Proficiency</th></tr></thead>
             <tbody>${rows}${totRow}</tbody>
         </table></div>
         ${COMP_NOTE}

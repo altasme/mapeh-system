@@ -264,3 +264,26 @@ In Settings & Branding, each Elementary and Secondary coordinator now has three 
 
 ## 19. Combined Music & Arts (MA) and PE & Health (PEH) in Fast Data Entry (migration 0012)
 Run `supabase/migrations/0012_combined_mapeh_areas.sql` once in the SQL editor (it only replaces the grade rule function; no data changes; safe to repeat). After it, Grades 4 to 10 accept Overall MAPEH, Music, Arts, PE, Health, Music & Arts (MA) and PE & Health (PEH). Grades 1 to 3 stay Overall only and Grades 11 to 12 have no MAPEH. Combined records count in the MAPEH totals and appear in the District Profile, filter and Manage Records; the Grade Level Breakdown keeps its four component columns. Open question for the client: how overlap between combined and individual records should be treated.
+
+## 20. Client revision (October 2026): two MAPEH components, MAPEH program filter, school selector, school master list
+**Deployment order.** (1) Run `supabase/migrations/0013_school_master_list.sql` in the SQL editor (adds the DepEd school ID and education level to schools, lets a school have no Special Programs / IPED assignment, and makes the database check that a record's school belongs to the record's district and education level). Migration 0012 must already be applied. (2) Review, then run `supabase/seed/school_import.sql` once (264 schools from the client's list; see `docs/SCHOOL_IMPORT_REPORT.md`). It only fills blanks and adds missing schools, deletes nothing, creates no program assignment, and can be run again safely. The app works before and after both steps (before 0013 the school list simply has no level).
+
+**What changed in the app**
+- *Learning Area / Program Track selector (every view, every account):* Overall MAPEH, Music and Arts, P.E. and Health. The four separate options are removed from the selector. Their records are untouched and still counted.
+- *Program filter:* MAPEH added (every MAPEH learning area), next to Special Programs and IPED.
+- *MAPEH components by district / division, Grade Level Breakdown, dashboard chart, Comparative rows:* two combined columns, **Music and Arts MPS (%)** and **Physical Education (PE) and Health MPS (%)**; Overall MAPEH and proficiency unchanged.
+- *Fast Manual Entry:* Overall MAPEH, Music and Arts, Physical Education (PE) and Health (Grades 4 to 10; Grades 1 to 3 stay Overall only and Grades 11 to 12 have no MAPEH, as before). The school list now appears for **every** learning area (MAPEH, Special Programs, IPED), filtered to the chosen district and the education level of the chosen grade; IPED lists IPED schools only and SPA/SPS/SPFL lists Special Programs schools only. One coordinator account encodes for all schools of its district.
+- *Schools & Accounts:* shows level and DepEd ID, lets Admin/Supervisor set them, and a school no longer needs a program.
+
+**Calculation used (no new formula).** Music and Arts = plain unweighted mean of the record MPS of the Music, Arts and combined "Music & Arts" records in view; PE and Health likewise. An old combined record is left out where Music/Arts (PE/Health) records already exist for the same school, year, term and grade, so nothing is counted twice. District and division tables use the existing method (mean of term means per district, then mean of districts with data). Overall MAPEH remains the official "MAPEH - Overall" record and is never derived. **Client to confirm:** whether a learner-weighted mean is wanted (no learner counts are stored, AUDIT M4).
+
+**Consolidation.** School, district and division figures are all derived from the same school records (no copies are written), so a saved record appears in its district view and the division view immediately and is counted once. Records without a school (older MAPEH entries) are still counted at district and division level.
+
+**Least Learned Competencies.** The existing method already matches the brief and was kept: competencies are grouped by grade level, learning area and exact wording; ranked by number of districts, then number of records; top 3 per group. A district account only sees its own district's records, so its ranking is by frequency across its schools; the Admin sees the division ranking. Near-duplicate wording is not merged (AUDIT M6). With no matching records the report says so.
+
+**Answers to the client's questions**
+- *Provide the school list or create the schools?* Use the master list: it has been loaded from the client's workbook (264 schools). No school accounts are needed; one district account selects the school.
+- *Which schools are SP / IPED?* Not in the workbook. Nothing is guessed. The client should send the SP list and the IPED list; Admin/Supervisor then tick the programs in Schools & Accounts.
+- Three rows in the workbook have no school ID (New Katipunan Extension, Mamaon Extension, Mangga Extension): not imported, awaiting confirmation.
+
+**Known limits.** Typing a school name that is not on the list is still possible (kept from before; those records are not linked to a school). There is still no uniqueness rule, so re-saving the same entry creates another record (the save button is disabled while a save is running; duplicate detection is an upgrade, AUDIT M2).

@@ -55,6 +55,7 @@
     if (!sc) return 'That school was not found.';
     if (sc.district_id !== row.district_id) return 'That school belongs to a different district.';
     if ((!old || old.school_id !== row.school_id) && !sc.active) return 'That school is inactive.';
+    if (sc.education_level && (!old || old.school_id !== row.school_id || old.grade_level !== row.grade_level) && sc.education_level !== levelOf(row.grade_level)) return `That is a ${sc.education_level} school, so it cannot take ${levelOf(row.grade_level) || 'this grade level'} records.`;
     const pr = progOf(row.learning_area);
     if (pr && (!old || old.school_id !== row.school_id || old.learning_area !== row.learning_area) && !schoolProgs(sc.id).includes(pr)) return 'That school is not classified under the program of this learning area.';
     row.school = sc.name; return null;
@@ -242,16 +243,17 @@
               const nm = String(a.p_name || '').trim(); const progs = Array.from(new Set(a.p_programs || []));
               if (!nm) return fail('Enter the school name (200 characters at most).');
               if (!T.districts.find(x => x.id === a.p_district_id)) return fail('Choose a district.');
-              if (!progs.length || progs.some(x => !['special_programs', 'iped'].includes(x))) return fail('Choose Special Programs, IPED, or both.');
+              if (progs.some(x => !['special_programs', 'iped'].includes(x))) return fail('Programs can only be Special Programs or IPED.');
+              if (a.p_education_level != null && !['elementary', 'secondary'].includes(a.p_education_level)) return fail('Education level must be Elementary or Secondary.');
               const dup = T.schools.find(x => x.district_id === a.p_district_id && x.name.trim().toLowerCase() === nm.toLowerCase() && x.id !== a.p_id);
               let sc;
-              if (a.p_id == null) { if (dup) return fail('A school with that name already exists in this district. Open it and add the program there instead.'); sc = { id: nextSchoolId++, name: nm, district_id: a.p_district_id, active: a.p_active !== false }; T.schools.push(sc); }
+              if (a.p_id == null) { if (dup) return fail('A school with that name already exists in this district. Open it and add the program there instead.'); sc = { id: nextSchoolId++, name: nm, district_id: a.p_district_id, active: a.p_active !== false, education_level: a.p_education_level || null, deped_school_id: a.p_deped_id || null }; T.schools.push(sc); }
               else { sc = T.schools.find(x => x.id === a.p_id); if (!sc) return fail('School not found.');
                 const linked = T2.filter(x => x.school_id === sc.id);
                 if (sc.district_id !== a.p_district_id && linked.length) return fail('This school has linked records, so it cannot be moved to another district.');
                 if (T.school_programs.some(x => x.school_id === sc.id && !progs.includes(x.program) && linked.some(r => !isDel(r) && progOf(r.learning_area) === x.program))) return fail('Cannot remove a program that this school already has records for.');
                 if (dup) return fail('A school with that name already exists in this district.');
-                sc.name = nm; sc.district_id = a.p_district_id; if (a.p_active != null) sc.active = a.p_active; }
+                sc.name = nm; sc.district_id = a.p_district_id; if (a.p_active != null) sc.active = a.p_active; if (a.p_education_level) sc.education_level = a.p_education_level; if (a.p_deped_id) sc.deped_school_id = a.p_deped_id; }
               for (let i = T.school_programs.length - 1; i >= 0; i--) if (T.school_programs[i].school_id === sc.id && !progs.includes(T.school_programs[i].program)) T.school_programs.splice(i, 1);
               progs.forEach(pg => { if (!T.school_programs.some(x => x.school_id === sc.id && x.program === pg)) T.school_programs.push({ school_id: sc.id, program: pg }); });
               return { data: sc.id, error: null };

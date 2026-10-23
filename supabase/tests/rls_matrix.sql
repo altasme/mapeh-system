@@ -349,8 +349,7 @@ begin
     denied := false; begin perform public.app_save_school(null, '  alpha iped SCHOOL ', asu, array['iped']); exception when others then denied := sqlerrm like '%already exists%'; end;
     assert denied, 'a duplicate school (same district, name ignoring case and spaces) is refused';
     assert public.app_save_school(null, 'Alpha IPED School', car, array['iped']) is not null, 'the same name in another district is a different school';
-    denied := false; begin perform public.app_save_school(null, 'No Program School', asu, array[]::text[]); exception when others then denied := sqlerrm like '%Special Programs, IPED, or both%'; end;
-    assert denied, 'a school must have a program';
+    assert public.app_save_school(null, 'No Program School', asu, array[]::text[]) is not null, 'a school may have no program (migration 0013: MAPEH is entered for every school)';
     denied := false; begin perform public.app_save_school(null, 'Bad Program', asu, array['other']); exception when others then denied := true; end;
     assert denied, 'unknown program refused';
     reset role;
@@ -713,6 +712,53 @@ begin
   assert denied, 'anon denied on profiles';
   reset role;
   raise notice 'PASS signed out';
+end $$;
+
+-- Migration 0013: school master list, schools without a program, school level and district checks on records
+do $$
+declare
+  asu smallint := (select id from public.districts where name = 'Asuncion');
+  car smallint := (select id from public.districts where name = 'Carmen');
+  se bigint; ss bigint; sn bigint; sc bigint; denied boolean; msg text; n int;
+  admin text := '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
+  ce text := '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}';
+begin
+  perform set_config('request.jwt.claims', admin, true); set local role authenticated;
+  se := public.app_save_school(null, 'M13 Elementary', asu, array[]::text[], true, 'elementary', 900001);
+  ss := public.app_save_school(null, 'M13 Secondary', asu, array[]::text[], true, 'secondary', 900002);
+  sn := public.app_save_school(null, 'M13 No Level', asu, array[]::text[]);
+  sc := public.app_save_school(null, 'M13 Carmen Elementary', car, array[]::text[], true, 'elementary', 900003);
+  assert (select count(*) from public.school_programs where school_id in (se, ss, sn, sc)) = 0, 'master-list schools carry no SP / IPED assignment';
+  denied := false; begin perform public.app_save_school(null, 'M13 Duplicate ID', asu, array[]::text[], true, 'elementary', 900001); exception when others then denied := sqlerrm like '%already exists%'; end;
+  assert denied, 'the same DepEd school ID cannot be used twice';
+  denied := false; begin perform public.app_save_school(null, 'M13 Bad Level', asu, array[]::text[], true, 'middle', null); exception when others then denied := true; end;
+  assert denied, 'an unknown education level is refused';
+  reset role;
+
+  -- one Elementary coordinator encodes for several schools of the district with a single account
+  perform set_config('request.jwt.claims', ce, true); set local role authenticated;
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 2','Grade 5','MAPEH - Overall',65,81,70,'x',se);
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 2','Grade 5','MAPEH - Music & Arts',65,79,70,'x',sn);
+  assert (select count(distinct school_id) from public.assessment_records where school_id in (se, sn)) = 2, 'one coordinator account saved MAPEH records for two schools';
+  assert (select school from public.assessment_records where school_id = se limit 1) = 'M13 Elementary', 'the school name follows the school record';
+  denied := false; msg := null; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 2','Grade 5','MAPEH - Overall',65,81,70,'x',ss); exception when others then denied := true; msg := sqlerrm; end;
+  assert denied, 'a Secondary school cannot take an Elementary record (' || coalesce(msg, '') || ')';
+  denied := false; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 2','Grade 5','MAPEH - Overall',65,81,70,'x',sc); exception when others then denied := true; end;
+  assert denied, 'a school of another district is refused for this coordinator (server side)';
+  denied := false; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',car,'Key Stage 2','Grade 5','MAPEH - Overall',65,81,70,'x',sc); exception when others then denied := true; end;
+  assert denied, 'and so is a record for another district, even with that district''s school';
+  denied := false; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 2','Grade 5','IPED - English',65,81,70,'x',se); exception when others then denied := true; end;
+  assert denied, 'an IPED record still needs a school classified under IPED (the master list does not classify anyone)';
+  select count(*) into n from public.assessment_records where school_id in (se, ss, sn, sc);
+  assert n = 2, 'only the two valid records exist';
+  reset role;
+  raise notice 'PASS school master list (0013)';
 end $$;
 
 rollback;
