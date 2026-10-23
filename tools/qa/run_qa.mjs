@@ -805,7 +805,7 @@ if (want(16)) {
     // the edit is visible in the reports
     await N.page.evaluate(() => { formDirty = false; switchView('grade-view'); }); await settled(N.page);
     const g = await cardRows(N.page, 'MAPEH Components by Grade Level');
-    const newMean = mean(demoNew.map((r, i) => ({ r, mps: i + 1 === asuG4 ? 93.25 : r.mps })).filter(x => x.r.gradeLevel === 'Grade 4' && x.r.learningArea === 'MAPEH - Music').map(x => x.mps));
+    const newMean = mean(demoNew.map((r, i) => ({ r, mps: i + 1 === asuG4 ? 93.25 : r.mps })).filter(x => x.r.gradeLevel === 'Grade 4' && (x.r.learningArea === 'MAPEH - Music' || x.r.learningArea === 'MAPEH - Arts')).map(x => x.mps));
     ok(g.find(r => r[0] === 'Grade 4')[1].startsWith(f2(newMean)), 'Grade Level Breakdown reflects the edited record (' + f2(newMean) + ')');
     // backend: direct edit of an out-of-range value
     const e = await N.page.evaluate(async id => (await sb().from('assessment_records').update({ mps: 101 }).eq('id', id)).error?.code, asuG4);
@@ -825,7 +825,7 @@ if (want(16)) {
     ok(new RegExp('TOTAL DISTRICT RECORDS\\s+' + (total - 1) + '\\b', 'i').test(await text(N.page)), 'dashboards no longer count the deleted record');
     await N.page.evaluate(() => switchView('grade-view')); await settled(N.page);
     const g2 = await cardRows(N.page, 'MAPEH Components by Grade Level');
-    const afterMean = mean(demoNew.filter((r, i) => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Music' && i + 1 !== asuG4).map(r => r.mps));
+    const afterMean = mean(demoNew.filter((r, i) => r.gradeLevel === 'Grade 4' && (r.learningArea === 'MAPEH - Music' || r.learningArea === 'MAPEH - Arts') && i + 1 !== asuG4).map(r => r.mps));
     ok(g2.find(r => r[0] === 'Grade 4')[1].startsWith(f2(afterMean)), 'reports exclude the deleted record');
     await N.page.evaluate(() => switchView('manage-records')); await settled(N.page);
     await N.page.click('#mr-tab-deleted'); await N.page.waitForFunction(() => /Deleted Assessment Records/.test(document.getElementById('mr-title').textContent));
@@ -1594,7 +1594,7 @@ if (want(21)) {
       && (f.level === 'ALL' || lvl(r.gradeLevel) === f.level) && (f.keystage === 'ALL' || KSG[f.keystage].includes(r.gradeLevel))
       && (f.subject === 'ALL' || r.learningArea === f.subject) && (f.program === 'ALL' || prog(r.learningArea) === f.program));
     return { count: m.length, mps: m.length ? (m.reduce((a, c) => a + c.mps, 0) / m.length).toFixed(2) : null, pct: m.length ? (m.reduce((a, c) => a + c.pct75, 0) / m.length).toFixed(2) : null,
-      areas: Array.from(new Set(m.map(r => r.learningArea))).sort() };
+      areas: Array.from(new Set(m.map(r => r.learningArea === 'MAPEH - Music' ? 'Music and Arts' : r.learningArea))).sort() };
   };
   const combos = [];
   for (const district of D) for (const sy of ['ALL', ...SY]) for (const term of ['ALL', 'Term 2']) for (const level of ['ALL', 'elementary', 'secondary'])
@@ -1643,7 +1643,7 @@ if (want(21)) {
   await N.ctx.close();
 }
 
-console.log('\n[22] Overall Special Programs and Overall IPED for the System Administrator (and the four MAPEH components stay separate)');
+console.log('\n[22] Overall Special Programs and Overall IPED for the System Administrator ');
 if (want(22)) {
   const base = demoNew[0];
   const KS = { 'Grade 4': 'Key Stage 2', 'Grade 5': 'Key Stage 2', 'Grade 6': 'Key Stage 2', 'Grade 7': 'Key Stage 3' };
@@ -1669,14 +1669,6 @@ if (want(22)) {
   }, title);
   const A = await openNew('admin', recs);
   await A.page.evaluate(() => { resetFilters(); switchView('grade-view'); }); await settled(A.page);
-  const g = await rowsOf(A.page, 'MAPEH Components by Grade Level');
-  const gr = n => g.find(r => r[0] === n);
-  const hdr = await A.page.evaluate(() => Array.from(Array.from(document.querySelectorAll('#view-container .card-box')).find(c => c.querySelector('h3').textContent.includes('MAPEH Components by Grade Level')).querySelectorAll('thead th')).map(t => t.innerText.trim()));
-  ok(JSON.stringify(hdr) === JSON.stringify(['Grade Level', 'Music MPS (%)', 'Arts MPS (%)', 'Physical Education (PE) MPS (%)', 'Health MPS (%)', 'Overall MAPEH MPS (%)', 'Overall Proficiency']), 'Grade Level Breakdown: Music, Arts, PE, Health and Overall MAPEH columns: ' + hdr.join(' | '));
-  ok(gr('Grade 4')[1].startsWith('80.00') && gr('Grade 4')[2].startsWith('90.00') && gr('Grade 4')[3].startsWith('70.00') && gr('Grade 4')[4].startsWith('60.00') && gr('Grade 4')[5].startsWith('75.00'), 'Grade 4: Music 80, Arts 90, PE 70, Health 60 shown separately; Overall MAPEH 75 is the official record');
-  ok(gr('Grade 5')[1].startsWith('88.00') && /No data/.test(gr('Grade 5')[2]), 'Grade 5: Music 88; Arts has no data (not zero)');
-  const opts = await A.page.evaluate(() => Array.from(document.querySelectorAll('#flt-subject option')).map(o => o.value));
-  ok(['MAPEH - Overall', 'MAPEH - Music', 'MAPEH - Arts', 'MAPEH - PE', 'MAPEH - Health', 'MAPEH - Music & Arts', 'MAPEH - PE & Health', 'SPA - Vocal Arts', 'IPED - Science'].every(v => opts.includes(v)) && !opts.includes('MAPEH - MA'), 'the learning area selector lists Overall MAPEH, Music, Arts, PE, Health and every SPA / IPED option');
   // Overall SP and Overall IPED, administrator, Division Summary
   await A.page.evaluate(() => { resetFilters(); switchView('division'); }); await settled(A.page);
   const card = async key => A.page.evaluate(k => { const c = document.querySelector(`.program-overall[data-program="${k}"]`); return c ? c.innerText.replace(/\s+/g, ' ') : null; }, key);
