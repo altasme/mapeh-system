@@ -3357,6 +3357,7 @@ function renderDataInputView(container) {
                         <select id="m-subject" onchange="toggleSchoolField(this.value)">
                             ${manualSubjectOptionsHTML}
                         </select>
+                        <small id="m-area-hint" class="comp-note" style="margin:4px 0 0;"></small>
                     </div>
                     <div class="form-group" id="m-school-group" style="display:none; grid-column: span 2;">
                         <label style="color:var(--deped-blue);">Implementing School</label>
@@ -3411,6 +3412,7 @@ function renderDataInputView(container) {
 
     const currentSubj = document.getElementById("m-subject").value;
     toggleSchoolField(currentSubj);
+    updateAreaHint();
     syncBaselineSy();
 }
 
@@ -3431,6 +3433,15 @@ function syncGradeWithKeyStage(ksCode) {
 }
 
 // Learning-area choices follow the grade (Grades 1 to 3 offer overall MAPEH only; Grades 11 to 12 offer no MAPEH).
+// Tells the user why Music and Arts / P.E. and Health are not in the list for the chosen grade.
+function updateAreaHint() {
+    const el = document.getElementById("m-area-hint"), grade = document.getElementById("m-grade");
+    if (!el || !grade) return;
+    const g = grade.value;
+    el.textContent = currentUser && currentUser.isSchool ? "" :
+        ["Grade 1", "Grade 2", "Grade 3"].includes(g) ? "Grades 1 to 3 are recorded as Overall MAPEH only. Choose Grade 4 to 10 to enter Music and Arts, or P.E. and Health." :
+        ["Grade 11", "Grade 12"].includes(g) ? "MAPEH is not assessed in Grades 11 and 12." : "";
+}
 function refreshManualSubjects() {
     const sel = document.getElementById("m-subject");
     const grade = document.getElementById("m-grade");
@@ -3439,6 +3450,7 @@ function refreshManualSubjects() {
     sel.innerHTML = currentUser && currentUser.isSchool ? programOptionsHTML(currentUser.programs) : buildSubjectOptionsHTML(false, grade.value);
     if (Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
     toggleSchoolField(sel.value);
+    updateAreaHint();
 }
 
 function switchInputTab(tab) {

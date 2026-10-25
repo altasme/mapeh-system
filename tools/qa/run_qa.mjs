@@ -1782,6 +1782,11 @@ if (want(24)) {
   ok(e4.schools.join() === 'Test Sec A', 'Secondary grade: only the Secondary school of the district');
   const e5 = await entry('Grade 5', 'MAPEH - Overall', 'Carmen');
   ok(e5.schools.join() === 'Carmen Elem', 'another district lists its own school only (admin choosing Carmen)');
+  // the default grade (Grade 1) is Overall only: the form says so instead of looking as if the options are missing
+  await A.page.selectOption('#m-grade', 'Grade 1');
+  ok(/Grades 1 to 3 are recorded as Overall MAPEH only/.test(await A.page.textContent('#m-area-hint')), 'Grade 1 (the default): a note explains that Music and Arts, and P.E. and Health, are for Grades 4 to 10');
+  await A.page.selectOption('#m-grade', 'Grade 4');
+  ok((await A.page.textContent('#m-area-hint')) === '', 'Grade 4: no note, the two components are in the list');
   await A.ctx.close();
 
   // coordinator: one account, several schools
