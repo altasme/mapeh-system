@@ -1824,6 +1824,12 @@ if (want(24)) {
   const llcD = await C.page.evaluate(() => Array.from(document.querySelectorAll('#view-container .card-box')[0].querySelectorAll('tbody tr')).map(tr => Array.from(tr.children).map(td => td.innerText.replace(/\s+/g, ' ').trim())));
   const rd = llcD.find(r => /Reads fluently/.test(r[4])), sw = llcD.find(r => /Solves word problems/.test(r[4]));
   ok(!!rd && rd[3] === 'Rank 1' && /1 District\(s\) \/ 3 Record\(s\)/.test(rd[5]) && /Test Elem A/.test(rd[6]) && /Test Elem B/.test(rd[6]) && sw[3] === 'Rank 2' && !/Draws shapes/.test(llcD.join()), 'district LLC ranking: the competency reported most often ranks first (3 records from 2 schools); Carmen\'s competencies do not appear');
+  // a session that started before the school list was loaded still gets the list when the form is opened
+  await C.page.evaluate(() => { SCHOOLS = []; formDirty = false; switchView('data-input'); }); await settled(C.page);
+  await C.page.click('text=Method 2: Fast Manual Entry');
+  ok((await C.page.evaluate(() => document.getElementById('m-school-pick').options.length)) > 2 && await C.page.evaluate(() => getComputedStyle(document.getElementById('m-school-pick')).display !== 'none'), 'opening Fast Data Entry reloads the school list (a stale list no longer leaves a plain text box)');
+  await C.page.evaluate(() => { SCHOOLS = SCHOOLS.filter(x => x.district !== 'Asuncion'); refreshSchoolPicker(); });
+  ok(/No school is listed for this district/.test(await C.page.textContent('#m-school-hint')), 'with no school listed the form says so and keeps the typed-name fallback');
   await C.ctx.close();
   // LLC ranking at division level
   const D = await openNew('admin', recs, { schools: SCH, schoolPrograms: PRG });

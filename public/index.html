@@ -1866,6 +1866,8 @@ function refreshSchoolPicker() {
     const prog = areaProgram(document.getElementById("m-subject").value), dist = (document.getElementById("m-district") || {}).value;
     const lvl = levelOfGrade((document.getElementById("m-grade") || {}).value);
     const list = SCHOOLS.filter(x => x.active && x.district === dist && (!prog || x.programs.includes(prog)) && (!x.educationLevel || !lvl || x.educationLevel === lvl));
+    const hint = document.getElementById("m-school-hint");
+    if (hint) hint.textContent = list.length ? "" : "No school is listed for this district, grade level and learning area yet. Type the school name, or ask the Division office to add it to the school list.";
     if (!list.length) { pick.style.display = "none"; pick.innerHTML = ""; input.style.display = ""; input.required = true; return; }
     const prev = pick.value;
     pick.innerHTML = `<option value="">Choose a school from the list</option>${list.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join("")}<option value="__other">Not on the list (type the name)</option>`;
@@ -3303,7 +3305,9 @@ async function mrRestore(id) {
     }
 }
 
-function renderDataInputView(container) {
+async function renderDataInputView(container) {
+    // the school list is read again each time the form opens, so schools added or imported after sign-in show up without signing in again
+    try { await loadSchools(); } catch (_) { /* keep the list already loaded */ }
     if (!canEditData()) {
         container.innerHTML = `
         <div class="card-box" style="padding: 40px; text-align: center;">
@@ -3363,6 +3367,7 @@ function renderDataInputView(container) {
                         <label style="color:var(--deped-blue);">Implementing School</label>
                         <select id="m-school-pick" onchange="schoolPickChanged()" style="display:none;"></select>
                         <input type="text" id="m-school" placeholder="e.g., Central Elementary School">
+                        <small id="m-school-hint" class="comp-note" style="margin:4px 0 0;"></small>
                     </div>
                 </div>
                 <h4 style="color:var(--deped-blue); margin-top:15px; margin-bottom: 12px;">2. Assessment Metrics</h4>
