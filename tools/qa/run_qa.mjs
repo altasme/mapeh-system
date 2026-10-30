@@ -1045,7 +1045,7 @@ if (want(19)) {
   const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
   const SCH = [{ id: 1, name: 'Alpha IPED School', district_id: 1, active: true }, { id: 2, name: 'Beta SP School', district_id: 1, active: true }, { id: 3, name: 'Gamma School', district_id: 3, active: true },
     { id: 4, name: 'Asuncion IPED Central Elementary School', district_id: 1, active: true }];
-  const PRG = [{ school_id: 1, program: 'iped' }, { school_id: 2, program: 'special_programs' }, { school_id: 3, program: 'special_programs' }, { school_id: 3, program: 'iped' }, { school_id: 4, program: 'iped' }, { school_id: 1, program: 'mapeh' }, { school_id: 2, program: 'mapeh' }, { school_id: 3, program: 'mapeh' }, { school_id: 4, program: 'mapeh' }];
+  const PRG = [{ school_id: 1, program: 'iped' }, { school_id: 2, program: 'special_programs' }, { school_id: 3, program: 'special_programs' }, { school_id: 3, program: 'iped' }, { school_id: 4, program: 'iped' }, { school_id: 2, program: 'mapeh' }, { school_id: 3, program: 'mapeh' }, { school_id: 4, program: 'mapeh' }];
   const isSP = a => /^(SPA|SPS|SPFL) - /.test(a), isIP = a => /^IPED - /.test(a);
   // baseline SY: Key Stage 1 recorded, Key Stage 2 not recorded, Key Stage 3 a mix
   const recs = demoNew.map((r, i) => {
@@ -1129,7 +1129,7 @@ if (want(19)) {
     await N.page.evaluate(() => { resetFilters(); });
     await N.page.evaluate(() => switchView('schools')); await settled(N.page);
     const kp = await N.page.evaluate(() => Array.from(document.querySelectorAll('.sv-kpi')).map(k => [k.querySelector('span').textContent, Number(k.querySelector('strong').textContent)]));
-    ok(JSON.stringify(kp) === JSON.stringify([['MAPEH schools', 4], ['Special Programs schools', 2], ['IPED schools', 3], ['With 2 or 3 programs', 4], ['Schools in the list', 4], ['With an active account', 1]]), 'school counts come from the list and the classifications: ' + JSON.stringify(kp.map(k => k[1])));
+    ok(JSON.stringify(kp) === JSON.stringify([['MAPEH schools', 3], ['Special Programs schools', 2], ['IPED schools', 3], ['With 2 or 3 programs', 3], ['Schools in the list', 4], ['With an active account', 1]]), 'school counts come from the list and the classifications: ' + JSON.stringify(kp.map(k => k[1])));
     await N.page.selectOption('#sv-program', 'iped');
     const names = async () => N.page.evaluate(() => Array.from(document.querySelectorAll('#sv-table tbody tr td:first-child')).map(t => t.textContent.trim()));
     ok(JSON.stringify((await names()).sort()) === JSON.stringify(['Alpha IPED School', 'Asuncion IPED Central Elementary School', 'Gamma School']), 'IPED list: exactly the IPED schools (a school in both programs appears in both lists)');
@@ -1148,7 +1148,7 @@ if (want(19)) {
     ok(await N.page.evaluate(() => window.__STUB.schools.filter(s => s.name === 'Delta School').length === 1 && window.__STUB.school_programs.filter(p => p.school_id === 5).length === 3), 'a school with MAPEH, Special Programs and IPED is one school with three assignments');
     // edit: add a program to an existing school
     await N.page.evaluate(() => openSchoolEditor(2)); await N.page.check('#sc-iped'); await N.page.click('#school-save'); await N.page.waitForSelector('.toast-success');
-    ok(await N.page.evaluate(() => window.__STUB.schools.filter(s => s.name === 'Beta SP School').length === 1 && window.__STUB.school_programs.filter(p => p.school_id === 2).length === 2), 'assigning a second program updates the school (no duplicate school record)');
+    ok(await N.page.evaluate(() => window.__STUB.schools.filter(s => s.name === 'Beta SP School').length === 1 && window.__STUB.school_programs.filter(p => p.school_id === 2).length === 3), 'assigning a further program updates the school (no duplicate school record)');
     // removing a program that has records is refused
     await N.page.evaluate(() => openSchoolEditor(2)); await N.page.uncheck('#sc-sp'); await N.page.click('#school-save'); await N.page.waitForFunction(() => document.getElementById('rec-error').textContent.length > 0);
     ok(/Cannot remove a program/.test(await N.page.textContent('#rec-error')), 'a program that the school already has records for cannot be removed');
