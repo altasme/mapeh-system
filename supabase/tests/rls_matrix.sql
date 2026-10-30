@@ -25,10 +25,10 @@ insert into public.profiles (id, username, display_name, role, district_id, educ
 
 insert into public.app_settings (id, data) values (1, '{}'::jsonb) on conflict (id) do nothing;
 
--- two records per district: one elementary (Grade 1), one secondary (Grade 8)
+-- two records per district: one elementary (Grade 4), one secondary (Grade 8)
 insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by,is_demo)
 select '2025-2026','Term 1', d.id, g.ks, g.gl,'MAPEH - Overall',65,80,70,'Approaching Proficiency','00000000-0000-0000-0000-0000000000a1',true
-from public.districts d, (values ('Key Stage 1','Grade 1'),('Key Stage 3','Grade 8')) g(ks, gl) where d.name in ('Asuncion','Carmen');
+from public.districts d, (values ('Key Stage 2','Grade 4'),('Key Stage 3','Grade 8')) g(ks, gl) where d.name in ('Asuncion','Carmen');
 
 insert into public.comparative_notes (sy,district_scope,education_level,subject,term,analysis,interventions,updated_by)
 values ('2025-2026','Asuncion','elementary','ALL','ALL','e','e','00000000-0000-0000-0000-0000000000a1'),
@@ -46,7 +46,7 @@ begin
   select id into car from public.districts where name='Carmen';
 
   -- generated level is correct, and an unknown grade is refused outright
-  perform 1 from public.assessment_records where grade_level='Grade 1' and education_level='elementary'; assert found, 'grade 1 is elementary';
+  perform 1 from public.assessment_records where grade_level='Grade 4' and education_level='elementary'; assert found, 'grade 4 is elementary';
   perform 1 from public.assessment_records where grade_level='Grade 8' and education_level='secondary'; assert found, 'grade 8 is secondary';
   assert public.app_education_level('Grade 6') = 'elementary' and public.app_education_level('Grade 7') = 'secondary', 'boundary grades 6 and 7';
   assert public.app_education_level('Grade 13') is null and public.app_education_level('') is null, 'unknown grades have no level';
@@ -213,13 +213,13 @@ begin
   -- ===== MAPEH grade rules (create, edit, and direct API) =====
   declare
     ok_rows text[][] := array[
-      ['Grade 1','MAPEH - Overall'],['Grade 3','MAPEH - Overall'],['Grade 4','MAPEH - Overall'],['Grade 4','MAPEH - Music'],
+      ['Grade 1','MAPEH - Music & Arts'],['Grade 3','MAPEH - PE & Health'],['Grade 4','MAPEH - Overall'],['Grade 4','MAPEH - Music'],
       ['Grade 6','MAPEH - Arts'],['Grade 7','MAPEH - PE'],['Grade 10','MAPEH - Health'],['Grade 10','MAPEH - Overall'],
       ['Grade 4','MAPEH - Music & Arts'],['Grade 8','MAPEH - PE & Health'],['Grade 10','MAPEH - Music & Arts'],['Grade 5','MAPEH - PE & Health'],
       ['Grade 1','IPED - Music'],['Grade 2','Filipino'],['Grade 11','Empowerment Technologies'],['Grade 12','MAPEH-looking but not family']];
     bad_rows text[][] := array[
       ['Grade 1','MAPEH - Music'],['Grade 2','MAPEH - Arts'],['Grade 3','MAPEH - PE'],['Grade 3','MAPEH - Health'],
-      ['Grade 2','MAPEH - Music & Arts'],['Grade 1','MAPEH - PE & Health'],
+      ['Grade 1','MAPEH - Overall'],['Grade 3','MAPEH - Overall'],
       ['Grade 11','MAPEH - Overall'],['Grade 12','MAPEH - Music'],['Grade 11','MAPEH - Music & Arts']];
     i int;
   begin
@@ -244,8 +244,8 @@ begin
     assert denied, 'moving a Music record to Grade 2 is refused';
     denied := false; begin update public.assessment_records set learning_area = 'MAPEH - Music & Arts' where id = rid; exception when check_violation then denied := true; end;
     assert not denied, 'switching a Grade 5 record to the combined Music & Arts area is accepted (migration 0012)';
-    denied := false; begin update public.assessment_records set learning_area = 'MAPEH - Music & Arts', grade_level = 'Grade 2' where id = rid; exception when check_violation then denied := true; end;
-    assert denied, 'but the combined area in Grade 2 is still refused';
+    denied := false; begin update public.assessment_records set learning_area = 'MAPEH - Overall', grade_level = 'Grade 2' where id = rid; exception when check_violation then denied := true; end;
+    assert denied, 'but MAPEH - Overall in Key Stage 1 is refused (migration 0014)';
     update public.assessment_records set learning_area = 'MAPEH - Music', grade_level = 'Grade 5' where id = rid;
     update public.assessment_records set learning_area = 'MAPEH - Arts', mps = 76 where id = rid; get diagnostics n = row_count; assert n = 1, 'a valid edit passes';
     assert (select proficiency_level from public.assessment_records where id = rid) = 'Developing', 'proficiency recomputed after an edit';
@@ -257,12 +257,12 @@ begin
     -- legacy rows already present stay editable on non-rule fields (grandfathered)
     alter table public.assessment_records disable trigger records_guard;  -- simulates a row that predates the rule
     insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by)
-      values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 2','MAPEH - Music & Arts',65,70,70,'x','00000000-0000-0000-0000-0000000000a1')
+      values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 2','MAPEH - Overall',65,70,70,'x','00000000-0000-0000-0000-0000000000a1')
       returning id into rid;
     alter table public.assessment_records enable trigger records_guard;
     set local role authenticated;
     update public.assessment_records set mps = 82 where id = rid; get diagnostics n = row_count; assert n = 1, 'legacy Grade 2 record can still be edited (score)';
-    denied := false; begin update public.assessment_records set learning_area = 'MAPEH - Music & Arts', grade_level = 'Grade 3' where id = rid; denied := false; exception when check_violation then denied := true; end;
+    denied := false; begin update public.assessment_records set learning_area = 'MAPEH - Overall', grade_level = 'Grade 3' where id = rid; denied := false; exception when check_violation then denied := true; end;
     assert denied, 'but cannot be re-saved into a different forbidden grade';
     reset role;
     -- the audit log names the soft delete and the restore
@@ -392,7 +392,7 @@ begin
     insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by)
       values ('2025-2026','Term 1',car,s3,'Key Stage 1','Grade 3','IPED - English',65,80,70,'x','00000000-0000-0000-0000-0000000000a1') returning id into r_s3;
     insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by)
-      values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 3','MAPEH - Overall',65,80,70,'x','00000000-0000-0000-0000-0000000000a1') returning id into r_none;
+      values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 3','MAPEH - Music & Arts',65,80,70,'x','00000000-0000-0000-0000-0000000000a1') returning id into r_none;
     insert into public.assessment_records (sy,term,district_id,school,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by)
       values ('2025-2026','Term 2',asu,'alpha iped school ','Key Stage 1','Grade 3','IPED - Filipino',65,80,70,'x','00000000-0000-0000-0000-0000000000a1') returning id into r_unl;
     assert (select school from public.assessment_records where id = r_s1) = 'Alpha IPED School', 'the printed school name follows the school record';
@@ -724,11 +724,11 @@ declare
   ce text := '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}';
 begin
   perform set_config('request.jwt.claims', admin, true); set local role authenticated;
-  se := public.app_save_school(null, 'M13 Elementary', asu, array[]::text[], true, 'elementary', 900001);
-  ss := public.app_save_school(null, 'M13 Secondary', asu, array[]::text[], true, 'secondary', 900002);
-  sn := public.app_save_school(null, 'M13 No Level', asu, array[]::text[]);
-  sc := public.app_save_school(null, 'M13 Carmen Elementary', car, array[]::text[], true, 'elementary', 900003);
-  assert (select count(*) from public.school_programs where school_id in (se, ss, sn, sc)) = 0, 'master-list schools carry no SP / IPED assignment';
+  se := public.app_save_school(null, 'M13 Elementary', asu, array['mapeh'], true, 'elementary', 900001);
+  ss := public.app_save_school(null, 'M13 Secondary', asu, array['mapeh'], true, 'secondary', 900002);
+  sn := public.app_save_school(null, 'M13 No Level', asu, array['mapeh']);
+  sc := public.app_save_school(null, 'M13 Carmen Elementary', car, array['mapeh'], true, 'elementary', 900003);
+  assert (select count(*) from public.school_programs where school_id in (se, ss, sn, sc) and program <> 'mapeh') = 0, 'master-list schools carry no SP / IPED assignment';
   denied := false; begin perform public.app_save_school(null, 'M13 Duplicate ID', asu, array[]::text[], true, 'elementary', 900001); exception when others then denied := sqlerrm like '%already exists%'; end;
   assert denied, 'the same DepEd school ID cannot be used twice';
   denied := false; begin perform public.app_save_school(null, 'M13 Bad Level', asu, array[]::text[], true, 'middle', null); exception when others then denied := true; end;
@@ -759,6 +759,102 @@ begin
   assert n = 2, 'only the two valid records exist';
   reset role;
   raise notice 'PASS school master list (0013)';
+end $$;
+
+-- Migration 0014: MAPEH program, Key Stage 1 rule, Key Stage 4 subjects, school years
+do $$
+declare
+  asu smallint := (select id from public.districts where name = 'Asuncion');
+  car smallint := (select id from public.districts where name = 'Carmen');
+  s_m bigint; s_sp bigint; s_all bigint; denied boolean; msg text; n int; rid bigint;
+  admin text := '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
+  sup text := '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated"}';
+  ce text := '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}';
+  cs text := '{"sub":"00000000-0000-0000-0000-0000000000b2","role":"authenticated"}';
+begin
+  -- one school can hold several programs; nothing is duplicated
+  perform set_config('request.jwt.claims', admin, true); set local role authenticated;
+  s_m := public.app_save_school(null, 'M14 MAPEH Only', asu, array['mapeh'], true, 'secondary', 910001);
+  s_sp := public.app_save_school(null, 'M14 SP Only', asu, array['special_programs'], true, 'secondary', 910002);
+  s_all := public.app_save_school(null, 'M14 All Three', asu, array['mapeh', 'special_programs', 'iped'], true, 'secondary', 910003);
+  assert (select count(*) from public.school_programs where school_id = s_all) = 3, 'a school can be assigned to MAPEH, Special Programs and IPED together';
+  assert (select count(*) from public.schools where name like 'M14 %') = 3, 'no school is duplicated for holding several programs';
+  perform public.app_save_school(s_all, 'M14 All Three', asu, array['mapeh', 'iped'], true);
+  assert (select count(*) from public.school_programs where school_id = s_all) = 2, 'a program can be taken away again (no records yet)';
+  assert public.app_save_school(s_all, 'M14 All Three', asu, array['mapeh', 'special_programs', 'iped'], true) = s_all, 'and given back';
+  denied := false; begin perform public.app_save_school(null, 'M14 Bad', asu, array['other']); exception when others then denied := true; end;
+  assert denied, 'an unknown program is refused';
+  reset role;
+
+  -- coordinator of the Secondary level: Key Stage 3 and 4 records against the school program tags
+  perform set_config('request.jwt.claims', cs, true); set local role authenticated;
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 3','Grade 8','MAPEH - Music & Arts',65,80,70,'x',s_m);
+  denied := false; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 3','Grade 8','SPA - Vocal Arts',65,80,70,'x',s_m); exception when others then denied := sqlerrm like '%not classified%'; end;
+  assert denied, 'a MAPEH-only school cannot take Special Programs records (enforced by the database)';
+  denied := false; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 3','Grade 8','MAPEH - PE & Health',65,80,70,'x',s_sp); exception when others then denied := sqlerrm like '%not classified%'; end;
+  assert denied, 'a school without the MAPEH tag cannot take MAPEH records';
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 3','Grade 8','SPA - Vocal Arts',65,80,70,'x',s_all);
+  -- Key Stage 4 subjects: Grades 11 and 12 only
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 4','Grade 11','SHS - Life and Career Skills',65,82,70,'x',s_m);
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 4','Grade 12','SHS - Sports/Health/Wellness',65,84,70,'x',s_m);
+  denied := false; msg := null; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 3','Grade 9','SHS - Life and Career Skills',65,82,70,'x',s_m); exception when others then denied := true; msg := sqlerrm; end;
+  assert denied and msg like '%Key Stage 4 subjects%', 'a Key Stage 4 subject cannot be entered for Grade 9 (' || coalesce(msg, '') || ')';
+  denied := false; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,school_id)
+    values ('2025-2026','Term 1',asu,'Key Stage 3','Grade 8','SHS - Sports/Health/Wellness',65,82,70,'x',s_m); exception when others then denied := true; end;
+  assert denied, 'nor for Grade 8';
+  reset role;
+
+  -- Key Stage 1: no MAPEH - Overall on new records, Music and Arts / P.E. and Health accepted
+  perform set_config('request.jwt.claims', ce, true); set local role authenticated;
+  denied := false; msg := null; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
+    values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 2','MAPEH - Overall',65,81,70,'x'); exception when others then denied := true; msg := sqlerrm; end;
+  assert denied and msg like '%Key Stage 1%', 'MAPEH - Overall is refused in Key Stage 1 by the database (' || coalesce(msg, '') || ')';
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
+    values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 2','MAPEH - Music & Arts',65,81,70,'x');
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
+    values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 3','MAPEH - PE & Health',65,79,70,'x');
+  reset role;
+
+  -- school years: only the System Administrator changes them; new records in a disabled year are refused; old ones stay
+  perform set_config('request.jwt.claims', sup, true); set local role authenticated;
+  denied := false; begin perform public.app_set_school_year_enabled('2027-2028', false); exception when insufficient_privilege then denied := true; end;
+  assert denied, 'a Supervisor cannot disable a school year';
+  reset role;
+  perform set_config('request.jwt.claims', ce, true); set local role authenticated;
+  denied := false; begin perform public.app_set_school_year_enabled('2027-2028', false); exception when insufficient_privilege then denied := true; end;
+  assert denied, 'a coordinator cannot disable a school year';
+  assert (select count(*) from public.school_years) >= 10, 'every signed-in user can read the list of school years';
+  denied := false; begin update public.school_years set enabled = false; exception when insufficient_privilege then denied := true; end;
+  assert denied, 'the table cannot be written directly through the API';
+  reset role;
+  select count(*) into n from public.assessment_records where sy = '2025-2026' and deleted_at is null;
+  perform set_config('request.jwt.claims', admin, true); set local role authenticated;
+  perform public.app_set_school_year_enabled('2025-2026', false);
+  reset role;
+  assert (select count(*) from public.assessment_records where sy = '2025-2026' and deleted_at is null) = n, 'disabling a school year leaves its records untouched';
+  perform set_config('request.jwt.claims', ce, true); set local role authenticated;
+  denied := false; msg := null; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
+    values ('2025-2026','Term 2',asu,'Key Stage 2','Grade 5','MAPEH - Overall',65,81,70,'x'); exception when others then denied := true; msg := sqlerrm; end;
+  assert denied and msg like '%not open for data entry%', 'a new record in a disabled school year is refused by the database (' || coalesce(msg, '') || ')';
+  select id into rid from public.assessment_records where sy = '2025-2026' and district_id = asu and education_level = 'elementary' and deleted_at is null limit 1;
+  update public.assessment_records set mps = 77 where id = rid; get diagnostics n = row_count;
+  assert n = 1, 'an existing record in a disabled year can still be edited (score)';
+  denied := false; begin update public.assessment_records set sy = '2026-2027' where id = rid; update public.assessment_records set sy = '2025-2026' where id = rid; exception when others then denied := true; end;
+  assert denied, 'but cannot be moved back into the disabled year';
+  reset role;
+  perform set_config('request.jwt.claims', admin, true); set local role authenticated;
+  perform public.app_set_school_year_enabled('2025-2026', true);
+  denied := false; begin perform public.app_set_school_year_enabled('not a year', true); exception when others then denied := true; end;
+  assert denied, 'a malformed school year is refused';
+  reset role;
+  raise notice 'PASS programs, key stage rules, school years (0014)';
 end $$;
 
 rollback;
