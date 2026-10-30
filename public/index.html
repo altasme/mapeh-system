@@ -2380,7 +2380,7 @@ async function renderDistrictProfileView(container) {
         const uniqueSchools = Array.from(new Set(sRecs.map(r => r.school).filter(sch => sch && sch.trim() !== "")));
         const schoolDisplay = uniqueSchools.length ? uniqueSchools.map(esc).join(", ") : "<em style='color:var(--text-muted);'>All District Schools</em>";
 
-        return `<tr>
+        return `<tr${def.fn ? ' class="mapeh-overall-row"' : ''}>
             <td><strong>${esc(s)}</strong>${def.note ? `<br><small style="color:var(--text-muted);">${esc(def.note)}</small>` : ''}</td>
             <td><small style="color:var(--deped-blue); font-weight:600;">${schoolDisplay}</small></td>
             <td class="num">${mps1}</td>
@@ -2882,7 +2882,7 @@ async function renderDashboard(container) {
     </div>
     <div class="chart-grid">
         <div class="chart-card">
-            <h4>District Performance Comparison (MPS %) - line graph</h4>
+            <h4>District Performance Comparison (MPS %)</h4>
             <div class="chart-container"><canvas id="c-dist-mps"></canvas></div>
         </div>
         <div class="chart-card">
