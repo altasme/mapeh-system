@@ -720,7 +720,7 @@ if (want(16)) {
     const ct = await N.page.evaluate(() => document.getElementById('view-container').innerText);
     ok(/MAPEH component: Music and Arts/.test(ct) && /MAPEH component: P\.E\. and Health/.test(ct) && /CONSOLIDATED MAPEH TOTAL \(Overall MAPEH\)/.test(ct), 'Comparative sheet: component rows under the MAPEH total');
     await N.page.evaluate(() => { resetFilters(); switchView('district-view'); }); await settled(N.page);
-    { const t = await N.page.evaluate(() => document.getElementById('view-container').innerText); ok(/Music and Arts/.test(t) && /P\.E\. and Health/.test(t) && !/MAPEH - (Music|Arts|PE|Health)\b/.test(t), 'District Profile lists Music and Arts and P.E. and Health rows'); }
+    { const t = await N.page.evaluate(() => document.getElementById('view-container').innerText); const lab = await N.page.evaluate(() => Array.from(document.querySelectorAll('#view-container .card-box')[1].querySelectorAll('tbody tr td:first-child')).map(td => td.innerText.trim().split('\n')[0])); ok(lab.includes('Music and Arts') && lab.includes('P.E. and Health') && !lab.some(x => /^MAPEH - (Music|Arts|PE|Health)$/.test(x)), 'District Profile matrix lists Music and Arts and P.E. and Health rows (no separate components): ' + lab.slice(0, 4).join(' | ')); }
     ok(N.errors.length === 0, 'no page errors while rendering the component views' + (N.errors[0] ? ': ' + N.errors[0] : ''));
     await N.ctx.close();
   }
@@ -781,7 +781,7 @@ if (want(16)) {
 
   // ---- Manage Records: edit
   const asuG4 = demoNew.findIndex(r => r.district === 'Asuncion' && r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Music' && r.term === 'Term 1') + 1;
-  const legacyRec = Object.assign({}, demoNew[0], { district: 'Asuncion', gradeLevel: 'Grade 2', keyStage: 'Key Stage 1', learningArea: 'MAPEH - Overall', school: '' });
+  const legacyRec = Object.assign({}, demoNew[0], { district: 'Asuncion', gradeLevel: 'Grade 2', keyStage: 'Key Stage 1', learningArea: 'MAPEH - Overall', school: 'Legacy Marker School' });
   const withLegacy = demoNew.concat([legacyRec]);
   const legacyId = withLegacy.length;
   {
@@ -789,7 +789,7 @@ if (want(16)) {
     const total = withLegacy.length;
     await N.page.evaluate(() => switchView('manage-records')); await settled(N.page);
     ok(await N.page.locator('#mr-tab-deleted').count() === 1 && /of 1[0-9]{3}/.test(await N.page.textContent('#mr-pager')), 'Manage Records: admin sees every record and the Deleted records tab');
-    await N.page.fill('#mr-search', 'MAPEH - Overall');
+    await N.page.fill('#mr-search', 'Legacy Marker School');
     const flagged = await N.page.textContent('#mr-table');
     ok(/Needs correction/.test(flagged) && /of 1\b/.test(await N.page.textContent('#mr-pager')), 'search narrows the list; a Grade 2 legacy record is flagged "Needs correction"');
     // edit legacy record: score only (old area stays allowed because grade and area did not change)
@@ -1921,7 +1921,7 @@ if (want(25)) {
   });
   ok(/Key Stage 1/.test(api.ks1 || '') && /Key Stage 4 subjects/.test(api.shsBad || '') && api.shsOk === null && api.maOk === null, 'the database refuses Overall MAPEH in Key Stage 1 and a Key Stage 4 subject in Grade 9, and accepts Key Stage 4 subjects in Grade 12 and Music and Arts in Grade 1');
   ok(/not classified/.test(api.noTag || ''), 'a school without the Special Programs assignment cannot take Special Programs records');
-  const shs = await A.page.evaluate(async () => { document.getElementById('flt-subject').value = 'SHS - Sports/Health/Wellness'; applyFilters(); return (await getFilteredData()).map(r => r.learningArea + ':' + r.gradeLevel + ':' + r.school); });
+  const shs = await A.page.evaluate(async () => { formDirty = false; document.getElementById('flt-subject').value = 'SHS - Sports/Health/Wellness'; applyFilters(); return (await getFilteredData()).map(r => r.learningArea + ':' + r.gradeLevel + ':' + r.school); });
   ok(JSON.stringify(shs) === JSON.stringify(['SHS - Sports/Health/Wellness:Grade 12:Asuncion NHS']), 'the Key Stage 4 subject is saved and retrieved through the filter: ' + JSON.stringify(shs));
   // ---- program tags: several programs for one school, no duplicate school
   await A.page.evaluate(() => { formDirty = false; resetFilters(); switchView('schools'); }); await settled(A.page);
@@ -1949,11 +1949,11 @@ if (want(25)) {
   // ---- District Profile: schools A to Z
   await A.page.evaluate(() => { formDirty = false; resetFilters(); document.getElementById('flt-district').value = 'Asuncion'; applyFilters(); switchView('district-view'); }); await settled(A.page);
   const names = await A.page.evaluate(() => Array.from(document.querySelectorAll('.school-perf-card tr.school-row')).map(tr => tr.children[0].innerText.trim().split('\n')[0]).filter(Boolean));
-  ok(JSON.stringify(names) === JSON.stringify(['Alpha Elementary', 'Asuncion NHS', 'Mid Elementary', 'Zeta Elementary']) && !names.includes('Carmen Elementary'), 'District Profile lists the schools of the district A to Z and no other district: ' + names.join(', '));
+  ok(JSON.stringify(names) === JSON.stringify(['Alpha Elementary', 'Asuncion NHS', 'Mid Elementary', 'Zeta Elementary', '(no school recorded)']) && !names.includes('Carmen Elementary'), 'District Profile lists the schools of the district A to Z (records with no school last) and no other district: ' + names.join(', '));
   const rows = await A.page.evaluate(() => Array.from(document.querySelectorAll('.school-perf-card tr.school-row')).map(tr => tr.innerText.replace(/\s+/g, ' ').trim()));
-  ok(rows.some(r => /^Alpha Elementary ID 200002 Music and Arts 80\.00% .* Reads fluently/.test(r)) && rows.some(r => /Alpha Elementary/.test(r) === false && /^Music and Arts/.test(r)) === false || true, '');
-  const alpha = rows.filter(r => r.startsWith('Alpha Elementary') || /^(Music and Arts|P\.E\. and Health|MAPEH - Overall|IPED - English)/.test(r));
-  ok(rows.some(r => /Alpha Elementary.*Music and Arts.*80\.00%/.test(r)) && rows.some(r => /P\.E\. and Health.*70\.00%/.test(r)) && rows.some(r => /IPED - English.*85\.00%/.test(r)), 'each school shows its own MPS per learning area (Alpha: Music and Arts 80, P.E. and Health 70, IPED English 85)');
+  const per = await A.page.evaluate(() => { let cur = ''; return Array.from(document.querySelectorAll('.school-perf-card tr.school-row')).map(tr => { const n = tr.children[0].innerText.trim().split('\n')[0]; if (n) cur = n; return [cur, tr.children[1].innerText.trim().split('\n')[0], tr.children[5] ? tr.children[5].innerText.trim() : '']; }); });
+  const at = (s, a) => (per.find(x => x[0] === s && x[1] === a) || [])[2];
+  ok(at('Alpha Elementary', 'Music and Arts') === '80.00%' && at('Alpha Elementary', 'P.E. and Health') === '70.00%' && at('Alpha Elementary', 'IPED - English') === '85.00%' && at('Zeta Elementary', 'Music and Arts') === '90.00%' && at('Alpha Elementary', 'MAPEH - Overall') === '75.00%', 'each school shows its own MPS per learning area (Alpha: Music and Arts 80, P.E. and Health 70, Overall (80 + 70) / 2 = 75, IPED English 85; Zeta: 90): ' + JSON.stringify(per.filter(x => x[0] === 'Alpha Elementary')));
   ok(rows.some(r => /Mid Elementary.*No data for the selected filters/.test(r)), 'a school without records says so instead of showing zeros');
   ok(rows.some(r => /Reads fluently/.test(r)) && !rows.some(r => /Carmen only/.test(r)), 'least learned competencies are shown per school and none from another district');
   await A.page.evaluate(() => { document.getElementById('flt-program').value = 'iped'; applyFilters(); }); await settled(A.page);
@@ -1982,7 +1982,7 @@ if (want(25)) {
   }
   await A.page.selectOption('#report-select', 'ma'); await settled(A.page);
   const maText = await A.page.evaluate(() => document.getElementById('report-body').innerText);
-  ok(/Music and Arts: by district/.test(maText) && /Asuncion/.test(maText) && /Carmen/.test(maText), 'Music and Arts report: district table, grade table and competencies from the same filtered records');
+  ok(/Music and Arts: by district/i.test(maText) && /Asuncion/.test(maText) && /Carmen/.test(maText), 'Music and Arts report: district table, grade table and competencies from the same filtered records');
   await A.page.evaluate(() => { document.getElementById('flt-sy').value = '2026-2027'; document.getElementById('flt-district').value = 'Carmen'; applyFilters(); }); await settled(A.page);
   ok(/No data available for the selected filters/.test(await A.page.evaluate(() => document.getElementById('report-body').innerText)), 'a report with no matching records says so');
   // ---- cover page text and congruent colours
@@ -2001,7 +2001,7 @@ if (want(25)) {
   ok(await C.page.evaluate(async () => (await sb().rpc('app_set_school_year_enabled', { p_sy: '2026-2027', p_enabled: false })).error?.code) === '42501', 'a district coordinator cannot change school years either');
   await C.page.evaluate(() => switchView('district-view')); await settled(C.page);
   const cn = await C.page.evaluate(() => Array.from(document.querySelectorAll('.school-perf-card tr.school-row')).map(tr => tr.children[0].innerText.trim().split('\n')[0]).filter(Boolean));
-  ok(cn.join() === 'Alpha Elementary,Mid Elementary,Zeta Elementary', 'an Elementary coordinator sees only the Elementary schools of the own district, A to Z: ' + cn.join(', '));
+  ok(cn.join() === 'Alpha Elementary,Mid Elementary,Zeta Elementary,(no school recorded)', 'an Elementary coordinator sees only the Elementary schools of the own district, A to Z: ' + cn.join(', '));
   await C.ctx.close();
 }
 
