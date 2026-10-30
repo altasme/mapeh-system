@@ -13,7 +13,7 @@ window.SITE_REGISTRY = {
     { key: "login.org", page: "Login page", label: "Organization line", def: "Schools Division of Davao del Norte, Region XI", max: 120 },
     { key: "login.title", page: "Login page", label: "System title", def: "Division Assessment Consolidation System", max: 120 },
     { key: "login.scale_title", page: "Login page", label: "Rating scale heading", def: "How results are rated (Mean Percentage Score)", max: 120 },
-    { key: "login.desc", page: "Login page", label: "Description", def: "MAPEH, SPA, SPS, SPFL and IPED assessment results, consolidated by district, term and key stage into the report the Division submits.", max: 400, multiline: true },
+    { key: "login.desc", page: "Login page", label: "Description", def: "A system for consolidating and analyzing assessment data on MAPEH, SPA, SPS, SPFL, and IPEd to support evidence-based decision-making and improve learner performance in SDO Davao del Norte.", max: 400, multiline: true },
     { key: "login.foot", page: "Login page", label: "Footer line", def: "Department of Education, Republic of the Philippines", max: 120 },
     { key: "login.card_title", page: "Login page", label: "Sign-in heading", def: "Sign in", max: 60 },
     { key: "login.card_text", page: "Login page", label: "Sign-in instruction", def: "Use the username issued to your district or the Division office.", max: 200 },
