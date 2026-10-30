@@ -5,9 +5,10 @@
 (function () {
   const S = window.__STUB;              // { districts, profiles, passwords, records, notes, settings }
   S.schools = S.schools || []; S.school_programs = S.school_programs || [];
+  S.school_years = S.school_years || Array.from({ length: 10 }, (_, i) => ({ sy: `${2025 + i}-${2026 + i}`, enabled: true }));
   const T = {
     districts: S.districts, profiles: S.profiles, assessment_records: S.records,
-    comparative_notes: S.notes, app_settings: [{ id: 1, data: S.settings }], schools: S.schools, school_programs: S.school_programs
+    comparative_notes: S.notes, app_settings: [{ id: 1, data: S.settings }], schools: S.schools, school_programs: S.school_programs, school_years: S.school_years
   };
   ['site_content', 'site_content_versions', 'site_settings', 'site_media', 'site_media_slots', 'admin_activity'].forEach(k => { S[k] = S[k] || []; T[k] = S[k]; });
   S.storage = S.storage || {};
@@ -32,16 +33,20 @@
   const pl = m => m >= 90 ? 'Advanced' : m >= 85 ? 'Proficient' : m >= 80 ? 'Approaching Proficiency' : m >= 75 ? 'Developing' : 'Beginning';
   // mirror of public.app_mapeh_rule_problem()
   const LEG = ['MAPEH - Music & Arts', 'MAPEH - PE & Health'], COMP = ['MAPEH - Music', 'MAPEH - Arts', 'MAPEH - PE', 'MAPEH - Health'];
+  const SHS = ['SHS - Life and Career Skills', 'SHS - Sports/Health/Wellness'];
   const ruleProblem = (g, a) => {
+    if (SHS.includes(a)) return ['Grade 11', 'Grade 12'].includes(g) ? null : 'Life and Career Skills and Sports/Health/Wellness are Key Stage 4 subjects: enter them for Grades 11 and 12 only.';
     if (a !== 'MAPEH - Overall' && !COMP.includes(a) && !LEG.includes(a)) return null;
-    if (['Grade 1','Grade 2','Grade 3'].includes(g) && a !== 'MAPEH - Overall') return 'Grades 1 to 3 are recorded as overall MAPEH only. Music, Arts, PE, Health and the combined Music & Arts and PE & Health areas are not recorded separately for these grades.';
+    if (['Grade 1','Grade 2','Grade 3'].includes(g) && a === 'MAPEH - Overall') return 'MAPEH - Overall is not entered for Key Stage 1 (Grades 1 to 3). Enter Music and Arts and P.E. and Health instead.';
+    if (['Grade 1','Grade 2','Grade 3'].includes(g) && !LEG.includes(a)) return 'Grades 1 to 3 are entered as Music and Arts and P.E. and Health. Music, Arts, PE and Health are not entered separately for these grades.';
     if (['Grade 11','Grade 12'].includes(g)) return 'MAPEH is not assessed in Grades 11 and 12.';
     return null;
   };
+  const syClosed = sy => { const r = T.school_years.find(x => x.sy === sy); return !!r && !r.enabled; };
   const canSeeRecord = r => (isDivision() || coordScope(r.district_id, levelOf(r.grade_level)));
   // school accounts (migration 0010): one school, its program(s) only, its district, never deleted rows
   const isSchoolUser = () => { const p = me(); return sessionOk() && !!p && p.role === 'school'; };
-  const progOf = a => /^(SPA|SPS|SPFL) - /.test(a || '') ? 'special_programs' : /^IPED - /.test(a || '') ? 'iped' : null;
+  const progOf = a => /^(SPA|SPS|SPFL) - /.test(a || '') ? 'special_programs' : /^IPED - /.test(a || '') ? 'iped' : /^(MAPEH|SHS) - /.test(a || '') ? 'mapeh' : null;
   const schoolProgs = id => T.school_programs.filter(x => x.school_id === id).map(x => x.program);
   const schoolDistrict = id => (T.schools.find(x => x.id === id) || {}).district_id;
   const schoolOk = r => { if (!isSchoolUser() || r.school_id == null) return false; const p = me(); const pr = progOf(r.learning_area); const sc = T.schools.find(x => x.id === p.school_id);
@@ -79,7 +84,7 @@
       return isDivision() || coordScope(row.district_id, levelOf(row.grade_level)) || schoolWriteOk(row);
     }
     if (table === 'comparative_notes') return op !== 'delete' && canRead('comparative_notes', row);
-    if (table === 'schools' || table === 'school_programs') return false;   // written only through the app_save_school / app_import_schools functions
+    if (table === 'schools' || table === 'school_programs' || table === 'school_years') return false;   // written only through the app_save_school / app_import_schools functions
     if (table === 'districts' || table === 'app_settings') return op === 'update' && isDivision();
     return false;
   }
@@ -147,6 +152,7 @@
           const r = Object.assign({}, r0);
           if (this.table === 'assessment_records') {
             if (Object.keys(r0).some(k => !WRITABLE.includes(k))) return { data: null, error: err('42501', 'permission denied for table assessment_records'), count: null };
+            if (syClosed(r.sy)) return { data: null, error: err('23514', `School year ${r.sy} is not open for data entry.`), count: null };
             const rp = ruleProblem(r.grade_level, r.learning_area);
             if (rp) return { data: null, error: err('23514', rp), count: null };
             const sg = schoolGuard(r, null); if (sg) return { data: null, error: err('P0001', sg), count: null };
@@ -175,7 +181,7 @@
         if (this.table === 'assessment_records' && Object.keys(this.vals).some(k => !WRITABLE.includes(k))) return { data: null, error: err('42501', 'permission denied for table assessment_records'), count: null };
         const hits = tbl.filter(r => canRead(this.table, r) && match(r) && !(this.table === 'assessment_records' && isDel(r)));
         if (this.table === 'assessment_records') {
-          for (const r of hits) { const sg = schoolGuard(Object.assign({}, r, this.vals), r); if (sg) return { data: null, error: err('P0001', sg), count: null }; }
+          for (const r of hits) { if (this.vals.sy !== undefined && this.vals.sy !== r.sy && syClosed(this.vals.sy)) return { data: null, error: err('23514', `School year ${this.vals.sy} is not open for data entry.`), count: null }; const sg = schoolGuard(Object.assign({}, r, this.vals), r); if (sg) return { data: null, error: err('P0001', sg), count: null }; }
         }
         if (this.table === 'assessment_records') {
           for (const r of hits) {
@@ -238,12 +244,20 @@
             }
             const need = () => isDivision() ? null : { data: null, error: err('42501', 'Only a Supervisor or Admin can manage schools.') };
             const fail = m => ({ data: null, error: err('P0001', m) });
+            if (name === 'app_set_school_year_enabled') {
+              const pm = me();
+              if (!sessionOk() || pm.role !== 'admin') return { data: null, error: err('42501', 'Only the System Administrator can change school year availability.') };
+              if (!/^[0-9]{4}-[0-9]{4}$/.test(String(a.p_sy || ''))) return fail('Choose a school year.');
+              if (!a.p_enabled && !T.school_years.some(x => x.enabled && x.sy !== a.p_sy)) return fail('At least one school year must stay enabled.');
+              const ry = T.school_years.find(x => x.sy === a.p_sy); if (ry) ry.enabled = !!a.p_enabled; else T.school_years.push({ sy: a.p_sy, enabled: !!a.p_enabled });
+              return { data: null, error: null };
+            }
             if (name === 'app_save_school') {
               const d0 = need(); if (d0) return d0;
               const nm = String(a.p_name || '').trim(); const progs = Array.from(new Set(a.p_programs || []));
               if (!nm) return fail('Enter the school name (200 characters at most).');
               if (!T.districts.find(x => x.id === a.p_district_id)) return fail('Choose a district.');
-              if (progs.some(x => !['special_programs', 'iped'].includes(x))) return fail('Programs can only be Special Programs or IPED.');
+              if (progs.some(x => !['mapeh', 'special_programs', 'iped'].includes(x))) return fail('Programs can only be MAPEH, Special Programs or IPED.');
               if (a.p_education_level != null && !['elementary', 'secondary'].includes(a.p_education_level)) return fail('Education level must be Elementary or Secondary.');
               const dup = T.schools.find(x => x.district_id === a.p_district_id && x.name.trim().toLowerCase() === nm.toLowerCase() && x.id !== a.p_id);
               let sc;
