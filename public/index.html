@@ -2889,8 +2889,8 @@ async function renderDashboard(container) {
             <h4>Program Track Consolidated Comparison (MPS %)</h4>
             <div class="chart-container"><canvas id="c-subj-mps"></canvas></div>
         </div>
-        ${hasMapehNew(data) ? `<div class="chart-card">
-            <h4>MA, PEH and Overall MAPEH (MPS %)</h4>
+        ${hasMapehNew(data) ? `<div class="chart-card mapeh-comp-chart">
+            <h4>Music and Arts, P.E. and Health and Overall MAPEH (MPS %)</h4>
             <div class="chart-container"><canvas id="c-mapeh-comp"></canvas></div>
         </div>` : ''}
     </div>`;
