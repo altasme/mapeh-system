@@ -720,7 +720,7 @@ if (want(16)) {
     const ct = await N.page.evaluate(() => document.getElementById('view-container').innerText);
     ok(/MAPEH component: Music and Arts/.test(ct) && /MAPEH component: P\.E\. and Health/.test(ct) && /CONSOLIDATED MAPEH TOTAL \(Overall MAPEH\)/.test(ct), 'Comparative sheet: component rows under the MAPEH total');
     await N.page.evaluate(() => { resetFilters(); switchView('district-view'); }); await settled(N.page);
-    { const t = await N.page.evaluate(() => document.getElementById('view-container').innerText); const lab = await N.page.evaluate(() => Array.from(document.querySelectorAll('#view-container .card-box')[1].querySelectorAll('tbody tr td:first-child')).map(td => td.innerText.trim().split('\n')[0])); ok(lab.includes('Music and Arts') && lab.includes('P.E. and Health') && !lab.some(x => /^MAPEH - (Music|Arts|PE|Health)$/.test(x)), 'District Profile matrix lists Music and Arts and P.E. and Health rows (no separate components): ' + lab.slice(0, 4).join(' | ')); }
+    { const t = await N.page.evaluate(() => document.getElementById('view-container').innerText); const lab = await N.page.evaluate(() => Array.from(document.querySelectorAll('#view-container .card-box')[0].querySelectorAll('tbody tr td:first-child')).map(td => td.innerText.trim().split('\n')[0])); ok(lab.includes('Music and Arts') && lab.includes('P.E. and Health') && !lab.some(x => /^MAPEH - (Music|Arts|PE|Health)$/.test(x)), 'District Profile matrix lists Music and Arts and P.E. and Health rows (no separate components): ' + lab.slice(0, 4).join(' | ')); }
     ok(N.errors.length === 0, 'no page errors while rendering the component views' + (N.errors[0] ? ': ' + N.errors[0] : ''));
     await N.ctx.close();
   }
@@ -1947,7 +1947,7 @@ if (want(25)) {
   await A.page.click('button[aria-label="Enable school year 2026-2027"]'); await A.page.waitForSelector('.toast-success');
   ok((await optVals('#flt-sy')).some(o => o.v === '2026-2027'), 'enabling it again brings it back');
   // ---- District Profile: schools A to Z
-  await A.page.evaluate(() => { formDirty = false; resetFilters(); document.getElementById('flt-district').value = 'Asuncion'; applyFilters(); switchView('district-view'); }); await settled(A.page);
+  await A.page.evaluate(() => { formDirty = false; resetFilters(); document.getElementById('flt-district').value = 'Asuncion'; document.getElementById('flt-sy').value = '2025-2026'; applyFilters(); switchView('district-view'); }); await settled(A.page);
   const names = await A.page.evaluate(() => Array.from(document.querySelectorAll('.school-perf-card tr.school-row')).map(tr => tr.children[0].innerText.trim().split('\n')[0]).filter(Boolean));
   ok(JSON.stringify(names) === JSON.stringify(['Alpha Elementary', 'Asuncion NHS', 'Mid Elementary', 'Zeta Elementary', '(no school recorded)']) && !names.includes('Carmen Elementary'), 'District Profile lists the schools of the district A to Z (records with no school last) and no other district: ' + names.join(', '));
   const rows = await A.page.evaluate(() => Array.from(document.querySelectorAll('.school-perf-card tr.school-row')).map(tr => tr.innerText.replace(/\s+/g, ' ').trim()));
