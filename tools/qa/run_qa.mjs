@@ -1860,7 +1860,7 @@ if (want(24)) {
   ok(sv.schools.every(s => ['Asuncion', 'B.E. Dujali', 'Carmen', 'Kapalong East', 'Kapalong West', 'Langilan', 'New Corella', 'San Isidro', 'Sto. Tomas East', 'Sto. Tomas West', 'Talaingod'].includes(s.district)), 'every school maps to one of the 11 districts (Kap. East / Kap. West / BE. Dujali / san Isidro normalised)');
   ok(sv.issues.filter(i => i.type === 'no school ID').map(i => i.name).sort().join('|') === '**Mamaon Extension|**Mangga Extension|**New Katipunan Extension', 'the three rows without an ID are reported, not imported');
   const sqlText = fs.readFileSync(`${ROOT}/supabase/seed/school_import.sql`, 'utf8');
-  ok((sqlText.match(/^  \(\d+, /gm) || []).length === 264 && !/\bdelete\b|\btruncate\b|\bdrop\b/i.test(sqlText.replace(/-- .*/g, '').replace(/on commit drop/g, '')) && !/school_programs/.test(sqlText.replace(/-- .*/g, '')), 'the import SQL has 264 rows, deletes nothing, and creates no Special Programs / IPED assignments');
+  ok((sqlText.match(/^  \(\d+, /gm) || []).length === 264 && !/\bdelete\b|\btruncate\b|\bdrop\b/i.test(sqlText.replace(/-- .*/g, '').replace(/on commit drop/g, '')) && !/special_programs|'iped'/.test(sqlText.replace(/-- .*/g, '')) && /'mapeh'/.test(sqlText), 'the import SQL has 264 rows, deletes nothing, tags schools MAPEH only, and creates no Special Programs / IPED assignments');
 }
 
 console.log('\n[25] Revision 2: Key Stage 1 and 4 rules, program tags, school years, school rows, LLC order, line graph, official reports, cover text');
