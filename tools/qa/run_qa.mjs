@@ -1720,7 +1720,7 @@ if (want(24)) {
     { id: 4, name: 'Carmen Elem', district_id: 3, active: true, education_level: 'elementary', deped_school_id: 100004 },
     { id: 5, name: 'Asuncion IPED Elem', district_id: 1, active: true, education_level: 'elementary', deped_school_id: 100005 },
     { id: 6, name: 'Asuncion SP Elem', district_id: 1, active: true, education_level: 'elementary', deped_school_id: 100006 }];
-  const PRG = [{ school_id: 5, program: 'iped' }, { school_id: 6, program: 'special_programs' }];
+  const PRG = [{ school_id: 5, program: 'iped' }, { school_id: 6, program: 'special_programs' }, ...[1, 2, 3, 4, 5, 6].map(i => ({ school_id: i, program: 'mapeh' }))];
   const SN = Object.fromEntries(SCH.map(s => [s.id, s.name]));
   const rec = (district, term, grade, area, mps, sid, ll = [], pct = 70) => Object.assign({}, base, { district, sy: '2025-2026', term, gradeLevel: grade, keyStage: grade === 'Grade 5' ? 'Key Stage 2' : 'Key Stage 3',
     learningArea: area, mps, pct75: pct, baselineMps: 65, school: SN[sid] || '', schoolId: sid, leastLearned: ll, isDemo: false });
