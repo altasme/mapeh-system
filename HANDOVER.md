@@ -287,3 +287,28 @@ Run `supabase/migrations/0012_combined_mapeh_areas.sql` once in the SQL editor (
 - Three rows in the workbook have no school ID (New Katipunan Extension, Mamaon Extension, Mangga Extension): not imported, awaiting confirmation.
 
 **Known limits.** Typing a school name that is not on the list is still possible (kept from before; those records are not linked to a school). There is still no uniqueness rule, so re-saving the same entry creates another record (the save button is disabled while a save is running; duplicate detection is an upgrade, AUDIT M2).
+
+## 21. Client revision (late October 2026): findings and additions
+**Deployment order.** (1) `supabase/migrations/0014_programs_key_stage_rules_school_years.sql` in the SQL editor (migrations 0012 and 0013 must already be applied; it is safe to run once). (2) Optional: run `supabase/seed/school_import.sql` again so any school it adds is tagged MAPEH (the migration already tags every school that exists). The app works before the migration (school years all open, MAPEH list untagged), but the new rules, program tags and school year switch need it.
+
+**What the database now enforces (0014, in `app_records_guard`, so imports and direct API calls are covered).**
+- Key Stage 1 (Grades 1 to 3): `MAPEH - Overall` is refused on new or changed records; Music and Arts and P.E. and Health are accepted. Existing Key Stage 1 records are untouched and stay editable.
+- Two Key Stage 4 subjects, `SHS - Life and Career Skills` and `SHS - Sports/Health/Wellness`, only for Grades 11 and 12. They belong to the MAPEH program (**to confirm**).
+- Schools carry programs in the existing many-to-many table: MAPEH, Special Programs, IPED, any combination, one school record. A record needs its school to hold the program of its learning area (MAPEH, SP or IPED), the school's district and its education level. Every existing school was tagged MAPEH; **nothing** was tagged Special Programs or IPED.
+- `public.school_years` lists the years that can be entered. Only the System Administrator can switch one off (`app_set_school_year_enabled`); new records or a change of year into a disabled year are refused. Existing records are never touched or hidden from reports.
+
+**What changed in the app**
+- **Overall MAPEH = (Music and Arts MPS + P.E. and Health MPS) / 2**, the client's formula, in the Division Summary, District Profile, Grade Level Breakdown, Performance Dashboard, Comparative total and the reports. It is used only when both components have data. If one is missing the Overall is **not** treated as zero: the figure from the recorded Overall records is shown and marked "from Overall records", or No data. Division and district totals use the same formula on their own component figures.
+- Fast Manual Entry: a Program selector (MAPEH, Special Programs, IPED) limits the learning areas and the school list; Overall MAPEH is not offered in Key Stage 1; the two Key Stage 4 subjects appear only for Grades 11 and 12; the same subjects are in the filters.
+- Schools & Accounts: MAPEH checkbox; a school can hold one, two or three programs. Education level and DepEd ID can be edited.
+- District Profile View: a school table, A to Z, for the district's schools (filtered by level and program): MPS and proficiency per learning area and term, and the most reported least learned competencies. A school with no matching record says so.
+- Least Learned Competencies: grouped and listed in numeric grade order (Grade 1, 2, ... 10, 11, 12). The ranking method is unchanged.
+- School Year Availability card in Settings & Branding, visible to the System Administrator only.
+- Performance Dashboard: the district comparison is a line graph (the other two charts stay bars).
+- Reports & Signatories: an Official Report selector with the seven reports the system can really produce: Division Assessment Report, MAPEH Assessment Performance Summary, Music and Arts Assessment Analysis, Physical Education and Health Assessment Analysis, District Profile Report, Grade Level Consolidation Report, Learning Competency Analysis. Each is built from the same filtered data as its screen and prints with the existing header and signatories.
+- Cover page description is the client's exact wording (login page, page description, share preview).
+- Report pages use the cover's palette (blue, green, yellow, red, purple rule under headings, navy headings and table headers). Colour only: text and layout of the printed report are unchanged.
+
+**Not built, needs the client.** Three reports in the client's reference picture need data the system does not have: *MAPEH Item Analysis Report* (no item-level data), *Consolidated Section Report* (no sections), *Intervention & Action Plan* (no intervention data). They are not offered. If wanted, the client must say what data those would use.
+
+**Decisions to confirm.** (1) Overall MAPEH where one component is missing (fallback to recorded Overall). (2) Key Stage 4 subjects classed under MAPEH. (3) The Performance Dashboard line graph was applied to the district comparison only. (4) A disabled school year still counts in "All School Years" totals (nothing is hidden or removed). (5) Existing school accounts tagged MAPEH can now also enter MAPEH records for their school.
