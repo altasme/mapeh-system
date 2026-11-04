@@ -166,10 +166,11 @@ async function legacyReady(page) {
 }
 // Screen-only additions (sheet letterhead, proficiency rulers) are presentation: hide them before reading text.
 const text = async page => norm(await page.evaluate(() => {
-  if (!document.getElementById('qa-hide')) { const st = document.createElement('style'); st.id = 'qa-hide'; st.textContent = '.screen-only,.mapeh-comp-card,.mapeh-comp-chart,.school-perf-card,.mapeh-overall-row{display:none!important}'; document.head.appendChild(st); }
+  if (!document.getElementById('qa-hide')) { const st = document.createElement('style'); st.id = 'qa-hide'; st.textContent = '.screen-only,.mapeh-comp-card,.mapeh-comp-chart,.school-perf-card,.mapeh-overall-row,.chart-analysis,.comp-grade-card{display:none!important}'; document.head.appendChild(st); }
   return document.getElementById('view-container').innerText;
 }).then(t => t.replace(/Music and Arts/g, 'MAPEH - Music & Arts').replace(/P\.E\. and Health/g, 'MAPEH - PE & Health')));
-const charts = async page => page.evaluate(() => Object.values(activeCharts).slice(0, 2).map(c => c.data.datasets[0].data.map(Number)));
+// the district chart is now listed A to Z (client request): compare the plotted values irrespective of order
+const charts = async page => page.evaluate(() => Object.values(activeCharts).slice(0, 2).map(c => c.data.datasets[0].data.map(Number).sort((a, b) => a - b)));
 
 async function goView(L, N, view, filt) {
   for (const [p, isNew] of [[L.page, false], [N.page, true]]) {
@@ -304,11 +305,11 @@ if (want(5)) {
   await N.page.evaluate(() => switchView('division')); await settled(N.page);
   let t = await text(N.page);
   ok(t.includes('Carmen') && !t.includes('Asuncion'), 'coordinator sees only own district (Division Summary)');
-  ok(await N.page.evaluate(() => document.getElementById('nav-settings').style.display === 'none'), 'Settings & Branding hidden for coordinator');
+  ok(await N.page.evaluate(() => document.getElementById('nav-settings').style.display !== 'none' && getComputedStyle(document.getElementById('nav-schools')).display === 'none'), 'Settings & Branding is open to a coordinator (District Signatories only); Schools & Accounts stays hidden');
   await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
   ok(/TOTAL DISTRICT RECORDS\s+66/i.test(await text(N.page)), 'elementary coordinator sees 66 records: own district and own level only (database filtered)');
   await N.page.evaluate(() => switchView('settings')); await settled(N.page);
-  ok((await text(N.page)).includes('Access Restricted'), 'Settings view refuses a coordinator');
+  { const sp = await text(N.page); ok(/District Signatories/i.test(sp) && !/print header|division signatories|complete database reset|district coordinators/i.test(sp), 'Settings shows a coordinator only their District Signatories (no branding, Division signatories, coordinators or reset)'); }
   await N.ctx.close();
 
   const A = await openNew('admin', demo);
@@ -335,7 +336,7 @@ if (want(6)) {
   const xlsx = async rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
   const upload = async rows => { await N.page.evaluate(() => switchView('data-input')); await settled(N.page);
     await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xlsx(rows)) }); };
-  const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'X', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 1', 'Learning Area': 'MAPEH - Music & Arts', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'lc one' };
+  const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'X', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 1', 'Learning Area': 'MAPEH - Overall', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'lc one' };
   const count = () => N.page.evaluate(() => window.__STUB.records.length);
   await upload([base, Object.assign({}, base, { District: 'Atlantis' }), Object.assign({}, base, { District: 'Nowhere' })]);
   await N.page.waitForSelector('.toast-error');
@@ -457,7 +458,7 @@ if (want(10)) {
     // ported is printed twice: as shipped (with the SAMPLE DATA line) and with the flag cleared (must equal the original)
     for (const [pg, tag, clear] of [[L.page, 'legacy', false], [N.page, 'ported', false], [N.page, 'ported-noflag', true]]) {
       await pg.emulateMedia({ media: 'print' });
-      if (clear) await pg.evaluate(() => { document.body.classList.remove('sample-in-view'); const st = document.createElement('style'); st.textContent = '.bl-sy-note,.mapeh-comp-card,.mapeh-comp-chart,.school-perf-card,.mapeh-overall-row{display:none!important}'; document.head.appendChild(st); });   // the baseline SY notes are a new, intended addition to the printed sheet; everything else must match
+      if (clear) await pg.evaluate(() => { document.body.classList.remove('sample-in-view'); const st = document.createElement('style'); st.textContent = '.bl-sy-note,.mapeh-comp-card,.mapeh-comp-chart,.school-perf-card,.mapeh-overall-row,.chart-analysis,.comp-grade-card{display:none!important}'; document.head.appendChild(st); });   // the baseline SY notes are a new, intended addition to the printed sheet; everything else must match
       const f = `${OUT}/print-${label}-${tag}.pdf`;
       await pg.pdf({ path: f, format: 'A4', printBackground: true }); files.push(f);
     }
@@ -608,7 +609,7 @@ if (want(12)) {
     ok(JSON.stringify(grades) === JSON.stringify(LV[own]), `${user}: manual entry offers only ${LABEL[own]} grades`);
     // Excel import: one row of the wrong level rejects the whole file, naming the rows
     const xl = rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
-    const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'S', 'Key Stage': 'Key Stage 1', 'Grade Level': ownGrade, 'Learning Area': 'MAPEH - Music & Arts', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'x' };
+    const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'S', 'Key Stage': 'Key Stage 1', 'Grade Level': ownGrade, 'Learning Area': 'MAPEH - Overall', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'x' };
     const before = await N.page.evaluate(() => window.__STUB.records.length);
     const upload = async rows => { await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page); await N.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
       await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xl(rows)) }); };
@@ -743,7 +744,7 @@ if (want(16)) {
     const xlsx = async rows => N.page.evaluate(r => { const ws = XLSX.utils.json_to_sheet(r); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return Array.from(new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))); }, rows);
     const upload = async rows => { await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page); await N.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
       await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xlsx(rows)) }); };
-    const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'X', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 1', 'Learning Area': 'MAPEH - Music & Arts', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'lc' };
+    const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'X', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 1', 'Learning Area': 'MAPEH - Overall', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'lc' };
     const count = () => N.page.evaluate(() => window.__STUB.records.length);
     const bad = [['Grade 2', 'MAPEH - Music'], ['Grade 3', 'MAPEH - Health'], ['Grade 2', 'MAPEH - Overall'], ['Grade 3', 'MAPEH - Overall'], ['Grade 11', 'MAPEH - Overall'], ['Grade 12', 'MAPEH - Arts']];
     for (const [gr, area] of bad) {
@@ -2004,6 +2005,159 @@ if (want(25)) {
   const cn = await C.page.evaluate(() => Array.from(document.querySelectorAll('.school-perf-card tr.school-row')).map(tr => tr.children[0].innerText.trim().split('\n')[0]).filter(Boolean));
   ok(cn.join() === 'Alpha Elementary,Mid Elementary,Zeta Elementary,(no school recorded)', 'an Elementary coordinator sees only the Elementary schools of the own district, A to Z: ' + cn.join(', '));
   await C.ctx.close();
+}
+
+console.log('\n[26] Updates v2: A to Z districts and chart analysis, per-grade baselines, LLC log toggle, IPED schools and Overall MAPEH, signatories, Key Stage 1, Proficiency Level filter');
+if (want(26)) {
+  const base = demoNew[0];
+  const SCH = [
+    { id: 1, name: 'Iped One', district_id: 1, active: true, education_level: 'elementary', deped_school_id: 300001 },
+    { id: 2, name: 'Iped Two', district_id: 1, active: true, education_level: 'elementary', deped_school_id: 300002 },
+    { id: 3, name: 'Iped Three', district_id: 1, active: true, education_level: 'elementary', deped_school_id: 300003 },
+    { id: 4, name: 'Plain Elementary', district_id: 1, active: true, education_level: 'elementary', deped_school_id: 300004 },
+    { id: 5, name: 'Carmen Elementary', district_id: 3, active: true, education_level: 'elementary', deped_school_id: 300005 }];
+  const PRG = [1, 2, 3, 4, 5].map(i => ({ school_id: i, program: 'mapeh' })).concat([1, 2, 3].map(i => ({ school_id: i, program: 'iped' })));
+  const SN = Object.fromEntries(SCH.map(s => [s.id, s.name]));
+  const KSOF = { 'Grade 1': 'Key Stage 1', 'Grade 2': 'Key Stage 1', 'Grade 5': 'Key Stage 2', 'Grade 6': 'Key Stage 2' };
+  const rec = (district, term, grade, area, mps, sid, o = {}) => Object.assign({}, base, { district, sy: '2025-2026', term, gradeLevel: grade, keyStage: KSOF[grade] || 'Key Stage 2',
+    learningArea: area, mps, pct75: 70, baselineMps: 65, school: SN[sid] || '', schoolId: sid, leastLearned: [], isDemo: false }, o);
+  const recs = [
+    rec('Asuncion', 'Term 1', 'Grade 5', 'MAPEH - Music & Arts', 84, 4), rec('Asuncion', 'Term 1', 'Grade 5', 'MAPEH - PE & Health', 76, 4),
+    rec('Carmen', 'Term 1', 'Grade 5', 'MAPEH - Music & Arts', 70, 5), rec('Carmen', 'Term 1', 'Grade 5', 'MAPEH - PE & Health', 90, 5),
+    rec('Asuncion', 'Term 1', 'Grade 5', 'IPED - MAPEH (Music & Arts)', 88, 1), rec('Asuncion', 'Term 1', 'Grade 5', 'IPED - MAPEH (PE & Health)', 72, 1),
+    rec('Asuncion', 'Term 1', 'Grade 5', 'IPED - English', 80, 2),
+    rec('Asuncion', 'Term 1', 'Grade 1', 'MAPEH - Overall', 79, 4, { leastLearned: [{ code: 'LC-1', desc: 'Grade one skill' }] }),
+    rec('Asuncion', 'Term 1', 'Grade 6', 'SPA - Vocal Arts', 60, null),
+    rec('Asuncion', 'Term 1', 'Grade 2', 'MAPEH - Overall', 92, 4, { baselineMps: 70 })
+  ];
+  const f2 = v => v.toFixed(2);
+  const A = await openNew('admin', recs, { schools: SCH, schoolPrograms: PRG });
+  const textOf = sel => A.page.evaluate(s => Array.from(document.querySelectorAll(s)).map(e => e.innerText.replace(/\s+/g, ' ').trim()), sel);
+
+  // 1 + 2. Performance Dashboard
+  await A.page.evaluate(() => { resetFilters(); switchView('dashboard'); }); await settled(A.page);
+  const labels = await A.page.evaluate(() => activeCharts.distMps.data.labels);
+  ok(JSON.stringify(labels) === JSON.stringify(labels.slice().sort((a, b) => a.localeCompare(b))) && labels.length === 2, 'district performance is listed A to Z: ' + labels.join(', '));
+  const an = await textOf('.chart-analysis');
+  const asuMean = recs.filter(r => r.district === 'Asuncion').reduce((a, c) => a + c.mps, 0) / recs.filter(r => r.district === 'Asuncion').length;
+  const carMean = recs.filter(r => r.district === 'Carmen').reduce((a, c) => a + c.mps, 0) / 2;
+  ok(an.length === 3 && an.every(t => t.startsWith('Analysis:')), 'every graph has an automatic analysis at its bottom (3 graphs, 3 analyses)');
+  ok(an[0].includes(`Highest: ${carMean > asuMean ? 'Carmen' : 'Asuncion'} at ${f2(Math.max(asuMean, carMean))}%`) && an[0].includes(`Lowest: ${carMean > asuMean ? 'Asuncion' : 'Carmen'} at ${f2(Math.min(asuMean, carMean))}%`) && an[0].includes(`gap between them is ${f2(Math.abs(asuMean - carMean))} percentage points`), 'district analysis: highest, lowest and gap computed from the plotted values (' + an[0].slice(0, 140) + ')');
+  ok(/Highest track: .* at \d+\.\d\d%/.test(an[1]) && /No data for: SPS Total, SPFL Total\./.test(an[1]), 'program track analysis names the highest and lowest tracks and the tracks without data');
+  ok(/^Analysis: Music and Arts \d+\.\d\d% \(.*\); P\.E\. and Health \d+\.\d\d% \(.*\)\. Overall MAPEH = \(/.test(an[2]) && /\) \/ 2 = \d+\.\d\d%/.test(an[2]), 'MAPEH analysis states the components and the formula: ' + an[2].slice(0, 160));
+  await A.page.evaluate(() => { document.getElementById('flt-district').value = 'Asuncion'; document.getElementById('flt-term').value = 'Term 3'; applyFilters(); }); await settled(A.page);
+  ok(/No district has data/.test((await textOf('.chart-analysis'))[0]), 'with no data the analysis says so instead of inventing text');
+
+  // 3. Termly comparative: per grade level, with its own SY baseline; not for school accounts
+  await A.page.evaluate(() => { formDirty = false; resetFilters(); switchView('comparative'); }); await settled(A.page);
+  const gradeTable = await A.page.evaluate(() => Array.from(document.querySelectorAll('.comp-grade-card tbody tr')).map(tr => Array.from(tr.children).map(td => td.innerText.replace(/\s+/g, ' ').trim())));
+  ok(gradeTable.length === 12 && gradeTable[0][0] === 'Grade 1' && gradeTable[11][0] === 'Grade 12' && gradeTable[0][1] === 'Key Stage 1', 'Termly Comparative lists every grade level on its own row (12 rows, Grade 1 to Grade 12)');
+  ok(gradeTable[1][4].startsWith('92.00%') && gradeTable[1][5].startsWith('+22.00%'), 'Grade 2: its own current MPS 92.00% against its own baseline 70 (variance +22.00%)');
+  await A.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
+  A.page.once('dialog', d => d.accept());
+  await A.page.fill('.comp-grade-card tbody tr:nth-child(2) .editable-baseline-input', '60'); await A.page.press('.comp-grade-card tbody tr:nth-child(2) .editable-baseline-input', 'Tab'); await A.page.waitForSelector('.toast-success');
+  const bl = await A.page.evaluate(() => Object.fromEntries(window.__STUB.records.map(r => [r.grade_level + r.learning_area + r.mps, r.baseline_mps])));
+  ok(bl['Grade 2MAPEH - Overall92'] === 60 && bl['Grade 1MAPEH - Overall79'] === 65, 'editing one grade changes the baseline of that grade only');
+  await settled(A.page);
+  A.page.once('dialog', d => d.accept());
+  await A.page.selectOption('.comp-grade-card tbody tr:nth-child(2) .bl-sy-select', '2023-2024'); await A.page.waitForSelector('.toast-success');
+  const bsy = await A.page.evaluate(() => Object.fromEntries(window.__STUB.records.map(r => [r.grade_level + r.learning_area + r.mps, r.baseline_sy])));
+  ok(bsy['Grade 2MAPEH - Overall92'] === '2023-2024' && !bsy['Grade 1MAPEH - Overall79'], 'and so does the baseline school year of a grade');
+  await A.ctx.close();
+  // who can open it
+  const SC = await openNew('t.school', recs, { schools: SCH, schoolPrograms: PRG, passwords: { 't.school': 'schoolpass1' },
+    profiles: [{ id: 'sch-t', username: 't.school', display_name: 'Plain Elementary', role: 'school', district_id: 1, education_level: null, school_id: 4, active: true, must_change_password: false }] });
+  ok(await SC.page.evaluate(() => Array.from(document.querySelectorAll('.nav-item')).filter(e => /comparative/.test(e.getAttribute('onclick') || '')).every(e => getComputedStyle(e).display === 'none')), 'a school account has no Termly Comparative Analysis in its menu');
+  await SC.page.evaluate(() => switchView('comparative')); await settled(SC.page);
+  ok(await SC.page.evaluate(() => currentView === 'dashboard') && await SC.page.locator('.comp-grade-card').count() === 0, 'and opening it is redirected away: only the district, supervisor and admin can view and edit it');
+  await SC.page.evaluate(() => switchView('settings')); await settled(SC.page);
+  ok(/School Signatories/.test(await SC.page.evaluate(() => document.getElementById('view-container').innerText)) && (await SC.page.evaluate(() => Array.from(document.querySelectorAll('#sig-form input')).map(i => i.value))).every(v => v === ''), 'a school account sees School Signatories, blank');
+  await SC.page.fill('#sg-prepared-name', 'PAT SANTOS'); await SC.page.fill('#sg-prepared-pos', 'Teacher III'); await SC.page.click('#sig-save'); await SC.page.waitForSelector('.toast-success');
+  ok(await SC.page.evaluate(() => window.__STUB.report_signatories.length === 1 && window.__STUB.report_signatories[0].school_id === 4 && document.getElementById('sig-p-name').textContent === 'PAT SANTOS'), 'its set is stored for its own school and prints on its reports');
+  await SC.ctx.close();
+  for (const [user, can] of [['supervisor', true], ['asuncion_elemcoord', true]]) {
+    const U = await openNew(user, recs, { schools: SCH, schoolPrograms: PRG });
+    await U.page.evaluate(() => switchView('comparative')); await settled(U.page);
+    ok(await U.page.locator('.comp-grade-card').count() === 1 && await U.page.locator('.comp-grade-card .editable-baseline-input:not([disabled])').count() > 0, `${user}: can open and edit the Termly Comparative Analysis per grade`);
+    await U.ctx.close();
+  }
+
+  // 4. LLC log hide button
+  const L = await openNew('admin', recs, { schools: SCH, schoolPrograms: PRG });
+  await L.page.evaluate(() => switchView('least-learned')); await settled(L.page);
+  ok(await L.page.isVisible('#llc-log-body') && /Hide log/.test(await L.page.textContent('#llc-log-toggle')), 'the competency log has a Hide button and starts shown');
+  await L.page.click('#llc-log-toggle');
+  ok(!(await L.page.isVisible('#llc-log-body')) && /Show log/.test(await L.page.textContent('#llc-log-toggle')) && (await L.page.getAttribute('#llc-log-toggle', 'aria-expanded')) === 'false', 'Hide removes the whole log from view');
+  await L.page.evaluate(() => { resetFilters(); switchView('dashboard'); }); await settled(L.page); await L.page.evaluate(() => switchView('least-learned')); await settled(L.page);
+  ok(!(await L.page.isVisible('#llc-log-body')), 'the choice is kept when the user comes back');
+  await L.page.click('#llc-log-toggle');
+  ok(await L.page.isVisible('#llc-log-body') && /Total Input Records: 1/i.test(await L.page.textContent('#view-container')), 'Show brings it back with all its records');
+  // 6. IPED card
+  await L.page.evaluate(() => { resetFilters(); switchView('division'); }); await settled(L.page);
+  const ip = await L.page.evaluate(() => document.querySelector('.program-overall[data-program="iped"]').innerText.replace(/\s+/g, ' '));
+  ok(/Schools encoded \/ IPED schools 2 \/ 3/i.test(ip), 'Overall IPED shows schools encoded / schools assigned to IPED (2 of 3 IPED schools have records): ' + ip.slice(ip.search(/Schools encoded/i), ip.search(/Schools encoded/i) + 60));
+  const ipOv = (88 + 72) / 2;
+  ok(new RegExp('Overall MAPEH \\(IPED\\).*?' + f2(ipOv).replace('.', '\\.') + '%', 'i').test(ip) && /Music and Arts \(IPED - MAPEH \(Music & Arts\)\) 1 88\.00%/.test(ip) && /PE and Health \(IPED - MAPEH \(PE & Health\)\) 1 72\.00%/.test(ip), `IPED Overall MAPEH = (Music and Arts 88 + PE and Health 72) / 2 = ${f2(ipOv)}%, calculated automatically`);
+  await L.page.evaluate(() => { document.getElementById('flt-district').value = 'Carmen'; applyFilters(); }); await settled(L.page);
+  const ip2 = await L.page.evaluate(() => document.querySelector('.program-overall[data-program="iped"]').innerText.replace(/\s+/g, ' '));
+  ok(/No data available/.test(ip2), 'a district with no IPED records shows the no-data state');
+  // 9. Key Stage 1: regular MAPEH only
+  await L.page.evaluate(() => { formDirty = false; resetFilters(); switchView('data-input'); }); await settled(L.page);
+  await L.page.click('text=Method 2: Fast Manual Entry');
+  await L.page.selectOption('#m-grade', 'Grade 1');
+  const ks1 = (await L.page.evaluate(() => Array.from(document.querySelectorAll('#m-subject option')).map(o => o.value))).filter(v => v.startsWith('MAPEH'));
+  ok(JSON.stringify(ks1) === JSON.stringify(['MAPEH - Overall']), 'Key Stage 1 (Method 2): only MAPEH - Overall; no Music and Arts, no P.E. and Health');
+  await L.page.selectOption('#m-grade', 'Grade 4');
+  ok((await L.page.evaluate(() => Array.from(document.querySelectorAll('#m-subject option')).map(o => o.value))).filter(v => v.startsWith('MAPEH')).join() === 'MAPEH - Overall,MAPEH - Music & Arts,MAPEH - PE & Health', 'from Grade 4 the three MAPEH options are back');
+  const k1 = await L.page.evaluate(async () => {
+    const row = (a) => ({ sy: '2025-2026', term: 'Term 1', district_id: 1, school: '', school_id: null, key_stage: 'Key Stage 1', grade_level: 'Grade 2', learning_area: a, baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' });
+    return { ma: (await sb().from('assessment_records').insert(row('MAPEH - Music & Arts'))).error?.message || null, peh: (await sb().from('assessment_records').insert(row('MAPEH - PE & Health'))).error?.message || null, ov: (await sb().from('assessment_records').insert(row('MAPEH - Overall'))).error?.message || null };
+  });
+  ok(/Key Stage 1/.test(k1.ma || '') && /Key Stage 1/.test(k1.peh || '') && k1.ov === null, 'the database refuses Music and Arts and P.E. and Health in Key Stage 1 and accepts MAPEH - Overall');
+  await L.page.evaluate(() => { formDirty = false; resetFilters(); switchView('grade-view'); }); await settled(L.page);
+  const g1 = await L.page.evaluate(() => { const c = document.querySelector('.mapeh-comp-card'); return Array.from(c.querySelectorAll('tbody tr')).find(tr => tr.children[0].innerText.trim() === 'Grade 1').innerText.replace(/\s+/g, ' '); });
+  ok(/Not recorded Not recorded 79\.00%/.test(g1) && !/from Overall records/.test(g1), 'Grade Level Breakdown: Grade 1 shows its recorded MAPEH 79.00% (Music and Arts and P.E. and Health are not recorded in Key Stage 1)');
+  // 10. Proficiency Level filter
+  await L.page.evaluate(() => { resetFilters(); switchView('division'); }); await settled(L.page);
+  const plOpts = await L.page.evaluate(() => Array.from(document.querySelectorAll('#flt-pl option')).map(o => o.value));
+  ok(JSON.stringify(plOpts) === JSON.stringify(['ALL', 'Advanced', 'Proficient', 'Approaching Proficiency', 'Developing', 'Beginning']), 'the filter bar has a Proficiency Level filter with the five levels');
+  for (const lv of ['Advanced', 'Developing', 'Beginning']) {
+    const got = await L.page.evaluate(async lvl => { formDirty = false; document.getElementById('flt-pl').value = lvl; applyFilters(); return (await getFilteredData()).map(r => getPL(r.mps)); }, lv);
+    const want = recs.filter(r => (r.mps >= 90 ? 'Advanced' : r.mps >= 85 ? 'Proficient' : r.mps >= 80 ? 'Approaching Proficiency' : r.mps >= 75 ? 'Developing' : 'Beginning') === lv).length;
+    ok(got.length === want && got.every(x => x === lv), `Proficiency Level = ${lv}: ${got.length} record(s), all ${lv}`);
+  }
+  ok(/Filters \(1\)/.test(await L.page.textContent('#filters-toggle')), 'the filter counter includes it');
+  await L.page.evaluate(() => { document.getElementById('flt-pl').value = 'Beginning'; document.getElementById('flt-program').value = 'special_programs'; applyFilters(); }); await settled(L.page);
+  ok(await L.page.evaluate(async () => (await getFilteredData()).every(r => r.learningArea.startsWith('SPA') && r.mps < 75 && r.learningArea !== '')), 'it combines with the other filters (Beginning + Special Programs)');
+  await L.page.evaluate(() => resetFilters());
+  ok(await L.page.inputValue('#flt-pl') === 'ALL', 'Clear Filters resets it');
+  ok(L.errors.length === 0, 'no page errors' + (L.errors[0] ? ': ' + L.errors[0] : ''));
+  await L.ctx.close();
+
+  // 8. District / school signatories
+  const C = await openNew('asuncion_elemcoord', recs, { schools: SCH, schoolPrograms: PRG });
+  await C.page.evaluate(() => switchView('settings')); await settled(C.page);
+  const cp = await C.page.evaluate(() => document.getElementById('view-container').innerText);
+  ok(/District Signatories/.test(cp) && !/Print Header|Division Signatories|Complete Database Reset/.test(cp), 'a district coordinator sees only District Signatories in Settings & Branding');
+  ok((await C.page.evaluate(() => Array.from(document.querySelectorAll('#sig-form input')).map(i => i.value))).every(v => v === ''), 'the fields start blank');
+  const printed0 = await C.page.evaluate(() => [document.getElementById('sig-c-name').textContent, document.getElementById('sig-p-name').textContent]);
+  await C.page.fill('#sg-prepared-name', 'ANA CRUZ'); await C.page.fill('#sg-prepared-pos', 'District MAPEH Coordinator'); await C.page.fill('#sg-checked-name', 'BEN REYES'); await C.page.fill('#sg-checked-pos', 'Principal II');
+  await C.page.fill('#sg-noted-name', 'CORA DIAZ'); await C.page.fill('#sg-noted-pos', 'District Supervisor');
+  await C.page.click('#sig-save'); await C.page.waitForSelector('.toast-success');
+  const printed1 = await C.page.evaluate(() => [document.getElementById('sig-p-name').textContent, document.getElementById('sig-p-pos').textContent, document.getElementById('sig-c-name').textContent, document.getElementById('sig-n-name').textContent]);
+  ok(JSON.stringify(printed1) === JSON.stringify(['ANA CRUZ', 'District MAPEH Coordinator', 'BEN REYES', 'CORA DIAZ']) && printed0[1] !== 'ANA CRUZ', 'the saved names print under the district reports instead of the Division signatories');
+  ok(await C.page.evaluate(() => window.__STUB.report_signatories.length === 1 && window.__STUB.report_signatories[0].district_id === 1 && window.__STUB.report_signatories[0].education_level === 'elementary'), 'stored for the coordinator\'s own district and education level');
+  const apiSig = await C.page.evaluate(async () => ({ div: (await sb().from('app_settings').update({ data: { sigPrepName: 'X' } }).eq('id', 1).select('id')).data.length, direct: (await sb().from('report_signatories').insert({ district_id: 1, education_level: 'elementary' })).error?.code || null }));
+  ok(apiSig.div === 0 && !!apiSig.direct, 'the coordinator cannot change the Division signatories, and cannot write the table directly');
+  await C.ctx.close();
+  const AS = await openNew('admin', recs, { schools: SCH, schoolPrograms: PRG, signatories: true });
+  await AS.page.evaluate(async () => { await sb().rpc('app_save_signatories', { p_prepared_name: 'DIV PICK', p_prepared_pos: 'EPS', p_checked_name: '', p_checked_pos: '', p_noted_name: '', p_noted_pos: '', p_district_id: 1, p_education_level: 'elementary', p_school_id: null }); await loadSignatories(); });
+  await AS.page.evaluate(() => { formDirty = false; document.getElementById('flt-district').value = 'Asuncion'; document.getElementById('flt-level').value = 'elementary'; applyFilters(); });
+  await settled(AS.page);
+  ok(await AS.page.evaluate(() => document.getElementById('sig-p-name').textContent) === 'DIV PICK', 'the Division office viewing that district and level prints the district\'s saved set');
+  await AS.page.evaluate(() => { document.getElementById('flt-district').value = 'ALL'; applyFilters(); }); await settled(AS.page);
+  ok(await AS.page.evaluate(() => document.getElementById('sig-p-name').textContent) !== 'DIV PICK', 'the whole-division report keeps the Division signatories');
+  await AS.ctx.close();
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
