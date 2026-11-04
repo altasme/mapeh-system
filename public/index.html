@@ -1010,7 +1010,7 @@ function friendlyError(err) {
     if (code === "PGRST301" || /jwt expired|jwt/i.test(msg)) {
         return "Your session expired. Please log in again.";
     }
-    if (code === "23514" && /^(Grades? \d|MAPEH|Life and Career|School year \d{4}-\d{4} is not open|That is a (elementary|secondary) school)/.test(msg)) return msg;
+    if (code === "23514" && /^(Grades? \d|Key Stage \d|MAPEH|Life and Career|School year \d{4}-\d{4} is not open|That is a (elementary|secondary) school)/.test(msg)) return msg;
     if (code === "23514") {
         if (/_mps_check/.test(msg) && !/baseline/.test(msg)) return "MPS must be between 0 and 100.";
         if (/baseline_mps_check/.test(msg)) return "Baseline MPS must be between 0 and 100.";
