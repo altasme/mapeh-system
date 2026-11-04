@@ -695,6 +695,7 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
     @media (max-width: 640px) { #record-modal .form-grid { grid-template-columns: 1fr; } #record-modal .span-2 { grid-column: span 1; } }
 }
 
+.chart-analysis { margin: 12px 4px 2px; font-size: 0.85rem; line-height: 1.55; color: #3a4764; border-left: 3px solid #0B5CB5; padding-left: 10px; }
 /* ===== BRAND CONGRUENCE (client request, October 2026): the report pages carry the palette of the cover page: the five
    MAPEH letter colours, navy for text and rules. Additive. The original print block above is untouched; colour is applied
    only to rules, headings and table headers so the printed text, contrast and layout do not change. ===== */
@@ -888,6 +889,17 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
                 <option value="mapeh">MAPEH</option>
                 <option value="special_programs">Special Programs (SPA, SPS, SPFL)</option>
                 <option value="iped">IPED</option>
+            </select>
+        </div>
+        <div class="filter-item">
+            <label>Proficiency Level</label>
+            <select id="flt-pl" onchange="applyFilters()">
+                <option value="ALL">All Proficiency Levels</option>
+                <option value="Advanced">Advanced (90 and above)</option>
+                <option value="Proficient">Proficient (85 to 89.99)</option>
+                <option value="Approaching Proficiency">Approaching Proficiency (80 to 84.99)</option>
+                <option value="Developing">Developing (75 to 79.99)</option>
+                <option value="Beginning">Beginning (below 75)</option>
             </select>
         </div>
         <div style="margin-left: auto; display: flex; gap: 8px;">
@@ -1223,7 +1235,7 @@ function applyUserPermissionsUI() {
 
     const navSettings = document.getElementById("nav-settings");
     if (navSettings) {
-        navSettings.style.display = canAccessSettings() ? "flex" : "none";
+        navSettings.style.display = "flex";   // coordinators and school accounts get the District/School Signatories page only
     }
     const csvBtn = document.getElementById("csv-btn");
     if (csvBtn) csvBtn.style.display = canAccessSettings() ? "" : "none";
@@ -1235,7 +1247,7 @@ function applyUserPermissionsUI() {
             const v = (/switchView\('([^']+)'\)/.exec(el.getAttribute("onclick") || "") || [])[1];
             if (v && !SCHOOL_VIEWS.includes(v)) el.style.display = "none";
         });
-        document.querySelectorAll(".nav-group").forEach(g => { if (g.textContent === "Output" || g.textContent === "Admin") g.style.display = "none"; });
+        document.querySelectorAll(".nav-group").forEach(g => { if (g.textContent === "Output") g.style.display = "none"; });
     }
 
     populateDistrictFilter();
@@ -1247,6 +1259,14 @@ const SCHOOL_YEARS = Array.from({ length: 10 }, (_, i) => `${2025 + i}-${2026 + 
    Administrator changes it. A disabled year disappears from every filter and from data entry, and the database refuses new
    records in it. Its existing records are never changed and stay in the reports. Before migration 0014 every year is open. */
 let SY_RULES = null;   // [{ sy, enabled }] or null when the table does not exist yet
+/* DISTRICT AND SCHOOL SIGNATORIES (client request): a district coordinator saves the Prepared / Checked / Noted by names of their own
+   district and level, a school account those of its school; both start blank. Printed reports use them instead of the Division ones. */
+let SIGNATORIES = [];   // rows of public.report_signatories the signed-in user may read
+async function loadSignatories() {
+    const { data, error } = await sb().from("report_signatories").select("*");
+    SIGNATORIES = error || !data ? [] : data;   // before migration 0015 the table does not exist
+}
+const SIG_FIELDS = [["prepared", "Prepared by"], ["checked", "Checked by"], ["noted", "Noted by"]];
 const schoolYearEnabled = sy => { if (!SY_RULES) return true; const r = SY_RULES.find(x => x.sy === sy); return r ? r.enabled : true; };
 const availableSchoolYears = () => SCHOOL_YEARS.filter(schoolYearEnabled);
 async function loadSchoolYears() {
@@ -1345,17 +1365,15 @@ const isMapehConsolidated = a => a === MAPEH_OVERALL || isMapehLegacy(a);
 const SHS_SUBJECTS = ["SHS - Life and Career Skills", "SHS - Sports/Health/Wellness"];
 const isShsSubject = a => SHS_SUBJECTS.includes(a);
 // Mirror of public.app_mapeh_rule_problem() in the database, which is the enforcement. Returns "" when the pair is allowed.
-//   Grades 1 to 3 (Key Stage 1): Music and Arts, P.E. and Health; MAPEH - Overall is NOT entered
+//   Grades 1 to 3 (Key Stage 1): MAPEH - Overall (the regular MAPEH) ONLY; no Music and Arts, P.E. and Health or separate components
 //   Grades 4 to 10             : MAPEH - Overall, Music and Arts, P.E. and Health (the four older components stay valid)
 //   Grades 11 to 12            : no MAPEH; the two Key Stage 4 subjects instead
 function mapehRuleProblem(grade, area) {
     if (isShsSubject(area))
         return ["Grade 11", "Grade 12"].includes(grade) ? "" : "Life and Career Skills and Sports/Health/Wellness are Key Stage 4 subjects: enter them for Grades 11 and 12 only.";
     if (!isMapehFamily(area)) return "";
-    if (["Grade 1", "Grade 2", "Grade 3"].includes(grade) && area === MAPEH_OVERALL)
-        return "MAPEH - Overall is not entered for Key Stage 1 (Grades 1 to 3). Enter Music and Arts and P.E. and Health instead.";
-    if (["Grade 1", "Grade 2", "Grade 3"].includes(grade) && !isMapehLegacy(area))
-        return "Grades 1 to 3 are entered as Music and Arts and P.E. and Health. Music, Arts, PE and Health are not entered separately for these grades.";
+    if (["Grade 1", "Grade 2", "Grade 3"].includes(grade) && area !== MAPEH_OVERALL)
+        return "Key Stage 1 (Grades 1 to 3) is entered as MAPEH - Overall only. Music and Arts, P.E. and Health and the separate components are not entered for these grades.";
     if (["Grade 11", "Grade 12"].includes(grade)) return "MAPEH is not assessed in Grades 11 and 12.";
     return "";
 }
@@ -1394,6 +1412,8 @@ const baselineSyNote = recs => recs.length ? `<br><small class="bl-sy-note">${es
 const PROGRAM_LABELS = { mapeh: "MAPEH", special_programs: "Special Programs", iped: "IPED" };
 const areaProgram = a => /^(SPA|SPS|SPFL) - /.test(a || "") ? "special_programs" : /^IPED - /.test(a || "") ? "iped" : /^(MAPEH|SHS) - /.test(a || "") ? "mapeh" : null;
 // Program filter: MAPEH (every MAPEH learning area), Special Programs (SPA, SPS, SPFL) or IPED. Programs are judged from the learning area.
+// Proficiency Level filter: the proficiency level of each record (from its MPS, the same 90 / 85 / 80 / 75 scale as everywhere)
+const plOk = r => filters.pl === "ALL" || getPL(r.mps) === filters.pl;
 const programOk = r => filters.program === "ALL" || areaProgram(r.learningArea) === filters.program;
 // Key Stage means a band of grades. It is judged from the record's grade (as the Comparative Analysis does), because the
 // stored keyStage text can disagree with the grade after an Excel import that left the column blank (AUDIT M8).
@@ -1410,6 +1430,7 @@ function matchesFilters(r, district) {
     if (!levelOk(r)) return false;
     if (!keyStageOk(r)) return false;
     if (!subjectOk(r)) return false;
+    if (!plOk(r)) return false;
     return programOk(r);
 }
 const meanMps = list => list.length ? list.reduce((a, c) => a + c.mps, 0) / list.length : 0;
@@ -1477,7 +1498,7 @@ let settings = {
 };
 
 let currentView = "division";
-let filters = { sy: "ALL", term: "ALL", district: "ALL", level: "ALL", keystage: "ALL", subject: "ALL", program: "ALL" };
+let filters = { sy: "ALL", term: "ALL", district: "ALL", level: "ALL", keystage: "ALL", subject: "ALL", program: "ALL", pl: "ALL" };
 let activeCharts = {};
 
 /* 3. DB HELPERS (Supabase). Names and return shapes match the old IndexedDB helpers. */
@@ -1564,6 +1585,7 @@ async function initDB() {
     if (sRes.data && sRes.data.data) Object.assign(settings, sRes.data.data);
     await loadSchools();
     await loadSchoolYears();
+    await loadSignatories();
 }
 
 // Schools the signed-in user may see (the database decides: all for the division, own district for a coordinator, own school for a school account).
@@ -1681,9 +1703,11 @@ function baselineSySelectHTML(ksCode, recs) {
 }
 
 // Same scope and filters as the baseline MPS edit: sets which school year the baseline of those records comes from.
+// A key stage code ("Key Stage 2") or a single grade ("Grade 5"): the same filters apply, with that grade list.
+const stageOrGrade = code => String(code).startsWith("Grade ") ? { code, grades: [code] } : KEY_STAGES.find(k => k.code === code);
 async function updateBaselineSyForStage(ksCode, sy) {
     if (!canEditData() || sy === "__mixed") return;
-    const ksObj = KEY_STAGES.find(k => k.code === ksCode);
+    const ksObj = stageOrGrade(ksCode);
     if (!ksObj) return;
     const userDist = currentUser ? currentUser.district : "ALL";
     const effectiveDistrict = userDist !== "ALL" ? userDist : filters.district;
@@ -1711,7 +1735,7 @@ async function updateBaselineMpsForStage(ksCode, val) {
     }
     const newBaseline = parseFloat(val);
     if (isNaN(newBaseline)) return;
-    const ksObj = KEY_STAGES.find(k => k.code === ksCode);
+    const ksObj = stageOrGrade(ksCode);
     if (!ksObj) return;
     if (newBaseline < 0 || newBaseline > 100) {
         toast("Baseline MPS must be between 0 and 100.", "error");
@@ -1989,6 +2013,7 @@ function restoreFilterControls() {
     document.getElementById("flt-keystage").value = filters.keystage;
     document.getElementById("flt-subject").value = filters.subject;
     document.getElementById("flt-program").value = filters.program;
+    document.getElementById("flt-pl").value = filters.pl;
 }
 
 /* SITE CONTENT (edited in /admin, stored in public.site_content / site_settings / site_media_slots; readable without signing in).
@@ -2041,7 +2066,7 @@ function applySiteContent() {
 }
 
 let renderToken = 0;
-const SCHOOL_VIEWS = ["dashboard", "data-input", "manage-records", "least-learned", "grade-view"];
+const SCHOOL_VIEWS = ["dashboard", "data-input", "manage-records", "least-learned", "grade-view", "settings"];
 function switchView(view) {
     if (currentUser && currentUser.isSchool && !SCHOOL_VIEWS.includes(view)) view = "dashboard";
     if (!confirmDiscard()) return;
@@ -2161,6 +2186,7 @@ function applyFilters() {
     filters.keystage = document.getElementById("flt-keystage").value;
     filters.subject = document.getElementById("flt-subject").value;
     filters.program = document.getElementById("flt-program").value;
+    filters.pl = document.getElementById("flt-pl").value;
 
     const syLabelText = filters.sy === "ALL" ? "All School Years" : `SY ${filters.sy}`;
     document.getElementById("header-sy-label").textContent = syLabelText;
@@ -2192,6 +2218,7 @@ function resetFilters() {
     document.getElementById("flt-keystage").value = "ALL";
     document.getElementById("flt-subject").value = "ALL";
     document.getElementById("flt-program").value = "ALL";
+    document.getElementById("flt-pl").value = "ALL";
     applyFilters();
 }
 
@@ -2307,13 +2334,19 @@ function programOverallCards(data) {
         if (!recs.length) return `<div class="card-box program-overall screen-only" data-program="${P.key}"><div class="card-box-header"><h3>${P.title}</h3></div>
             <div class="empty-state" role="status" style="padding:24px;text-align:center;color:var(--text-muted);">No data available for the selected filters.</div></div>`;
         const mps = mean(recs, "mps"), pct = mean(recs, "pct75");
-        const schools = new Set(recs.map(r => r.schoolId || r.school).filter(Boolean));
+        const schools = new Set(recs.map(r => r.schoolId ? "id:" + r.schoolId : "name:" + String(r.school || "").trim().toLowerCase()).filter(k => k !== "name:"));
+        // schools assigned to the program (the school list), within the district and level in view
+        const distIn = currentUser && currentUser.district !== "ALL" ? currentUser.district : filters.district, lvlIn = effectiveLevel();
+        const assigned = SCHOOLS.filter(x => x.active && x.programs.includes(P.key) && (distIn === "ALL" || x.district === distIn) && (lvlIn === "ALL" || !x.educationLevel || x.educationLevel === lvlIn)).length;
+        const progShort = P.key === "iped" ? "IPED" : "Special Programs";
         const areaRow = (label, list, note) => `<tr><td>${esc(label)}</td><td class="num">${list.length}</td><td class="num">${pc(mean(list, "mps"))}</td><td>${list.length ? pl(mean(list, "mps")) : (note || '<span class="no-data">No data</span>')}</td></tr>`;
         let rows = "";
         if (P.mapeh) {
             const ma = recs.filter(r => r.learningArea === P.mapeh.ma), peh = recs.filter(r => r.learningArea === P.mapeh.peh);
-            rows += areaRow(P.mapeh.ma, ma) + areaRow(P.mapeh.peh, peh);
-            rows += `<tr><td>Overall MAPEH</td><td class="num">0</td><td class="num"><span class="no-data">Not recorded</span></td><td><span class="no-data">IPED has no overall MAPEH record</span></td></tr>`;
+            rows += areaRow("Music and Arts (" + P.mapeh.ma + ")", ma) + areaRow("PE and Health (" + P.mapeh.peh + ")", peh);
+            // same rule as regular MAPEH: Overall = (Music and Arts + PE and Health) / 2, only when both have data
+            const maV = mean(ma, "mps"), pehV = mean(peh, "mps"), ovV = maV !== null && pehV !== null ? (maV + pehV) / 2 : null;
+            rows += `<tr><td>Overall MAPEH (IPED)<br><small style="color:var(--text-muted);">(Music and Arts + PE and Health) / 2</small></td><td class="num">${ovV === null ? 0 : ma.length + peh.length}</td><td class="num">${pc(ovV)}</td><td>${ovV === null ? '<span class="no-data">Needs both Music and Arts and PE and Health</span>' : pl(ovV)}</td></tr>`;
             const other = Array.from(new Set(recs.map(r => r.learningArea).filter(a => a !== P.mapeh.ma && a !== P.mapeh.peh))).sort();
             rows += other.map(a => areaRow(a, recs.filter(r => r.learningArea === a))).join('');
         } else {
@@ -2328,7 +2361,7 @@ function programOverallCards(data) {
             <div class="kpi-grid">
                 <div class="kpi-card"><div class="kpi-title">Overall MPS</div><div class="kpi-value">${pc(mps)}</div><div class="kpi-sub">${pl(mps)}</div></div>
                 <div class="kpi-card"><div class="kpi-title">% Learners Achieving 75% and above</div><div class="kpi-value">${pc(pct)}</div></div>
-                <div class="kpi-card"><div class="kpi-title">Records / Schools</div><div class="kpi-value">${recs.length} / ${schools.size}</div></div>
+                <div class="kpi-card"><div class="kpi-title">Schools encoded / ${progShort} schools</div><div class="kpi-value">${schools.size} / ${assigned}</div><div class="kpi-sub" style="color:var(--text-muted);">${assigned ? `${recs.length} record(s) from ${schools.size} school(s)` : `No school is assigned to ${progShort} yet`}</div></div>
             </div>
             <div class="table-scroll"><table class="data-table"><thead><tr><th>Area</th><th class="num">Records</th><th class="num">MPS (%)</th><th>Proficiency Level</th></tr></thead><tbody>${rows}</tbody></table></div>
             <div class="table-scroll"><table class="data-table"><thead><tr><th>School</th><th class="num">Records</th><th class="num">MPS (%)</th><th>Proficiency Level</th></tr></thead><tbody>${schoolRows}</tbody></table></div>
@@ -2512,7 +2545,7 @@ function changeDistrictView(dist) {
 }
 
 async function renderComparativeView(container) {
-    const records = (await getAllRecords()).filter(levelOk).filter(programOk);
+    const records = (await getAllRecords()).filter(levelOk).filter(programOk).filter(plOk);
     const userDist = currentUser ? currentUser.district : "ALL";
     const currentScope = userDist !== "ALL" ? userDist : filters.district;
     
@@ -2554,6 +2587,30 @@ async function renderComparativeView(container) {
             <td>${ksRecs.length ? `<strong>${variance > 0 ? '+' : ''}${variance.toFixed(2)}%</strong>` : '-'}</td>
             <td>${ksRecs.length ? statusBadge : '-'}</td>
             <td>${ksRecs.length ? `<span class="badge ${getBadgeClass(getPL(currentMps))}">${getPL(currentMps)}</span>` : '-'}</td>
+        </tr>`;
+    }).join('');
+
+    // The same comparison for each grade level, each with its own baseline MPS and baseline school year (client request).
+    const gradeBaseRows = gradesForLevel().map(gr => {
+        const gRecs = activeRecords.filter(r => r.gradeLevel === gr);
+        const has = gRecs.length > 0;
+        const bl = has ? gRecs.reduce((a, c) => a + (c.baselineMps !== undefined ? c.baselineMps : 65.0), 0) / gRecs.length : null;
+        const cur = has ? gRecs.reduce((a, c) => a + c.mps, 0) / gRecs.length : null;
+        const v = has ? cur - bl : null;
+        const ksOf = (KEY_STAGES.find(k => k.grades.includes(gr)) || {}).code || "";
+        return `<tr>
+            <td><strong>${esc(gr)}</strong></td>
+            <td class="text-left">${esc(ksOf)}</td>
+            <td>${esc(subjectLabel)}</td>
+            <td>
+                <input type="number" step="0.01" class="editable-baseline-input" aria-label="Baseline MPS for ${esc(gr)}" ${!isUserEditable || !has ? 'disabled style="background:#edf2f7; cursor:not-allowed;"' : ''} value="${has ? bl.toFixed(2) : ''}" placeholder="-" onchange="updateBaselineMpsForStage('${gr}', this.value)" /> %
+                ${baselineSyNote(gRecs)}
+                ${isUserEditable && has ? baselineSySelectHTML(gr, gRecs) : ''}
+            </td>
+            <td>${has ? cur.toFixed(2) + '%' : '-'}</td>
+            <td>${has ? `<strong>${v > 0 ? '+' : ''}${v.toFixed(2)}%</strong>` : '-'}</td>
+            <td>${has ? (v > 0 ? '<span class="badge badge-advanced">Increased</span>' : v < 0 ? '<span class="badge badge-critical">Decreased</span>' : '<span class="badge badge-proficient">Maintained</span>') : '-'}</td>
+            <td>${has ? `<span class="badge ${getBadgeClass(getPL(cur))}">${getPL(cur)}</span>` : '-'}</td>
         </tr>`;
     }).join('');
 
@@ -2735,6 +2792,24 @@ async function renderComparativeView(container) {
                 </tbody>
             </table>
         </div>
+        <div class="excel-table-container comp-grade-card" style="margin-top:18px;">
+            <h4 style="font-size:0.9rem; color:var(--deped-blue); margin:10px 12px 8px;">By grade level: each grade with its own SY baseline</h4>
+            <table class="excel-table">
+                <thead>
+                    <tr>
+                        <th>Grade Level</th>
+                        <th>DepEd Key Stage</th>
+                        <th>Program / Specialization</th>
+                        <th>SY BASELINE MPS (%)<br><small style="font-weight:normal; text-transform:none;">(Editable)</small></th>
+                        <th>Current Term MPS (%)</th>
+                        <th>Variance (%)</th>
+                        <th>Performance Status</th>
+                        <th>Proficiency Rating</th>
+                    </tr>
+                </thead>
+                <tbody>${gradeBaseRows}</tbody>
+            </table>
+        </div>
         <div style="margin-top: 20px; display:grid; grid-template-columns: 1fr 1fr; gap: 20px;">
             <div>
                 <h4 style="font-size:0.88rem; color:var(--deped-blue); margin-bottom:8px;">
@@ -2801,6 +2876,40 @@ async function saveComparativeNotes(ev) {
         setBusy(btn, false);
     }
 }
+
+/* AUTOMATIC DESCRIPTIVE ANALYSIS under each dashboard graph (client request). Built only from the figures plotted in the graph: highest,
+   lowest, the gap, how many are at or above the 75% Developing cutoff, and which have no data. No cause or advice is invented. */
+const plainPct = v => v.toFixed(2) + "%";
+function describeDistricts(items) {   // items: [{ name, v }]
+    if (!items.length) return "No district has data for the selected filters.";
+    if (items.length === 1) return `${items[0].name} is the only district with data: ${plainPct(items[0].v)} (${getPL(items[0].v)}).`;
+    const sorted = items.slice().sort((a, b) => b.v - a.v || a.name.localeCompare(b.name));
+    const hi = sorted[0], lo = sorted[sorted.length - 1];
+    const at75 = items.filter(x => x.v >= 75).length, mean = items.reduce((a, c) => a + c.v, 0) / items.length;
+    return `Highest: ${hi.name} at ${plainPct(hi.v)} (${getPL(hi.v)}). Lowest: ${lo.name} at ${plainPct(lo.v)} (${getPL(lo.v)}). The gap between them is ${(hi.v - lo.v).toFixed(2)} percentage points. `
+        + `${at75} of ${items.length} districts are at or above 75% (Developing or higher) and ${items.length - at75} are below 75% (Beginning). The mean of the district MPS is ${plainPct(mean)} (${getPL(mean)}).`;
+}
+function describeTracks(items, missing) {   // items with data: [{ name, v }]; missing: names without data
+    const tail = missing.length ? ` No data for: ${missing.join(", ")}.` : "";
+    if (!items.length) return "No program track has data for the selected filters." + tail;
+    if (items.length === 1) return `${items[0].name} is the only track with data: ${plainPct(items[0].v)} (${getPL(items[0].v)}).` + tail;
+    const sorted = items.slice().sort((a, b) => b.v - a.v || a.name.localeCompare(b.name));
+    const hi = sorted[0], lo = sorted[sorted.length - 1], at75 = items.filter(x => x.v >= 75).length;
+    return `Highest track: ${hi.name} at ${plainPct(hi.v)} (${getPL(hi.v)}). Lowest track: ${lo.name} at ${plainPct(lo.v)} (${getPL(lo.v)}), ${(hi.v - lo.v).toFixed(2)} points below the highest. `
+        + `${at75} of ${items.length} tracks with data are at or above 75%.` + tail;
+}
+function describeMapeh(ma, peh, ov) {   // each: number or null
+    const f = (name, v) => v === null ? `${name} has no data` : `${name} ${plainPct(v)} (${getPL(v)})`;
+    if (ma === null && peh === null && ov === null) return "No MAPEH data for the selected filters.";
+    let t = `${f("Music and Arts", ma)}; ${f("P.E. and Health", peh)}. `;
+    if (ma !== null && peh !== null) {
+        t += `Overall MAPEH = (${ma.toFixed(2)} + ${peh.toFixed(2)}) / 2 = ${plainPct(ov)} (${getPL(ov)}). `;
+        const d = Math.abs(ma - peh);
+        t += d < 0.005 ? "The two components are equal." : `${ma > peh ? "Music and Arts" : "P.E. and Health"} is higher by ${d.toFixed(2)} percentage points.`;
+    } else if (ov !== null) t += `Overall MAPEH is shown from the Overall records (${plainPct(ov)}, ${getPL(ov)}) because one component has no data; it is not calculated from a missing component.`;
+    return t;
+}
+const analysisHTML = t => `<p class="chart-analysis"><strong>Analysis:</strong> ${esc(t)}</p>`;
 
 async function renderDashboard(container) {
     const data = await getFilteredData();
@@ -2902,7 +3011,7 @@ async function renderDashboard(container) {
         distMap[r.district].count++;
     });
 
-    const dLabels = Object.keys(distMap);
+    const dLabels = Object.keys(distMap).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));   // districts A to Z (client request)
     const dVals = dLabels.map(d => (distMap[d].sum / distMap[d].count).toFixed(2));
 
     // Chart styling: one series, one color, faint cutoff lines at 75 / 80 / 85 / 90 (same scale as the rulers).
@@ -2953,6 +3062,16 @@ async function renderDashboard(container) {
         plugins: [cutoffLines]
     });
 
+    // automatic descriptive analysis at the bottom of each graph
+    const addAnalysis = (canvasId, text) => { const c = document.getElementById(canvasId); if (c) c.closest(".chart-card").insertAdjacentHTML("beforeend", analysisHTML(text)); };
+    addAnalysis("c-dist-mps", describeDistricts(dLabels.map((d, i) => ({ name: d, v: parseFloat(dVals[i]) }))));
+    const trackDefs = [["MAPEH Total", mapehData.length, parseFloat(mapehAvgMPS)], ["SPA Total", spaData.length, parseFloat(spaAvgMPS)], ["SPS Total", spsData.length, parseFloat(spsAvgMPS)],
+        ["SPFL Total", spflData.length, parseFloat(spflAvgMPS)], ["IPED Total", ipedData.length, parseFloat(ipedAvgMPS)]];
+    addAnalysis("c-subj-mps", describeTracks(trackDefs.filter(x => x[1]).map(x => ({ name: x[0], v: x[2] })), trackDefs.filter(x => !x[1]).map(x => x[0])));
+    if (hasMapehNew(data)) {
+        const fam = data.filter(r => isMapehFamily(r.learningArea));
+        addAnalysis("c-mapeh-comp", describeMapeh(mapehGroupFigure(data, MAPEH_GROUPS[0]).value, mapehGroupFigure(data, MAPEH_GROUPS[1]).value, mapehOverallFigure(fam).value));
+    }
     if (hasMapehNew(data)) {
         const compLabels = [...MAPEH_GROUPS.map(g => g.short), "Overall MAPEH"];
         const compVals = [...MAPEH_GROUPS.map(g => mapehGroupFigure(data, g).value), mapehOverallFigure(data.filter(r => isMapehFamily(r.learningArea))).value];
@@ -3009,7 +3128,7 @@ function downloadExcelTemplate() {
     ] : [
         {
             "School Year": SCHOOL_YEARS[0], "Term": "Term 1", "District": userDist, "School Name": `${userDist} Central Elementary School`,
-            "Key Stage": "Key Stage 1", "Grade Level": "Grade 1", "Learning Area": "MAPEH - Music & Arts",
+            "Key Stage": "Key Stage 1", "Grade Level": "Grade 1", "Learning Area": "MAPEH - Overall",
             "Baseline SY": prevSy(SCHOOL_YEARS[0]), "SY Baseline MPS": 65.00, "Mean Percentage Score (MPS%)": 78.50, "% Learners Scoring >= 75%": 82.00,
             "Least Learned Competency 1 Code": "LC-1",
             "Least Learned Competency 1 Description": "Demonstrates pitch awareness and rhythmic movement patterns.",
@@ -3469,7 +3588,7 @@ async function renderDataInputView(container) {
         <div class="ctx-bar" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; background: white; padding: 12px 18px; border-radius: 6px; border: 1px solid var(--border-color);">
             <div>
                 <strong style="color: var(--deped-dark); font-size: 0.9rem;">Excel Data Import Workflow ${userDist !== "ALL" ? `(${esc(userDist)} District Scope)` : ''}</strong>
-                <p style="font-size: 0.78rem; color: var(--text-muted);">MAPEH rule: Key Stage 1 (Grades 1 to 3) uses "MAPEH - Music &amp; Arts" and "MAPEH - PE &amp; Health" (MAPEH - Overall is not entered); Grades 4 to 10 use "MAPEH - Overall", "MAPEH - Music &amp; Arts" and "MAPEH - PE &amp; Health"; Grades 11 to 12 have no MAPEH but offer "SHS - Life and Career Skills" and "SHS - Sports/Health/Wellness". Download the pre-formatted Excel template for MAPEH, 7 SPA Disciplines, 30 SPS Sports Tracks, 10 SPFL Foreign Languages, and 8 IPED Subjects, fill in district data, and upload it below.</p>
+                <p style="font-size: 0.78rem; color: var(--text-muted);">MAPEH rule: Key Stage 1 (Grades 1 to 3) uses "MAPEH - Overall" only; Grades 4 to 10 use "MAPEH - Overall", "MAPEH - Music &amp; Arts" and "MAPEH - PE &amp; Health"; Grades 11 to 12 have no MAPEH but offer "SHS - Life and Career Skills" and "SHS - Sports/Health/Wellness". Download the pre-formatted Excel template for MAPEH, 7 SPA Disciplines, 30 SPS Sports Tracks, 10 SPFL Foreign Languages, and 8 IPED Subjects, fill in district data, and upload it below.</p>
             </div>
             <button class="btn btn-success" type="button" onclick="downloadExcelTemplate()">
                 Download Excel Template (.XLSX)
@@ -3586,7 +3705,7 @@ function updateAreaHint() {
     if (!el || !grade) return;
     const g = grade.value;
     el.textContent = currentUser && currentUser.isSchool ? "" :
-        ["Grade 1", "Grade 2", "Grade 3"].includes(g) ? "Key Stage 1 (Grades 1 to 3): MAPEH is entered as Music and Arts, and P.E. and Health. MAPEH - Overall is calculated, not entered." :
+        ["Grade 1", "Grade 2", "Grade 3"].includes(g) ? "Key Stage 1 (Grades 1 to 3): MAPEH is entered as MAPEH - Overall only (regular MAPEH). Music and Arts and P.E. and Health start in Grade 4." :
         ["Grade 11", "Grade 12"].includes(g) ? "Key Stage 4 (Grades 11 and 12): MAPEH is not assessed; Life and Career Skills and Sports/Health/Wellness are available." : "";
 }
 function refreshManualSubjects() {
@@ -4047,7 +4166,9 @@ async function renderLeastLearnedView(container) {
         <div class="card-box-header">
             <h3>Complete District Least Learned Competencies Log (All Recorded Inputs)</h3>
             <span class="badge badge-proficient">Total Input Records: ${compItems.length}</span>
+            <button type="button" id="llc-log-toggle" class="btn btn-secondary btn-sm screen-only" aria-controls="llc-log-body" aria-expanded="${LLC_LOG_HIDDEN ? "false" : "true"}" onclick="toggleLlcLog()">${LLC_LOG_HIDDEN ? "Show log \u25BC" : "Hide log \u25B2"}</button>
         </div>
+        <div id="llc-log-body" ${LLC_LOG_HIDDEN ? "hidden" : ""}>
         <div class="card-note" style="padding:10px 20px; background: #FFF; border-bottom:1px solid var(--border-color); font-size:0.82rem; color:var(--text-muted);">
             Full itemized list reflecting every individual least learned competency input submitted via manual entry or Excel upload.
         </div>
@@ -4069,7 +4190,17 @@ async function renderLeastLearnedView(container) {
                 ${rawRows.length ? rawRows : '<tr><td colspan="8" style="text-align:center;">No individual competency records found.</td></tr>'}
             </tbody>
         </table></div>
+        </div>
     </div>`;
+}
+
+// Hide or show the full competency log so the long list is out of the way (also out of the printout while hidden). The choice is kept while the user moves between views.
+let LLC_LOG_HIDDEN = false;
+function toggleLlcLog() {
+    LLC_LOG_HIDDEN = !LLC_LOG_HIDDEN;
+    const body = document.getElementById("llc-log-body"), btn = document.getElementById("llc-log-toggle");
+    if (body) body.hidden = LLC_LOG_HIDDEN;
+    if (btn) { btn.textContent = LLC_LOG_HIDDEN ? "Show log \u25BC" : "Hide log \u25B2"; btn.setAttribute("aria-expanded", LLC_LOG_HIDDEN ? "false" : "true"); }
 }
 
 /* MAPEH component figures. Plain unweighted means of record MPS (the same method as every other figure here).
@@ -4079,11 +4210,11 @@ function mapehMeanFor(recs, area) {
     return list.length ? parseFloat(meanMps(list).toFixed(2)) : null;
 }
 const pctCell = v => v ? `${v.toFixed(2)}%` : '<span class="no-data">No data</span>';
-const COMP_NOTE = `<p class="comp-note">Overall MAPEH MPS = (Music and Arts MPS + P.E. and Health MPS) / 2, as specified by the client. Music and Arts, and P.E. and Health, are plain averages of the record MPS of their records (Music, Arts, PE, Health and the combined entries; an older Music, Arts, PE or Health record is left out where a combined record covers the same school, year, term and grade, so nothing is counted twice). Where one component has no data the Overall is not calculated from it: the figure from the Overall MAPEH records is shown and marked, or No data.</p>`;
+const COMP_NOTE = `<p class="comp-note">Overall MAPEH MPS = (Music and Arts MPS + P.E. and Health MPS) / 2, as specified by the client. Music and Arts, and P.E. and Health, are plain averages of the record MPS of their records (Music, Arts, PE, Health and the combined entries; an older Music, Arts, PE or Health record is left out where a combined record covers the same school, year, term and grade, so nothing is counted twice). Where one component has no data the Overall is not calculated from it: the figure from the Overall MAPEH records is shown and marked, or No data. Key Stage 1 (Grades 1 to 3) is entered as MAPEH - Overall only, so it has no Music and Arts or P.E. and Health figures; its recorded Overall is shown in the Grade Level Breakdown and is not part of the formula.</p>`;
 const groupCell = (recs, g, grade) => {
-    if (grade && mapehRuleProblem(grade, g.legacy)) return '<span class="no-data">Not recorded</span>';
     const f = mapehGroupFigure(recs, g);
-    if (f.value === null) return '<span class="no-data">No data</span>';
+    // a grade that does not take this component (Key Stage 1, Grades 11 and 12) says so; figures entered earlier are still shown
+    if (f.value === null) return grade && mapehRuleProblem(grade, g.legacy) ? '<span class="no-data">Not recorded</span>' : '<span class="no-data">No data</span>';
     return `${f.value.toFixed(2)}%${f.note ? `<br><small class="bl-sy-note">${esc(f.note)}</small>` : ''}`;
 };
 
@@ -4094,11 +4225,12 @@ function mapehComponentsByGradeCard(data, grades, scopeLabel) {
     const row = (label, recs, g) => {
         const fig = mapehOverallFigure(recs.filter(r => isMapehFamily(r.learningArea)));
         const ov = fig.value;
-        const notApplicable = g && mapehRuleProblem(g, MAPEH_LEGACY[0]);   // Grades 11 and 12 have no MAPEH
+        const notApplicable = g && mapehRuleProblem(g, MAPEH_OVERALL);   // Grades 11 and 12 have no MAPEH
+        const ks1 = g && ["Grade 1", "Grade 2", "Grade 3"].includes(g);   // Key Stage 1 is entered as MAPEH - Overall only
         return `<tr>
             <td><strong>${label}</strong></td>
             ${MAPEH_GROUPS.map(gr => `<td class="num">${groupCell(recs, gr, g)}</td>`).join('')}
-            <td class="num">${notApplicable ? '<span class="no-data">Not recorded</span>' : ov === null ? '<span class="no-data">No data</span>' : `<div class="ruler-cell"><strong>${ov.toFixed(2)}%</strong>${profRuler(ov, true)}</div>${fig.basis === "recorded" ? RECORDED_NOTE : ""}`}</td>
+            <td class="num">${notApplicable ? '<span class="no-data">Not recorded</span>' : ov === null ? '<span class="no-data">No data</span>' : `<div class="ruler-cell"><strong>${ov.toFixed(2)}%</strong>${profRuler(ov, true)}</div>${fig.basis === "recorded" && !ks1 ? RECORDED_NOTE : ""}`}</td>
             <td>${notApplicable || ov === null ? '<span class="no-data">No data</span>' : `<span class="badge ${getBadgeClass(getPL(ov))}">${getPL(ov)}</span>`}</td>
         </tr>`;
     };
@@ -4272,16 +4404,44 @@ async function renderReportsView(container) {
     updateSheetHead();
 }
 
+// The signatory set of the signed-in district coordinator (district and level) or school account, if one was saved.
+function ownSignatories() {
+    if (!currentUser) return null;
+    if (currentUser.isSchool && currentUser.school) return SIGNATORIES.find(x => x.school_id === currentUser.school.id) || null;
+    const dId = districtIdByName[currentUser.district], lvl = currentUser.educationLevel;
+    return SIGNATORIES.find(x => !x.school_id && x.district_id === dId && x.education_level === lvl) || null;
+}
+function renderSignatoriesOnly(container) {
+    const school = currentUser.isSchool, cur = ownSignatories() || {};
+    const scope = school ? `${currentUser.school.name}` : `${currentUser.district} District, ${currentUser.educationLevel ? LEVELS[currentUser.educationLevel].label : ""}`;
+    container.innerHTML = `
+    <div class="card-box" style="padding: 20px;">
+        <h3>${school ? "School" : "District"} Signatories</h3>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 14px;">Names and positions printed under your reports (${esc(scope)}). They start blank: type the names you want on the printed report. Division signatories can only be changed by the Division office.</p>
+        <form id="sig-form" onsubmit="saveOwnSignatories(event)" style="display:grid; grid-template-columns: 140px 1fr 1fr; gap: 10px 14px; align-items:center; max-width: 900px;">
+            <span></span><strong style="font-size:0.85rem;">Name</strong><strong style="font-size:0.85rem;">Position</strong>
+            ${SIG_FIELDS.map(([k, label]) => `<label for="sg-${k}-name" style="font-weight:600;">${label}</label>
+                <input type="text" id="sg-${k}-name" maxlength="120" value="${esc(cur[k + "_name"] || "")}" aria-label="${label} name">
+                <input type="text" id="sg-${k}-pos" maxlength="160" value="${esc(cur[k + "_pos"] || "")}" aria-label="${label} position">`).join("")}
+            <span></span><div><button type="submit" class="btn btn-primary" id="sig-save">Save ${school ? "School" : "District"} Signatories</button></div>
+        </form>
+    </div>`;
+}
+async function saveOwnSignatories(ev) {
+    ev.preventDefault();
+    const btn = document.getElementById("sig-save"), v = id => document.getElementById(id).value.trim();
+    setBusy(btn, true);
+    try {
+        const { error } = await sb().rpc("app_save_signatories", { p_prepared_name: v("sg-prepared-name"), p_prepared_pos: v("sg-prepared-pos"), p_checked_name: v("sg-checked-name"), p_checked_pos: v("sg-checked-pos"), p_noted_name: v("sg-noted-name"), p_noted_pos: v("sg-noted-pos") });
+        if (error) throw error;
+        await loadSignatories(); updateSignatoriesUI();
+        toast("Signatories saved. They now print on your reports.");
+    } catch (err) { toast(friendlyError(err), "error"); } finally { setBusy(btn, false); }
+}
+
 function renderSettingsView(container) {
-    // Restricted ONLY to Admin and Supervisor
-    if (!canAccessSettings()) {
-        container.innerHTML = `
-        <div class="card-box" style="padding: 40px; text-align: center;">
-            <h3 style="color: var(--danger); margin-bottom: 10px;">Access Restricted</h3>
-            <p style="color: var(--text-muted);">Only system users with <strong>Admin</strong> or <strong>Supervisor</strong> privileges can access Settings & Branding.</p>
-        </div>`;
-        return;
-    }
+    // Admin and Supervisor: the full Settings & Branding. Everyone else: only their own District / School Signatories.
+    if (!canAccessSettings()) { renderSignatoriesOnly(container); return; }
 
     // One card per district (existing order); inside it an Elementary and a Secondary coordinator, each with its own fields.
     const coordFormRows = DEFAULT_DISTRICTS.map((d, i) => {
@@ -4576,6 +4736,15 @@ function updateSignatoriesUI() {
     document.getElementById("sig-c-pos").textContent = settings.sigCheckPos;
     document.getElementById("sig-n-name").textContent = settings.sigNoteName;
     document.getElementById("sig-n-pos").textContent = settings.sigNotePos;
+    // a saved District / School set replaces the Division signatories for that district and level, or that school
+    let set = null;
+    if (currentUser && currentUser.isSchool && currentUser.school) set = SIGNATORIES.find(x => x.school_id === currentUser.school.id);
+    else if (activeDist !== "ALL" && effectiveLevel() !== "ALL") set = SIGNATORIES.find(x => !x.school_id && x.district_id === districtIdByName[activeDist] && x.education_level === effectiveLevel());
+    if (set) {
+        document.getElementById("sig-p-name").textContent = set.prepared_name; document.getElementById("sig-p-pos").textContent = set.prepared_pos;
+        document.getElementById("sig-c-name").textContent = set.checked_name; document.getElementById("sig-c-pos").textContent = set.checked_pos;
+        document.getElementById("sig-n-name").textContent = set.noted_name; document.getElementById("sig-n-pos").textContent = set.noted_pos;
+    }
     updateSheetHead();
 }
 

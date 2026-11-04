@@ -5,10 +5,11 @@
 (function () {
   const S = window.__STUB;              // { districts, profiles, passwords, records, notes, settings }
   S.schools = S.schools || []; S.school_programs = S.school_programs || [];
+  S.report_signatories = S.report_signatories || [];
   S.school_years = S.school_years || Array.from({ length: 10 }, (_, i) => ({ sy: `${2025 + i}-${2026 + i}`, enabled: true }));
   const T = {
     districts: S.districts, profiles: S.profiles, assessment_records: S.records,
-    comparative_notes: S.notes, app_settings: [{ id: 1, data: S.settings }], schools: S.schools, school_programs: S.school_programs, school_years: S.school_years
+    comparative_notes: S.notes, app_settings: [{ id: 1, data: S.settings }], schools: S.schools, school_programs: S.school_programs, school_years: S.school_years, report_signatories: S.report_signatories
   };
   ['site_content', 'site_content_versions', 'site_settings', 'site_media', 'site_media_slots', 'admin_activity'].forEach(k => { S[k] = S[k] || []; T[k] = S[k]; });
   S.storage = S.storage || {};
@@ -37,8 +38,7 @@
   const ruleProblem = (g, a) => {
     if (SHS.includes(a)) return ['Grade 11', 'Grade 12'].includes(g) ? null : 'Life and Career Skills and Sports/Health/Wellness are Key Stage 4 subjects: enter them for Grades 11 and 12 only.';
     if (a !== 'MAPEH - Overall' && !COMP.includes(a) && !LEG.includes(a)) return null;
-    if (['Grade 1','Grade 2','Grade 3'].includes(g) && a === 'MAPEH - Overall') return 'MAPEH - Overall is not entered for Key Stage 1 (Grades 1 to 3). Enter Music and Arts and P.E. and Health instead.';
-    if (['Grade 1','Grade 2','Grade 3'].includes(g) && !LEG.includes(a)) return 'Grades 1 to 3 are entered as Music and Arts and P.E. and Health. Music, Arts, PE and Health are not entered separately for these grades.';
+    if (['Grade 1','Grade 2','Grade 3'].includes(g) && a !== 'MAPEH - Overall') return 'Key Stage 1 (Grades 1 to 3) is entered as MAPEH - Overall only. Music and Arts, P.E. and Health and the separate components are not entered for these grades.';
     if (['Grade 11','Grade 12'].includes(g)) return 'MAPEH is not assessed in Grades 11 and 12.';
     return null;
   };
@@ -74,6 +74,7 @@
     if (table === 'site_content_versions' || table === 'admin_activity') return sessionOk() && p.role === 'admin';
     if (table === 'schools') return isDivision() || (sessionOk() && p.role === 'district_coordinator' && row.district_id === p.district_id) || (isSchoolUser() && row.id === p.school_id);
     if (table === 'school_programs') return canRead('schools', T.schools.find(x => x.id === row.school_id) || {});
+    if (table === 'report_signatories') return isDivision() || (sessionOk() && p.role === 'district_coordinator' && !row.school_id && row.district_id === p.district_id && row.education_level === p.education_level) || (isSchoolUser() && !!row.school_id && row.school_id === p.school_id);
     if (table === 'comparative_notes') return isDivision() || (sessionOk() && p.role === 'district_coordinator' && row.district_scope === distName(p.district_id) && row.education_level === p.education_level);
     return true; // districts, app_settings
   }
@@ -84,7 +85,7 @@
       return isDivision() || coordScope(row.district_id, levelOf(row.grade_level)) || schoolWriteOk(row);
     }
     if (table === 'comparative_notes') return op !== 'delete' && canRead('comparative_notes', row);
-    if (table === 'schools' || table === 'school_programs' || table === 'school_years') return false;   // written only through the app_save_school / app_import_schools functions
+    if (table === 'schools' || table === 'school_programs' || table === 'school_years' || table === 'report_signatories') return false;   // written only through the app_save_school / app_import_schools functions
     if (table === 'districts' || table === 'app_settings') return op === 'update' && isDivision();
     return false;
   }
@@ -244,6 +245,23 @@
             }
             const need = () => isDivision() ? null : { data: null, error: err('42501', 'Only a Supervisor or Admin can manage schools.') };
             const fail = m => ({ data: null, error: err('P0001', m) });
+            if (name === 'app_save_signatories') {
+              const pm = me(); if (!sessionOk()) return { data: null, error: err('42501', 'Not allowed.') };
+              const trim = v => String(v || '').trim();
+              const f = { prepared_name: trim(a.p_prepared_name), prepared_pos: trim(a.p_prepared_pos), checked_name: trim(a.p_checked_name), checked_pos: trim(a.p_checked_pos), noted_name: trim(a.p_noted_name), noted_pos: trim(a.p_noted_pos) };
+              if ([f.prepared_name, f.checked_name, f.noted_name].some(x => x.length > 120)) return { data: null, error: err('P0001', 'A name can have at most 120 characters.') };
+              if ([f.prepared_pos, f.checked_pos, f.noted_pos].some(x => x.length > 160)) return { data: null, error: err('P0001', 'A position can have at most 160 characters.') };
+              let d, lvl = null, sid = null;
+              if (pm.role === 'school') { sid = pm.school_id; d = schoolDistrict(sid); }
+              else if (pm.role === 'district_coordinator') { d = pm.district_id; lvl = pm.education_level; }
+              else if (pm.role === 'admin' || pm.role === 'supervisor') {
+                if (a.p_school_id != null) { d = schoolDistrict(a.p_school_id); if (d == null) return { data: null, error: err('P0001', 'School not found.') }; sid = a.p_school_id; }
+                else { d = a.p_district_id; lvl = a.p_education_level; if (d == null || !['elementary', 'secondary'].includes(lvl)) return { data: null, error: err('P0001', 'Choose a district and an education level, or a school.') }; }
+              } else return { data: null, error: err('42501', 'Not allowed.') };
+              let row = T.report_signatories.find(x => sid ? x.school_id === sid : (!x.school_id && x.district_id === d && x.education_level === lvl));
+              if (row) Object.assign(row, f); else { row = Object.assign({ id: T.report_signatories.length + 1, district_id: d, education_level: sid ? null : lvl, school_id: sid }, f); T.report_signatories.push(row); }
+              return { data: row.id, error: null };
+            }
             if (name === 'app_set_school_year_enabled') {
               const pm = me();
               if (!sessionOk() || pm.role !== 'admin') return { data: null, error: err('42501', 'Only the System Administrator can change school year availability.') };
