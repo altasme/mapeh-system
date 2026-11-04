@@ -213,13 +213,13 @@ begin
   -- ===== MAPEH grade rules (create, edit, and direct API) =====
   declare
     ok_rows text[][] := array[
-      ['Grade 1','MAPEH - Music & Arts'],['Grade 3','MAPEH - PE & Health'],['Grade 4','MAPEH - Overall'],['Grade 4','MAPEH - Music'],
+      ['Grade 1','MAPEH - Overall'],['Grade 3','MAPEH - Overall'],['Grade 4','MAPEH - Overall'],['Grade 4','MAPEH - Music'],
       ['Grade 6','MAPEH - Arts'],['Grade 7','MAPEH - PE'],['Grade 10','MAPEH - Health'],['Grade 10','MAPEH - Overall'],
       ['Grade 4','MAPEH - Music & Arts'],['Grade 8','MAPEH - PE & Health'],['Grade 10','MAPEH - Music & Arts'],['Grade 5','MAPEH - PE & Health'],
       ['Grade 1','IPED - Music'],['Grade 2','Filipino'],['Grade 11','Empowerment Technologies'],['Grade 12','MAPEH-looking but not family']];
     bad_rows text[][] := array[
       ['Grade 1','MAPEH - Music'],['Grade 2','MAPEH - Arts'],['Grade 3','MAPEH - PE'],['Grade 3','MAPEH - Health'],
-      ['Grade 1','MAPEH - Overall'],['Grade 3','MAPEH - Overall'],
+      ['Grade 1','MAPEH - Music & Arts'],['Grade 2','MAPEH - PE & Health'],
       ['Grade 11','MAPEH - Overall'],['Grade 12','MAPEH - Music'],['Grade 11','MAPEH - Music & Arts']];
     i int;
   begin
@@ -244,8 +244,8 @@ begin
     assert denied, 'moving a Music record to Grade 2 is refused';
     denied := false; begin update public.assessment_records set learning_area = 'MAPEH - Music & Arts' where id = rid; exception when check_violation then denied := true; end;
     assert not denied, 'switching a Grade 5 record to the combined Music & Arts area is accepted (migration 0012)';
-    denied := false; begin update public.assessment_records set learning_area = 'MAPEH - Overall', grade_level = 'Grade 2' where id = rid; exception when check_violation then denied := true; end;
-    assert denied, 'but MAPEH - Overall in Key Stage 1 is refused (migration 0014)';
+    denied := false; begin update public.assessment_records set learning_area = 'MAPEH - Music & Arts', grade_level = 'Grade 2' where id = rid; exception when check_violation then denied := true; end;
+    assert denied, 'but Music and Arts in Key Stage 1 is refused (migration 0015: Key Stage 1 is MAPEH - Overall only)';
     update public.assessment_records set learning_area = 'MAPEH - Music', grade_level = 'Grade 5' where id = rid;
     update public.assessment_records set learning_area = 'MAPEH - Arts', mps = 76 where id = rid; get diagnostics n = row_count; assert n = 1, 'a valid edit passes';
     assert (select proficiency_level from public.assessment_records where id = rid) = 'Developing', 'proficiency recomputed after an edit';
@@ -257,12 +257,12 @@ begin
     -- legacy rows already present stay editable on non-rule fields (grandfathered)
     alter table public.assessment_records disable trigger records_guard;  -- simulates a row that predates the rule
     insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by)
-      values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 2','MAPEH - Overall',65,70,70,'x','00000000-0000-0000-0000-0000000000a1')
+      values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 2','MAPEH - Music & Arts',65,70,70,'x','00000000-0000-0000-0000-0000000000a1')
       returning id into rid;
     alter table public.assessment_records enable trigger records_guard;
     set local role authenticated;
     update public.assessment_records set mps = 82 where id = rid; get diagnostics n = row_count; assert n = 1, 'legacy Grade 2 record can still be edited (score)';
-    denied := false; begin update public.assessment_records set learning_area = 'MAPEH - Overall', grade_level = 'Grade 3' where id = rid; denied := false; exception when check_violation then denied := true; end;
+    denied := false; begin update public.assessment_records set learning_area = 'MAPEH - Music & Arts', grade_level = 'Grade 3' where id = rid; denied := false; exception when check_violation then denied := true; end;
     assert denied, 'but cannot be re-saved into a different forbidden grade';
     reset role;
     -- the audit log names the soft delete and the restore
@@ -392,7 +392,7 @@ begin
     insert into public.assessment_records (sy,term,district_id,school_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by)
       values ('2025-2026','Term 1',car,s3,'Key Stage 1','Grade 3','IPED - English',65,80,70,'x','00000000-0000-0000-0000-0000000000a1') returning id into r_s3;
     insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by)
-      values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 3','MAPEH - Music & Arts',65,80,70,'x','00000000-0000-0000-0000-0000000000a1') returning id into r_none;
+      values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 3','MAPEH - Overall',65,80,70,'x','00000000-0000-0000-0000-0000000000a1') returning id into r_none;
     insert into public.assessment_records (sy,term,district_id,school,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level,created_by)
       values ('2025-2026','Term 2',asu,'alpha iped school ','Key Stage 1','Grade 3','IPED - Filipino',65,80,70,'x','00000000-0000-0000-0000-0000000000a1') returning id into r_unl;
     assert (select school from public.assessment_records where id = r_s1) = 'Alpha IPED School', 'the printed school name follows the school record';
@@ -811,15 +811,16 @@ begin
   assert denied, 'nor for Grade 8';
   reset role;
 
-  -- Key Stage 1: no MAPEH - Overall on new records, Music and Arts / P.E. and Health accepted
+  -- Key Stage 1 (0015): MAPEH - Overall only; Music and Arts / P.E. and Health are refused
   perform set_config('request.jwt.claims', ce, true); set local role authenticated;
   denied := false; msg := null; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
-    values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 2','MAPEH - Overall',65,81,70,'x'); exception when others then denied := true; msg := sqlerrm; end;
-  assert denied and msg like '%Key Stage 1%', 'MAPEH - Overall is refused in Key Stage 1 by the database (' || coalesce(msg, '') || ')';
+    values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 2','MAPEH - Music & Arts',65,81,70,'x'); exception when others then denied := true; msg := sqlerrm; end;
+  assert denied and msg like '%Key Stage 1%', 'Music and Arts is refused in Key Stage 1 by the database (' || coalesce(msg, '') || ')';
+  denied := false; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
+    values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 3','MAPEH - PE & Health',65,79,70,'x'); exception when others then denied := true; end;
+  assert denied, 'and so is P.E. and Health';
   insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
-    values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 2','MAPEH - Music & Arts',65,81,70,'x');
-  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
-    values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 3','MAPEH - PE & Health',65,79,70,'x');
+    values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 2','MAPEH - Overall',65,81,70,'x');
   reset role;
 
   -- school years: only the System Administrator changes them; new records in a disabled year are refused; old ones stay
@@ -855,6 +856,63 @@ begin
   assert denied, 'a malformed school year is refused';
   reset role;
   raise notice 'PASS programs, key stage rules, school years (0014)';
+end $$;
+
+-- Migration 0015: district and school signatories
+do $$
+declare
+  asu smallint := (select id from public.districts where name = 'Asuncion');
+  car smallint := (select id from public.districts where name = 'Carmen');
+  se bigint; denied boolean; n int; rid bigint;
+  admin text := '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
+  ce text := '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}';
+  cs text := '{"sub":"00000000-0000-0000-0000-0000000000b2","role":"authenticated"}';
+  cc text := '{"sub":"00000000-0000-0000-0000-0000000000b3","role":"authenticated"}';
+begin
+  perform set_config('request.jwt.claims', admin, true); set local role authenticated;
+  se := public.app_save_school(null, 'M15 School', asu, array['mapeh'], true, 'elementary', 920001);
+  reset role;
+  assert (select count(*) from public.report_signatories) = 0, 'signatories start empty (nothing is pre-filled)';
+  -- the Elementary coordinator of Asuncion saves the set of their own district and level
+  perform set_config('request.jwt.claims', ce, true); set local role authenticated;
+  rid := public.app_save_signatories('Ana Cruz', 'Master Teacher I', 'Ben Reyes', 'Principal II', 'Cora Diaz', 'District Supervisor');
+  assert (select count(*) from public.report_signatories where district_id = asu and education_level = 'elementary' and school_id is null) = 1, 'a coordinator saved the set of their district and level';
+  perform public.app_save_signatories('Ana Cruz', 'Master Teacher II', '', '', '', '');
+  assert (select prepared_pos from public.report_signatories where id = rid) = 'Master Teacher II' and (select count(*) from public.report_signatories) = 1, 'saving again updates the same set (no duplicate)';
+  assert (select count(*) from public.report_signatories) = 1, 'the coordinator reads their own set';
+  denied := false; begin insert into public.report_signatories (district_id, education_level, prepared_name) values (asu, 'secondary', 'x'); exception when insufficient_privilege then denied := true; end;
+  assert denied, 'the table cannot be written directly through the API';
+  reset role;
+  -- the Secondary coordinator of the same district has their own set and cannot see or change the Elementary one
+  perform set_config('request.jwt.claims', cs, true); set local role authenticated;
+  assert (select count(*) from public.report_signatories) = 0, 'the Secondary coordinator does not see the Elementary set';
+  perform public.app_save_signatories('Sam Lopez', 'Teacher III', '', '', '', '');
+  assert (select count(*) from public.report_signatories where education_level = 'secondary') = 1 and (select prepared_name from public.report_signatories) = 'Sam Lopez', 'and saves their own';
+  reset role;
+  -- a coordinator of another district sees none of Asuncion
+  perform set_config('request.jwt.claims', cc, true); set local role authenticated;
+  assert (select count(*) from public.report_signatories) = 0, 'a coordinator of another district sees nothing of Asuncion';
+  denied := false; begin perform public.app_save_signatories('x', '', '', '', '', '', asu, 'elementary', null); perform 1; exception when others then denied := true; end;
+  reset role;
+  assert (select prepared_name from public.report_signatories where district_id = asu and education_level = 'elementary') = 'Ana Cruz', 'passing another district does not let a coordinator change it (the caller own scope is used)';
+  -- a school account saves only its own school
+  assert (select count(*) from public.report_signatories where school_id is not null) = 0, 'no school set yet';
+  -- division users read everything and may save any scope
+  perform set_config('request.jwt.claims', admin, true); set local role authenticated;
+  assert (select count(*) from public.report_signatories) = 3, 'the Admin reads every set (Asuncion Elementary, Asuncion Secondary, and the one the Carmen coordinator just saved for their own scope)';
+  perform public.app_save_signatories('Div Pick', 'EPS', '', '', '', '', car, 'elementary', null);
+  perform public.app_save_signatories('School Pick', 'Principal', '', '', '', '', null, null, se);
+  assert (select count(*) from public.report_signatories) = 4, 'the Admin can save a district set and a school set';
+  denied := false; begin perform public.app_save_signatories('x', '', '', '', '', '', null, null, null); exception when others then denied := true; end;
+  assert denied, 'the Admin must say which scope';
+  denied := false; begin perform public.app_save_signatories(repeat('x', 121), '', '', '', '', '', car, 'elementary', null); exception when others then denied := true; end;
+  assert denied, 'a name longer than 120 characters is refused';
+  reset role;
+  set local role anon;
+  denied := false; begin perform 1 from public.report_signatories limit 1; exception when insufficient_privilege then denied := true; end;
+  assert denied, 'signed out: denied';
+  reset role;
+  raise notice 'PASS signatories and Key Stage 1 regular MAPEH (0015)';
 end $$;
 
 rollback;
