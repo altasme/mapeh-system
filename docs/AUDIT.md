@@ -112,3 +112,9 @@ Supabase shim), and a final browser run against the real project is part of depl
 | N46 | Low | LLC groups were sorted alphabetically (Grade 10 before Grade 2); now numeric. | FIX. |
 | N47 | Info | Official Report selector: seven reports; item analysis, section report and intervention plan are not supported by the data. | DOC, client to confirm. |
 | N48 | Low | Print parity test compares every letter and digit of the printed report instead of the order of the text, because the new report colours change the table layout the PDF text follows. | DOC. |
+| N49 | Med | Key Stage 1 is entered as MAPEH - Overall only (database and app). Reverses N42's earlier rule on the client's newer instruction; existing Key Stage 1 records of any kind are untouched. | FIX (0015). Client to confirm the reversal. |
+| N50 | Med | District and school signatories stored per district and education level, and per school, saved only by their own coordinator or school account (database function); blank by default. | FIX (0015). |
+| N51 | Low | Dashboard district comparison A to Z; automatic descriptive analysis under each graph (figures only). | FIX. |
+| N52 | Low | Termly Comparative: school accounts have no access; added per-grade rows with their own baseline MPS and baseline school year. | FIX. |
+| N53 | Low | Overall IPED and Special Programs cards show schools encoded / schools assigned; IPED Overall MAPEH by the (Music and Arts + PE and Health) / 2 rule. | FIX. |
+| N54 | Low | Proficiency Level filter (per record). Least learned competency log can be hidden. | FIX. Client to confirm the meaning of the filter. |
