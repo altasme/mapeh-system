@@ -260,7 +260,7 @@ if (want(3)) {
   ok(new RegExp('(^|[^\\d.])' + E.dashboard.flatMps + '(\\.00)?%').test(t), `Dashboard shows flat MPS ${E.dashboard.flatMps.toFixed(2)}% (AUDIT M3: differs from Division Summary)`);
   ok(new RegExp('(^|[^\\d.])' + E.dashboard.pct75 + '(\\.00)?%').test(t), `Dashboard shows % learners >= 75 at ${E.dashboard.pct75.toFixed(2)}%`);
   await N.page.evaluate(() => switchView('comparative')); await settled(N.page); t = await text(N.page);
-  const baselines = await N.page.evaluate(() => Array.from(document.querySelectorAll('.editable-baseline-input')).map(i => i.value));
+  const baselines = await N.page.evaluate(() => Array.from(document.querySelectorAll('.excel-table-container:not(.comp-grade-card) .editable-baseline-input')).map(i => i.value));
   for (const [idx, [ks, v]] of Object.entries(E.comparativeByKeyStage).entries()) {
     const row = await N.page.evaluate(i2 => document.querySelectorAll('table.excel-table tbody tr')[i2].innerText.replace(/\s+/g, ' '), idx);
     ok(Number(baselines[idx]) === v.baseline && row.includes(v.mps.toFixed(2) + '%') && row.includes((v.variance > 0 ? '+' : '') + v.variance.toFixed(2) + '%'), `Comparative ${ks}: baseline ${v.baseline}, MPS ${v.mps}, variance ${v.variance}`);
@@ -309,7 +309,7 @@ if (want(5)) {
   await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
   ok(/TOTAL DISTRICT RECORDS\s+66/i.test(await text(N.page)), 'elementary coordinator sees 66 records: own district and own level only (database filtered)');
   await N.page.evaluate(() => switchView('settings')); await settled(N.page);
-  { const sp = await text(N.page); ok(/District Signatories/i.test(sp) && !/print header|division signatories|complete database reset|district coordinators/i.test(sp), 'Settings shows a coordinator only their District Signatories (no branding, Division signatories, coordinators or reset)'); }
+  { const sp = await text(N.page); ok(/District Signatories/i.test(sp) && !/print header|complete database reset|save district coordinators|clear all database/i.test(sp), 'Settings shows a coordinator only their District Signatories (no branding, Division signatories, coordinators or reset)'); }
   await N.ctx.close();
 
   const A = await openNew('admin', demo);
@@ -572,11 +572,11 @@ if (want(12)) {
     }, a.level);
     const want = a.level === 'elementary' ? ['ALL', 'Key Stage 1', 'Key Stage 2'] : ['ALL', 'Key Stage 3', 'Key Stage 4'];
     const good = r.role === `${LABEL[a.level]} Coordinator (${a.district})` && r.rowCount === 66 && r.onlyOwn && r.districtLocked && r.levelLocked
-      && JSON.stringify(r.keyStages) === JSON.stringify(want) && r.settingsHidden && r.csvHidden;
+      && JSON.stringify(r.keyStages) === JSON.stringify(want) && r.csvHidden;   // Settings & Branding is open to every account now, with the District Signatories page only
     if (!good) { allGood = false; problems.push(a.username + ' ' + JSON.stringify(r)); }
     await N.ctx.close();
   }
-  ok(allGood, 'all 22 accounts: correct label, 66 rows (own district AND level only), district and level locked, own key stages only, no Settings, no CSV' + (problems.length ? ' -> ' + problems[0] : ''));
+  ok(allGood, 'all 22 accounts: correct label, 66 rows (own district AND level only), district and level locked, own key stages only, District Signatories only, no CSV' + (problems.length ? ' -> ' + problems[0] : ''));
 
   // --- an Elementary and a Secondary coordinator of the same district try to cross over
   for (const [user, own, otherLevel, otherGrade, ownGrade] of [['asuncion_elemcoord', 'elementary', 'secondary', 'Grade 8', 'Grade 3'], ['asuncion_seccoord', 'secondary', 'elementary', 'Grade 3', 'Grade 9']]) {
@@ -656,7 +656,7 @@ if (want(12)) {
     await N.page.evaluate(() => switchView('grade-view')); await settled(N.page);
     ok((await N.page.evaluate(() => document.querySelectorAll('#view-container .card-box')[0].querySelectorAll('tbody tr').length)) === 6, `${user}: grade level breakdown shows Grades 1 to 6 only`);
     await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
-    ok((await N.page.locator('.editable-baseline-input').count()) === 2, `${user}: comparative analysis shows the two Elementary key stages`);
+    ok((await N.page.locator('.excel-table-container:not(.comp-grade-card) .editable-baseline-input').count()) === 2, `${user}: comparative analysis shows the two Elementary key stages`);
     await N.page.selectOption('#flt-level', 'secondary'); await settled(N.page);
     await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
     ok(/TOTAL DISTRICT RECORDS\s+726/i.test(await text(N.page)), `${user}: Secondary filter shows the other 726`);
@@ -675,7 +675,7 @@ if (want(12)) {
     await N.page.fill('#comp-analysis-input', 'secondary note'); await N.page.click('text=Save Qualitative Notes'); await N.page.waitForSelector('.toast-success');
     const n = await N.page.evaluate(() => window.__STUB.notes.map(x => [x.district_scope, x.education_level]));
     ok(JSON.stringify(n) === JSON.stringify([['Asuncion', 'secondary']]), 'notes are saved under the coordinator\'s district AND level');
-    ok((await N.page.locator('.editable-baseline-input').count()) === 2, 'a Secondary coordinator sees only Key Stages 3 and 4 in the comparative table');
+    ok((await N.page.locator('.excel-table-container:not(.comp-grade-card) .editable-baseline-input').count()) === 2, 'a Secondary coordinator sees only Key Stages 3 and 4 in the comparative table');
     await N.page.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(N.page);
     const [dl] = await Promise.all([N.page.waitForEvent('download'), N.page.click('text=Download Excel Template')]);
     ok(/_Secondary\.xlsx$/.test(dl.suggestedFilename()), 'the Excel template is the Secondary template (' + dl.suggestedFilename() + ')');
@@ -2042,7 +2042,7 @@ if (want(26)) {
   const asuMean = recs.filter(r => r.district === 'Asuncion').reduce((a, c) => a + c.mps, 0) / recs.filter(r => r.district === 'Asuncion').length;
   const carMean = recs.filter(r => r.district === 'Carmen').reduce((a, c) => a + c.mps, 0) / 2;
   ok(an.length === 3 && an.every(t => t.startsWith('Analysis:')), 'every graph has an automatic analysis at its bottom (3 graphs, 3 analyses)');
-  ok(an[0].includes(`Highest: ${carMean > asuMean ? 'Carmen' : 'Asuncion'} at ${f2(Math.max(asuMean, carMean))}%`) && an[0].includes(`Lowest: ${carMean > asuMean ? 'Asuncion' : 'Carmen'} at ${f2(Math.min(asuMean, carMean))}%`) && an[0].includes(`gap between them is ${f2(Math.abs(asuMean - carMean))} percentage points`), 'district analysis: highest, lowest and gap computed from the plotted values (' + an[0].slice(0, 140) + ')');
+  ok(an[0].includes(`Highest: ${carMean > asuMean ? 'Carmen' : 'Asuncion'} at ${f2(Math.max(asuMean, carMean))}%`) && an[0].includes(`Lowest: ${carMean > asuMean ? 'Asuncion' : 'Carmen'} at ${f2(Math.min(asuMean, carMean))}%`) && an[0].includes(`gap between them is ${f2(Math.abs(parseFloat(f2(asuMean)) - parseFloat(f2(carMean))))} percentage points`), 'district analysis: highest, lowest and gap computed from the plotted values (' + an[0].slice(0, 140) + ')');
   ok(/Highest track: .* at \d+\.\d\d%/.test(an[1]) && /No data for: SPS Total, SPFL Total\./.test(an[1]), 'program track analysis names the highest and lowest tracks and the tracks without data');
   ok(/^Analysis: Music and Arts \d+\.\d\d% \(.*\); P\.E\. and Health \d+\.\d\d% \(.*\)\. Overall MAPEH = \(/.test(an[2]) && /\) \/ 2 = \d+\.\d\d%/.test(an[2]), 'MAPEH analysis states the components and the formula: ' + an[2].slice(0, 160));
   await A.page.evaluate(() => { document.getElementById('flt-district').value = 'Asuncion'; document.getElementById('flt-term').value = 'Term 3'; applyFilters(); }); await settled(A.page);
