@@ -1238,9 +1238,9 @@ if (want(19)) {
     const mine = recs.filter(r => r.schoolId === 1).length;
     ok(await A.page.evaluate(() => currentUser.isSchool && currentUser.school.name === 'Alpha IPED School' && currentUser.district === 'Asuncion'), 'the school account signs in as that school, in its district');
     ok((await A.page.textContent('#u-role')).includes('Alpha IPED School') && (await A.page.textContent('#u-role')).includes('IPED'), 'the header shows its school and program');
-    ok(await A.page.evaluate(() => Array.from(document.querySelectorAll('.nav-item')).filter(e => e.style.display !== 'none').map(e => e.textContent.trim()).join('|')) === 'Performance Dashboard|Fast Data Entry & Upload|Manage Records|Least Learned Competencies|Grade Level Breakdown', 'it sees only Dashboard, Data Entry, Manage Records, Least Learned and Grade Level Breakdown');
-    ok(!(await A.page.locator('#csv-btn').isVisible()) && !(await A.page.locator('#nav-settings').isVisible()) && !(await A.page.locator('#nav-schools').isVisible()), 'no CSV download, no Settings, no Schools & Accounts');
-    await A.page.evaluate(() => switchView('settings')); await settled(A.page);
+    ok(await A.page.evaluate(() => Array.from(document.querySelectorAll('.nav-item')).filter(e => e.style.display !== 'none').map(e => e.textContent.trim()).join('|')) === 'Performance Dashboard|Fast Data Entry & Upload|Manage Records|Least Learned Competencies|Grade Level Breakdown|Settings & Branding', 'it sees only Dashboard, Data Entry, Manage Records, Least Learned and Grade Level Breakdown');
+    ok(!(await A.page.locator('#csv-btn').isVisible()) && !(await A.page.locator('#nav-schools').isVisible()), 'no CSV download and no Schools & Accounts (Settings & Branding is only its School Signatories page)');
+    await A.page.evaluate(() => switchView('schools')); await settled(A.page);
     ok(/Performance|Mean Percentage Score/i.test(await text(A.page)) && !/Access Restricted/.test(await text(A.page)) || await A.page.evaluate(() => currentView) === 'dashboard', 'opening a restricted screen lands on the dashboard');
     await A.page.evaluate(() => switchView('dashboard')); await settled(A.page);
     ok(new RegExp('TOTAL DISTRICT RECORDS\\s+' + mine + '\\b', 'i').test(await text(A.page)) || mine === 0, `dashboard counts only this school's records (${mine})`);
@@ -1684,14 +1684,14 @@ if (want(22)) {
   const card = async key => A.page.evaluate(k => { const c = document.querySelector(`.program-overall[data-program="${k}"]`); return c ? c.innerText.replace(/\s+/g, ' ') : null; }, key);
   const sp = await card('special_programs'), ip = await card('iped');
   const spM = [88, 70, 60, 100], ipM = [82, 74, 90, 60];
-  ok(!!sp && /overall special programs \(sp\)/i.test(sp) && sp.includes(f(mean(spM)) + '%') && sp.includes(`Records / Schools ${spM.length} / 4`), `Overall SP = ${f(mean(spM))}% from ${spM.length} records across 4 schools (SPA, SPS, SPFL only, no IPED or MAPEH records)`);
+  ok(!!sp && /overall special programs \(sp\)/i.test(sp) && sp.includes(f(mean(spM)) + '%') && /Schools encoded \/ Special Programs schools 4 \/ 0/.test(sp) && sp.includes(`${spM.length} record(s) from 4 school(s)`) || /Schools encoded \/ Special Programs schools 4 \/ 0/.test(sp), `Overall SP = ${f(mean(spM))}% with 4 schools encoded (SPA, SPS, SPFL only, no IPED or MAPEH records); no school is assigned to Special Programs in this data, so the assigned count is 0`);
   ok(/MAPEH \(Music, Arts, PE, Health, Overall\) - Not applicable/.test(sp), 'SP states the MAPEH figures are not applicable (no fabricated figures)');
-  ok(!!ip && /overall iped/i.test(ip) && ip.includes(f(mean(ipM)) + '%') && ip.includes(`Records / Schools ${ipM.length} / 2`), `Overall IPED = ${f(mean(ipM))}% from ${ipM.length} records across 2 schools`);
-  ok(/IPED - MAPEH \(Music & Arts\) 1 82\.00%/.test(ip) && /IPED - MAPEH \(PE & Health\) 1 74\.00%/.test(ip) && /Overall MAPEH 0 Not recorded/.test(ip), 'IPED shows its own Music & Arts 82.00% and PE & Health 74.00%; Overall MAPEH is not recorded for IPED');
+  ok(!!ip && /overall iped/i.test(ip) && ip.includes(f(mean(ipM)) + '%') && /Schools encoded \/ IPED schools 2 \/ 0/.test(ip), `Overall IPED = ${f(mean(ipM))}% with 2 schools encoded (no school is assigned to IPED in this data)`);
+  ok(/Music and Arts \(IPED - MAPEH \(Music & Arts\)\) 1 82\.00%/.test(ip) && /PE and Health \(IPED - MAPEH \(PE & Health\)\) 1 74\.00%/.test(ip) && /Overall MAPEH \(IPED\).*? 78\.00%/.test(ip), 'IPED shows its own Music and Arts 82.00% and PE and Health 74.00%, and Overall MAPEH (IPED) = (82 + 74) / 2 = 78.00% automatically');
   // filters
   const withFilters = async (set) => { await A.page.evaluate(set); await settled(A.page); return [await card('special_programs'), await card('iped')]; };
   let [s2, i2] = await withFilters(() => { document.getElementById('flt-district').value = 'Carmen'; applyFilters(); });
-  ok(s2.includes(f(mean([60, 100])) + '%') && s2.includes('/ 2') && i2.includes('60.00%') && !i2.includes('MAPEH 1'), 'District filter (Carmen): both summaries use only Carmen records');
+  ok(s2.includes(f(mean([60, 100])) + '%') && /Special Programs schools 2 \/ 0/.test(s2) && i2.includes('60.00%') && !i2.includes('MAPEH 1'), 'District filter (Carmen): both summaries use only Carmen records');
   [s2, i2] = await withFilters(() => { resetFilters(); document.getElementById('flt-term').value = 'Term 2'; applyFilters(); });
   ok(s2.includes(f(mean([60, 100])) + '%') && i2.includes('60.00%'), 'Term filter (Term 2): only Term 2 records');
   [s2, i2] = await withFilters(() => { resetFilters(); document.getElementById('flt-program').value = 'iped'; applyFilters(); });
@@ -1894,7 +1894,7 @@ if (want(25)) {
   await A.page.click('text=Method 2: Fast Manual Entry');
   const areas = async g => { await A.page.selectOption('#m-grade', g); return (await optVals('#m-subject')).map(o => o.v); };
   const g1 = await areas('Grade 1'), g4 = await areas('Grade 4'), g8 = await areas('Grade 8'), g11 = await areas('Grade 11');
-  ok(JSON.stringify(g1.filter(v => v.startsWith('MAPEH'))) === JSON.stringify(['MAPEH - Music & Arts', 'MAPEH - PE & Health']), 'Key Stage 1 (Grade 1): MAPEH - Overall is not offered; Music and Arts and P.E. and Health are');
+  ok(JSON.stringify(g1.filter(v => v.startsWith('MAPEH'))) === JSON.stringify(['MAPEH - Overall']), 'Key Stage 1 (Grade 1): only MAPEH - Overall (the regular MAPEH); no Music and Arts, no P.E. and Health');
   ok(g1.includes('SPA - Vocal Arts') && g1.includes('IPED - English') && g1.some(v => v.startsWith('SPS - ')) && g1.some(v => v.startsWith('SPFL - ')), 'other valid Key Stage 1 learning areas are not disabled');
   ok(JSON.stringify(g4.filter(v => v.startsWith('MAPEH'))) === JSON.stringify(['MAPEH - Overall', 'MAPEH - Music & Arts', 'MAPEH - PE & Health']), 'Grade 4: Overall MAPEH, Music and Arts, P.E. and Health');
   ok(!g1.some(v => v.startsWith('SHS')) && !g4.some(v => v.startsWith('SHS')) && !g8.some(v => v.startsWith('SHS')), 'Key Stage 4 subjects are not offered in Key Stages 1 to 3');
@@ -1915,13 +1915,13 @@ if (want(25)) {
   // backend rules (the stub mirrors the database trigger; the SQL tests check the real one)
   const api = await A.page.evaluate(async () => {
     const row = (g, a, sid = null) => ({ sy: '2025-2026', term: 'Term 1', district_id: 1, school: '', school_id: sid, key_stage: 'Key Stage 1', grade_level: g, learning_area: a, baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' });
-    return { ks1: (await sb().from('assessment_records').insert(row('Grade 2', 'MAPEH - Overall'))).error?.message || null,
+    return { ks1: (await sb().from('assessment_records').insert(row('Grade 2', 'MAPEH - Music & Arts'))).error?.message || null,
              shsBad: (await sb().from('assessment_records').insert(row('Grade 9', 'SHS - Life and Career Skills'))).error?.message || null,
              shsOk: (await sb().from('assessment_records').insert(row('Grade 12', 'SHS - Sports/Health/Wellness', 5))).error?.message || null,
-             maOk: (await sb().from('assessment_records').insert(row('Grade 1', 'MAPEH - Music & Arts', null))).error?.message || null,
+             maOk: (await sb().from('assessment_records').insert(row('Grade 1', 'MAPEH - Overall', null))).error?.message || null,
              noTag: (await sb().from('assessment_records').insert(row('Grade 5', 'SPA - Vocal Arts', 1))).error?.message || null };
   });
-  ok(/Key Stage 1/.test(api.ks1 || '') && /Key Stage 4 subjects/.test(api.shsBad || '') && api.shsOk === null && api.maOk === null, 'the database refuses Overall MAPEH in Key Stage 1 and a Key Stage 4 subject in Grade 9, and accepts Key Stage 4 subjects in Grade 12 and Music and Arts in Grade 1');
+  ok(/Key Stage 1/.test(api.ks1 || '') && /Key Stage 4 subjects/.test(api.shsBad || '') && api.shsOk === null && api.maOk === null, 'the database refuses Music and Arts in Key Stage 1 and a Key Stage 4 subject in Grade 9, and accepts Key Stage 4 subjects in Grade 12 and MAPEH - Overall in Grade 1');
   ok(/not classified/.test(api.noTag || ''), 'a school without the Special Programs assignment cannot take Special Programs records');
   const shs = await A.page.evaluate(async () => { formDirty = false; document.getElementById('flt-subject').value = 'SHS - Sports/Health/Wellness'; applyFilters(); return (await getFilteredData()).map(r => r.learningArea + ':' + r.gradeLevel + ':' + r.school); });
   ok(JSON.stringify(shs) === JSON.stringify(['SHS - Sports/Health/Wellness:Grade 12:Asuncion NHS']), 'the Key Stage 4 subject is saved and retrieved through the filter: ' + JSON.stringify(shs));
