@@ -707,7 +707,7 @@ if (want(16)) {
     const ov4 = (meanOf(r => r.gradeLevel === 'Grade 4' && isMA(r)) + meanOf(r => r.gradeLevel === 'Grade 4' && isPEH(r))) / 2;
     const rec4 = meanOf(r => r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Overall');
     ok(g4[3].startsWith(f2(ov4)), 'Grade 4: Overall MAPEH = (Music and Arts + P.E. and Health) / 2 = ' + f2(ov4) + ' (the client formula), not the recorded overall (' + f2(rec4) + ')');
-    ok(g1[1].includes('No data') && g1[2].includes('No data') && g1[3].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 1' && r.learningArea === 'MAPEH - Overall'))) && /from Overall records/.test(g1[3]), 'Grade 1: no Music and Arts / P.E. and Health data, so Overall falls back to the recorded overall and says so (never zero)');
+    ok(g1[1].includes('Not recorded') && g1[2].includes('Not recorded') && g1[3].startsWith(f2(meanOf(r => r.gradeLevel === 'Grade 1' && r.learningArea === 'MAPEH - Overall'))) && !/from Overall records/.test(g1[3]), 'Grade 1 (Key Stage 1 is MAPEH - Overall only): Music and Arts and P.E. and Health are not recorded; the recorded MAPEH is shown');
     ok(g11.slice(1, 4).every(c => c.includes('Not recorded')), 'Grade 11: no MAPEH');
     await N.page.evaluate(() => switchView('division')); await settled(N.page);
     const d = await cardRows(N.page, 'MAPEH Components by District');
@@ -735,7 +735,7 @@ if (want(16)) {
     await N.page.click('text=Method 2: Fast Manual Entry');
     const opts = async g => { await N.page.selectOption('#m-grade', g); return N.page.evaluate(() => Array.from(document.querySelectorAll('#m-subject option')).map(o => o.value)); };
     const o1 = await opts('Grade 2'), o5 = await opts('Grade 5'), o11 = await opts('Grade 11');
-    ok(JSON.stringify(o1.filter(v => v.startsWith('MAPEH'))) === JSON.stringify(['MAPEH - Music & Arts', 'MAPEH - PE & Health']) && o1.includes('IPED - English'), 'manual entry Grade 2 (Key Stage 1): Music and Arts and P.E. and Health only, no Overall and no separate components; IPED untouched');
+    ok(JSON.stringify(o1.filter(v => v.startsWith('MAPEH'))) === JSON.stringify(['MAPEH - Overall']) && o1.includes('IPED - English'), 'manual entry Grade 2 (Key Stage 1): MAPEH - Overall only (no Music and Arts, no P.E. and Health, no separate components); IPED untouched');
     ok(JSON.stringify(o5.filter(v => v.startsWith('MAPEH'))) === JSON.stringify(['MAPEH - Overall', 'MAPEH - Music & Arts', 'MAPEH - PE & Health']), 'manual entry Grade 5: Overall MAPEH plus the two combined components (Music and Arts, PE and Health)');
     ok(!o11.some(v => /^MAPEH/.test(v)) && o11.includes('SPA - Vocal Arts'), 'manual entry Grade 11: no MAPEH areas');
     const filterOpts = await N.page.evaluate(() => Array.from(document.querySelectorAll('#flt-subject option')).map(o => o.value));
@@ -746,7 +746,7 @@ if (want(16)) {
       await N.page.setInputFiles('#excel-file', { name: 't.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await xlsx(rows)) }); };
     const base = { 'School Year': '2025-2026', Term: 'Term 1', District: 'Asuncion', 'School Name': 'X', 'Key Stage': 'Key Stage 1', 'Grade Level': 'Grade 1', 'Learning Area': 'MAPEH - Overall', 'SY Baseline MPS': 65, 'Mean Percentage Score (MPS%)': 80, '% Learners Scoring >= 75%': 70, 'Least Learned Competency 1 Description': 'lc' };
     const count = () => N.page.evaluate(() => window.__STUB.records.length);
-    const bad = [['Grade 2', 'MAPEH - Music'], ['Grade 3', 'MAPEH - Health'], ['Grade 2', 'MAPEH - Overall'], ['Grade 3', 'MAPEH - Overall'], ['Grade 11', 'MAPEH - Overall'], ['Grade 12', 'MAPEH - Arts']];
+    const bad = [['Grade 2', 'MAPEH - Music'], ['Grade 3', 'MAPEH - Health'], ['Grade 2', 'MAPEH - Music & Arts'], ['Grade 3', 'MAPEH - PE & Health'], ['Grade 11', 'MAPEH - Overall'], ['Grade 12', 'MAPEH - Arts']];
     for (const [gr, area] of bad) {
       await upload([base, Object.assign({}, base, { 'Grade Level': gr, 'Learning Area': area })]);
       await N.page.waitForSelector('.toast-error');
@@ -761,7 +761,7 @@ if (want(16)) {
       const row = (g, a) => ({ sy: '2025-2026', term: 'Term 1', district_id: 1, school: '', key_stage: 'Key Stage 1', grade_level: g, learning_area: a, baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' });
       const r = {};
       r.g1music = (await sb().from('assessment_records').insert(row('Grade 1', 'MAPEH - Music'))).error;
-      r.g2legacy = (await sb().from('assessment_records').insert(row('Grade 2', 'MAPEH - Overall'))).error;
+      r.g2legacy = (await sb().from('assessment_records').insert(row('Grade 2', 'MAPEH - Music & Arts'))).error;
       r.g12 = (await sb().from('assessment_records').insert(row('Grade 12', 'MAPEH - Overall'))).error;
       r.iped = (await sb().from('assessment_records').insert(row('Grade 1', 'IPED - MAPEH (PE & Health)'))).error;
       const id = (await sb().from('assessment_records').insert(row('Grade 5', 'MAPEH - Music')).select('id')).data[0].id;
@@ -769,8 +769,8 @@ if (want(16)) {
       r.msg = friendlyError(r.g1music);
       return r;
     });
-    ok(api.g1music?.code === '23514' && api.g2legacy?.code === '23514' && api.g12?.code === '23514' && api.iped === null && api.move?.code === '23514', 'backend refuses Grade 1 Music, Grade 2 Overall MAPEH (Key Stage 1), Grade 12 MAPEH and editing Music into Grade 2; IPED passes');
-    ok(/^Grades 1 to 3 are entered as Music and Arts and P\.E\. and Health/.test(api.msg), 'the backend rule is shown in plain English');
+    ok(api.g1music?.code === '23514' && api.g2legacy?.code === '23514' && api.g12?.code === '23514' && api.iped === null && api.move?.code === '23514', 'backend refuses Grade 1 Music, Grade 2 Music and Arts (Key Stage 1), Grade 12 MAPEH and editing Music into Grade 2; IPED passes');
+    ok(/^Key Stage 1 \(Grades 1 to 3\) is entered as MAPEH - Overall only/.test(api.msg), 'the backend rule is shown in plain English');
     await N.ctx.close();
   }
 
@@ -784,7 +784,7 @@ if (want(16)) {
 
   // ---- Manage Records: edit
   const asuG4 = demoNew.findIndex(r => r.district === 'Asuncion' && r.gradeLevel === 'Grade 4' && r.learningArea === 'MAPEH - Music' && r.term === 'Term 1') + 1;
-  const legacyRec = Object.assign({}, demoNew[0], { district: 'Asuncion', gradeLevel: 'Grade 2', keyStage: 'Key Stage 1', learningArea: 'MAPEH - Overall', school: 'Legacy Marker School' });
+  const legacyRec = Object.assign({}, demoNew[0], { district: 'Asuncion', gradeLevel: 'Grade 2', keyStage: 'Key Stage 1', learningArea: 'MAPEH - Music & Arts', school: 'Legacy Marker School' });
   const withLegacy = demoNew.concat([legacyRec]);
   const legacyId = withLegacy.length;
   {
@@ -800,11 +800,11 @@ if (want(16)) {
     await N.page.fill('#e-mps', '91.5'); await N.page.click('#rec-save');
     await N.page.waitForSelector('.toast-success');
     let rec = await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id), legacyId);
-    ok(rec.mps === 91.5 && rec.proficiency_level === 'Advanced' && rec.learning_area === 'MAPEH - Overall' && !!rec.updated_by, 'editing only the score of a legacy Grade 2 record saves; proficiency is recomputed by the database; editor is stamped');
+    ok(rec.mps === 91.5 && rec.proficiency_level === 'Advanced' && rec.learning_area === 'MAPEH - Music & Arts' && !!rec.updated_by, 'editing only the score of a legacy Grade 2 record saves; proficiency is recomputed by the database; editor is stamped');
     // edit into a forbidden combination: Grade 4 Music -> Grade 2
     await N.page.evaluate(id => openRecordEditor(id), asuG4);
     await N.page.selectOption('#e-grade', 'Grade 2'); await N.page.selectOption('#e-subject', 'MAPEH - Music'); await N.page.click('#rec-save');
-    ok(/Grades 1 to 3 are entered as Music and Arts and P\.E\. and Health/.test(await N.page.textContent('#rec-error')) && (await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id).grade_level, asuG4)) === 'Grade 4', 'edit form refuses Music for Grade 2 before saving');
+    ok(/Key Stage 1 \(Grades 1 to 3\) is entered as MAPEH - Overall only/.test(await N.page.textContent('#rec-error')) && (await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id).grade_level, asuG4)) === 'Grade 4', 'edit form refuses Music for Grade 2 before saving');
     await N.page.selectOption('#e-grade', 'Grade 4'); await N.page.selectOption('#e-subject', 'MAPEH - Music');
     await N.page.fill('#e-mps', '120'); await N.page.click('#rec-save');
     ok(/MPS must be between 0 and 100/.test(await N.page.textContent('#rec-error')), 'edit form revalidates ranges');
