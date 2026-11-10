@@ -2647,7 +2647,7 @@ function changeDistrictView(dist) {
 }
 
 async function renderComparativeView(container) {
-    const records = (await getAllRecords()).filter(levelOk).filter(programOk).filter(plOk);
+    const records = (await getAllRecords()).filter(levelOk).filter(r => programOk(r)).filter(plOk);
     const userDist = currentUser ? currentUser.district : "ALL";
     const currentScope = userDist !== "ALL" ? userDist : filters.district;
     

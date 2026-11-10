@@ -214,6 +214,41 @@ const VIEWS = ['division', 'district-view', 'comparative', 'dashboard', 'least-l
 const llcRows = async page => (await page.evaluate(() => Array.from(document.querySelectorAll('#view-container tbody tr')).map(tr => Array.from(tr.children).filter(td => !td.classList.contains('screen-only')).slice(1).map(td => td.innerText.replace(/\s+/g, ' ').trim().toLowerCase()).join(' | ')))).sort().join('\n');
 const FILTERS = [null, { 'flt-term': 'Term 1' }, { 'flt-term': 'ALL', 'flt-keystage': 'Key Stage 3' }, { 'flt-keystage': 'ALL', 'flt-subject': 'SPS - Basketball' }, { 'flt-subject': 'ALL', 'flt-district': 'Carmen' }];
 
+// Division Summary is split into category tabs (MAPEH / Special Programs / IPED). Its matrix is checked against an oracle that is
+// computed here from the raw records (not by the app): mean per district and term, district MPS = mean of its non-empty term means.
+const TAB_KEYS = ['mapeh', 'special_programs', 'iped'];
+async function divOracle(page, records, tabKey, f) {
+  const meta = await page.evaluate(() => ({ prog: Object.fromEntries(SUBJECTS.map(a => [a, areaProgram(a)])), ks: KEY_STAGES.map(k => ({ code: k.code, grades: k.grades })), districts: DEFAULT_DISTRICTS.slice() }));
+  const fl = Object.assign({ 'flt-term': 'ALL', 'flt-keystage': 'ALL', 'flt-subject': 'ALL', 'flt-district': 'ALL' }, f || {});
+  const ks = meta.ks.find(k => k.code === fl['flt-keystage']);
+  const recs = records.filter(r => (meta.prog[r.learningArea] || areaOfLegacy(r.learningArea)) === tabKey
+    && (fl['flt-term'] === 'ALL' || r.term === fl['flt-term']) && (fl['flt-district'] === 'ALL' || r.district === fl['flt-district'])
+    && (fl['flt-subject'] === 'ALL' || r.learningArea === fl['flt-subject']) && (!ks || ks.grades.includes(r.gradeLevel)));
+  const rows = [];
+  for (const d of meta.districts) {
+    const terms = ['Term 1', 'Term 2', 'Term 3'].map(t => { const x = recs.filter(r => r.district === d && r.term === t); return x.length ? x.reduce((a, c) => a + c.mps, 0) / x.length : 0; });
+    const valid = terms.filter(v => v > 0);
+    rows.push({ d, terms, mps: valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : 0 });
+  }
+  const withData = rows.filter(r => r.mps > 0);
+  return { rows, divisionMps: withData.length ? withData.reduce((a, r) => a + r.mps, 0) / withData.length : 0, count: recs.length };
+}
+function areaOfLegacy(a) { return /^SPA -|^SPS -|^SPFL -/.test(a) ? 'special_programs' : /^IPED -/.test(a) ? 'iped' : 'mapeh'; }
+const divMatrix = page => page.evaluate(() => {
+  const tb = document.querySelector('#view-container table tbody'); if (!tb) return [];
+  return Array.from(tb.querySelectorAll('tr')).map(tr => Array.from(tr.children).map(td => td.innerText.replace(/\s+/g, ' ').trim())).filter(c => c.length >= 7).map(c => ({ d: c[1], cells: c.slice(3, 7) }));
+});
+async function checkDivisionMatrix(N, records, tabKey, f, label) {
+  const o = await divOracle(N.page, records, tabKey, f);
+  const got = await divMatrix(N.page);
+  const fmt = v => v > 0 ? v.toFixed(2) + '%' : '-';
+  const want = o.rows.map(r => ({ d: r.d, cells: [...r.terms.map(fmt), r.mps > 0 ? fmt(r.mps) : 'No data'] }));
+  const same = got.length === want.length && got.every((g, i) => g.d === want[i].d && JSON.stringify(g.cells) === JSON.stringify(want[i].cells));
+  ok(same, `division ${tabKey} matrix equals the independent oracle / ${label}`);
+  if (!same) console.log('   got ', JSON.stringify(got.slice(0, 3)), '\n   want', JSON.stringify(want.slice(0, 3)));
+  return o;
+}
+
 // =================================================================
 console.log('\n[1] Seed fidelity: districts, coordinators, settings and constants match the original');
 if (want(1)) {
@@ -231,6 +266,15 @@ if (want(2)) {
   for (const f of FILTERS) {
     for (const v of VIEWS) {
       await goView(L, N, v, f);
+      if (v === 'division') {
+        const forced = f && f['flt-subject'] && f['flt-subject'] !== 'ALL';
+        for (const tk of (forced ? [areaOfLegacy(f['flt-subject'])] : TAB_KEYS)) {
+          if (!forced) { await N.page.evaluate(k => selectDivisionTab(k), tk); await settled(N.page); }
+          else { await N.page.evaluate(([k, f2]) => { selectDivisionTab(k); }, [tk, f]); await settled(N.page); await N.page.evaluate(f2 => { for (const [id, val] of Object.entries(f2)) document.getElementById(id).value = val; applyFilters(); }, f); await settled(N.page); }
+          await checkDivisionMatrix(N, demo, tk, f, f ? JSON.stringify(f) : 'no filter');
+        }
+        continue;
+      }
       let a = canonLegacy(await text(L.page)), b = canonPorted(await text(N.page));
       const label = `${v} / ${f ? JSON.stringify(f) : 'no filter'}`;
       if (v === 'least-learned') { a = await llcRows(L.page); b = await llcRows(N.page); }
@@ -253,9 +297,11 @@ if (want(3)) {
   const E = fixture.expected;
   const N = await openNew('admin', recs); const L = await openLegacy('admin', recs); await legacyReady(L.page);
   await N.page.evaluate(() => switchView('division')); await settled(N.page);
+  // The Division Summary now shows one category at a time. The hand-computed fixture values are checked per tab (see checkDivisionMatrix below);
+  // the whole-fixture division MPS of 83.75% is the flat Dashboard/AUDIT M3 style figure and is no longer shown on this view.
+  await N.page.evaluate(() => selectDivisionTab('mapeh')); await settled(N.page);
   let t = await text(N.page);
-  ok(t.includes(E.divisionSummary.divisionMps.toFixed(2) + '%'), `Division Summary shows division MPS ${E.divisionSummary.divisionMps.toFixed(2)}% (mean of district term means)`);
-  ok(/Asuncion[\s\S]*85\.00%[\s\S]*85\.00%/.test(t) && /Carmen[\s\S]*70\.00%[\s\S]*95\.00%[\s\S]*82\.50%/.test(t), 'district term means and consolidated MPS as computed by hand');
+  ok(/Asuncion[\s\S]*85\.00%/.test(t), 'MAPEH tab: Asuncion term means by hand (Music and Arts and PE and Health, 85.00%)');
   await N.page.evaluate(() => switchView('dashboard')); await settled(N.page); t = await text(N.page);
   ok(new RegExp('(^|[^\\d.])' + E.dashboard.flatMps + '(\\.00)?%').test(t), `Dashboard shows flat MPS ${E.dashboard.flatMps.toFixed(2)}% (AUDIT M3: differs from Division Summary)`);
   ok(new RegExp('(^|[^\\d.])' + E.dashboard.pct75 + '(\\.00)?%').test(t), `Dashboard shows % learners >= 75 at ${E.dashboard.pct75.toFixed(2)}%`);
@@ -270,6 +316,7 @@ if (want(3)) {
   // Same fixture in both apps: only empty-state rendering may differ
   for (const v of VIEWS) {
     await goView(L, N, v, null);
+    if (v === 'division') { for (const tk of TAB_KEYS) { await N.page.evaluate(k => selectDivisionTab(k), tk); await settled(N.page); await checkDivisionMatrix(N, recs, tk, null, 'fixture'); } continue; }
     let a = canonLegacy(await text(L.page)), b = canonPorted(await text(N.page));
     if (v === 'least-learned') { a = await llcRows(L.page); b = await llcRows(N.page); }
     ok(a === b, `fixture parity: ${v}`);
@@ -490,6 +537,7 @@ if (want(11)) {
   for (const user of ['admin', 'supervisor']) {
     const N = await openNew(user, rowsIn);
     ok(await N.page.locator('#csv-btn').isVisible(), `${user}: "Download CSV" button is visible`);
+    await N.page.evaluate(() => switchView('settings')); await settled(N.page);
     const [dl] = await Promise.all([N.page.waitForEvent('download'), N.page.click('#csv-btn')]);
     const file = `${OUT}/${user}.csv`; await dl.saveAs(file);
     const raw = fs.readFileSync(file, 'utf8'); const rows = parseCsv(raw.replace(/^﻿/, ''));
@@ -514,6 +562,7 @@ if (want(11)) {
   // the whole database, not the current filter
   { const N = await openNew('admin', demo);
     await N.page.selectOption('#flt-district', 'Carmen'); await settled(N.page);
+    await N.page.evaluate(() => switchView('settings')); await settled(N.page);
     const [dl] = await Promise.all([N.page.waitForEvent('download'), N.page.click('#csv-btn')]);
     await dl.saveAs(`${OUT}/all.csv`); const rows = parseCsv(fs.readFileSync(`${OUT}/all.csv`, 'utf8').replace(/^﻿/, ''));
     ok(rows.length === 1 + demo.length, `exports the entire data (${rows.length - 1} rows) even while a district filter is active, including the 1,452-row set past the 1,000-row cap`);
@@ -1681,12 +1730,14 @@ if (want(22)) {
   await A.page.evaluate(() => { resetFilters(); switchView('grade-view'); }); await settled(A.page);
   // Overall SP and Overall IPED, administrator, Division Summary
   await A.page.evaluate(() => { resetFilters(); switchView('division'); }); await settled(A.page);
-  const card = async key => A.page.evaluate(k => { const c = document.querySelector(`.program-overall[data-program="${k}"]`); return c ? c.innerText.replace(/\s+/g, ' ') : null; }, key);
+  // the Division Summary shows one category per tab: open the tab, then read its program section
+  const card = async key => { await A.page.evaluate(k => selectDivisionTab(k), key); await settled(A.page);
+    return A.page.evaluate(k => { const c = document.querySelector(`.program-overall[data-program="${k}"]`); return c ? c.innerText.replace(/\s+/g, ' ') : null; }, key); };
   const sp = await card('special_programs'), ip = await card('iped');
   const spM = [88, 70, 60, 100], ipM = [82, 74, 90, 60];
-  ok(!!sp && /overall special programs \(sp\)/i.test(sp) && sp.includes(f(mean(spM)) + '%') && /Schools encoded \/ Special Programs schools 4 \/ 0/.test(sp) && sp.includes(`${spM.length} record(s) from 4 school(s)`) || /Schools encoded \/ Special Programs schools 4 \/ 0/.test(sp), `Overall SP = ${f(mean(spM))}% with 4 schools encoded (SPA, SPS, SPFL only, no IPED or MAPEH records); no school is assigned to Special Programs in this data, so the assigned count is 0`);
-  ok(/MAPEH \(Music, Arts, PE, Health, Overall\) - Not applicable/.test(sp), 'SP states the MAPEH figures are not applicable (no fabricated figures)');
-  ok(!!ip && /overall iped/i.test(ip) && ip.includes(f(mean(ipM)) + '%') && /Schools encoded \/ IPED schools 2 \/ 0/.test(ip), `Overall IPED = ${f(mean(ipM))}% with 2 schools encoded (no school is assigned to IPED in this data)`);
+  ok(!!sp && /Special Programs: SPA, SPS and SPFL/i.test(sp) && sp.includes(f(mean(spM)) + '%') && /Schools encoded \/ Special Programs schools 4 \/ 0/.test(sp) && sp.includes(`${spM.length} record(s) from 4 school(s)`) || /Schools encoded \/ Special Programs schools 4 \/ 0/.test(sp), `Overall SP = ${f(mean(spM))}% with 4 schools encoded (SPA, SPS, SPFL only, no IPED or MAPEH records); no school is assigned to Special Programs in this data, so the assigned count is 0`);
+  ok(!!sp && !/MAPEH/.test(sp) && !/Science/.test(sp), 'the Special Programs tab carries no MAPEH or IPED figures');
+  ok(!!ip && /IPED: subjects and schools/i.test(ip) && ip.includes(f(mean(ipM)) + '%') && /Schools encoded \/ IPED schools 2 \/ 0/.test(ip), `Overall IPED = ${f(mean(ipM))}% with 2 schools encoded (no school is assigned to IPED in this data)`);
   ok(/Music and Arts \(IPED - MAPEH \(Music & Arts\)\) 1 82\.00%/.test(ip) && /PE and Health \(IPED - MAPEH \(PE & Health\)\) 1 74\.00%/.test(ip) && /Overall MAPEH \(IPED\).*? 78\.00%/.test(ip), 'IPED shows its own Music and Arts 82.00% and PE and Health 74.00%, and Overall MAPEH (IPED) = (82 + 74) / 2 = 78.00% automatically');
   // filters
   const withFilters = async (set) => { await A.page.evaluate(set); await settled(A.page); return [await card('special_programs'), await card('iped')]; };
@@ -1694,10 +1745,10 @@ if (want(22)) {
   ok(s2.includes(f(mean([60, 100])) + '%') && /Special Programs schools 2 \/ 0/.test(s2) && i2.includes('60.00%') && !i2.includes('MAPEH 1'), 'District filter (Carmen): both summaries use only Carmen records');
   [s2, i2] = await withFilters(() => { resetFilters(); document.getElementById('flt-term').value = 'Term 2'; applyFilters(); });
   ok(s2.includes(f(mean([60, 100])) + '%') && i2.includes('60.00%'), 'Term filter (Term 2): only Term 2 records');
-  [s2, i2] = await withFilters(() => { resetFilters(); document.getElementById('flt-program').value = 'iped'; applyFilters(); });
-  ok(/No data available for the selected filters/.test(s2) && i2.includes(f(mean(ipM)) + '%'), 'Program filter = IPED: Special Programs shows the no-data state, IPED keeps its figures');
-  [s2, i2] = await withFilters(() => { resetFilters(); document.getElementById('flt-program').value = 'special_programs'; applyFilters(); });
-  ok(/No data available/.test(i2) && s2.includes(f(mean(spM)) + '%'), 'Program filter = Special Programs: IPED shows the no-data state');
+  [s2, i2] = await withFilters(() => { resetFilters(); });
+  ok(s2.includes(f(mean(spM)) + '%') && !s2.includes('Science') && i2.includes(f(mean(ipM)) + '%') && !i2.includes('Basketball'), 'each tab keeps its own figures and shows nothing from the other category');
+  await A.page.evaluate(() => { resetFilters(); filters.program = 'iped'; switchView('district-view'); switchView('division'); }); await settled(A.page);
+  ok(await A.page.evaluate(() => DIV_TAB === 'iped'), 'a Program filter chosen in another view opens the matching tab');
   [s2, i2] = await withFilters(() => { resetFilters(); document.getElementById('flt-sy').value = '2026-2027'; applyFilters(); });
   ok(/No data available for the selected filters/.test(s2) && /No data available for the selected filters/.test(i2), 'a school year with no records shows no-data for both');
   [s2, i2] = await withFilters(() => { resetFilters(); document.getElementById('flt-level').value = 'secondary'; applyFilters(); });
@@ -1707,7 +1758,7 @@ if (want(22)) {
   // permissions unchanged: a district coordinator does not get the administrator summaries and only sees own district
   const C = await openNew('asuncion_elemcoord', recs);
   await C.page.evaluate(() => switchView('division')); await settled(C.page);
-  ok(await C.page.evaluate(() => document.querySelectorAll('.program-overall').length) === 0, 'district coordinator: the Overall SP / IPED administrator summaries are not shown');
+  ok(await C.page.evaluate(() => document.querySelectorAll('.program-overall').length) === 1 && !(await C.page.evaluate(() => document.getElementById('view-container').innerText)).includes('Carmen'), 'district coordinator: one program section per tab, own district only');
   await C.ctx.close();
 }
 
@@ -2158,6 +2209,96 @@ if (want(26)) {
   await AS.page.evaluate(() => { document.getElementById('flt-district').value = 'ALL'; applyFilters(); }); await settled(AS.page);
   ok(await AS.page.evaluate(() => document.getElementById('sig-p-name').textContent) !== 'DIV PICK', 'the whole-division report keeps the Division signatories');
   await AS.ctx.close();
+}
+
+console.log('\n[27] Division Summary tabs: MAPEH, Special Programs and IPED each show only their own data');
+if (want(27)) {
+  const base = demoNew[0];
+  const SCH = [
+    { id: 1, name: 'Iped One', district_id: 1, active: true, education_level: 'elementary', deped_school_id: 300001 },
+    { id: 2, name: 'Plain Elementary', district_id: 1, active: true, education_level: 'elementary', deped_school_id: 300004 },
+    { id: 3, name: 'Carmen Elementary', district_id: 3, active: true, education_level: 'elementary', deped_school_id: 300005 },
+    { id: 4, name: 'Sports Elementary', district_id: 3, active: true, education_level: 'elementary', deped_school_id: 300006 }];
+  const PRG = [{ school_id: 1, program: 'mapeh' }, { school_id: 1, program: 'iped' }, { school_id: 2, program: 'mapeh' }, { school_id: 3, program: 'mapeh' },
+    { school_id: 4, program: 'special_programs' }, { school_id: 1, program: 'special_programs' }];
+  const SN = Object.fromEntries(SCH.map(x => [x.id, x.name]));
+  const rec = (district, term, area, mps, sid) => Object.assign({}, base, { district, sy: '2025-2026', term, gradeLevel: 'Grade 5', keyStage: 'Key Stage 2',
+    learningArea: area, mps, pct75: 70, baselineMps: 65, school: SN[sid] || '', schoolId: sid, leastLearned: [], isDemo: false });
+  const recs = [
+    rec('Asuncion', 'Term 1', 'MAPEH - Music & Arts', 84, 2), rec('Asuncion', 'Term 1', 'MAPEH - PE & Health', 76, 2),
+    rec('Carmen', 'Term 1', 'MAPEH - Music & Arts', 70, 3), rec('Carmen', 'Term 1', 'MAPEH - PE & Health', 90, 3),
+    rec('Asuncion', 'Term 1', 'IPED - English', 80, 1), rec('Asuncion', 'Term 2', 'IPED - English', 90, 1),
+    rec('Asuncion', 'Term 1', 'SPA - Vocal Arts', 60, 1), rec('Carmen', 'Term 1', 'SPS - Basketball', 95, 4), rec('Carmen', 'Term 2', 'SPFL - Spanish', 85, 4)
+  ];
+  const A = await openNew('admin', recs, { schools: SCH, schoolPrograms: PRG });
+  const P = A.page;
+  const view = () => P.evaluate(() => document.getElementById('view-container').innerText.replace(/\s+/g, ' '));
+  const go = async k => { await P.evaluate(x => selectDivisionTab(x), k); await settled(P); };
+  await P.evaluate(() => { resetFilters(); switchView('division'); }); await settled(P);
+
+  const tabs = await P.evaluate(() => Array.from(document.querySelectorAll('.div-tab')).map(b => ({ t: b.innerText.trim(), sel: b.getAttribute('aria-selected') })));
+  ok(tabs.map(x => x.t).join('|') === 'MAPEH|Special Programs|IPED' && tabs[0].sel === 'true' && tabs[1].sel === 'false', 'three tabs MAPEH, Special Programs and IPED; MAPEH is selected first');
+  ok(await P.evaluate(() => /viewing\s+mapeh/i.test(document.querySelector('.div-banner').innerText) && !!document.querySelector('.div-tabs[role="tablist"]')), 'a banner says which category is being viewed');
+  ok(await P.evaluate(() => getComputedStyle(document.getElementById('flt-program-item')).display === 'none'), 'the Program filter is replaced by the tabs on the Division Summary');
+
+  // each tab against an oracle computed here from the raw records
+  const expect = {
+    mapeh: { has: ['Music', 'Asuncion'], not: ['Vocal Arts', 'Basketball', 'Spanish', 'IPED - English'] },
+    special_programs: { has: ['Vocal Arts', 'Basketball', 'Spanish'], not: ['Music and Arts', 'IPED - English', 'Plain Elementary'] },
+    iped: { has: ['English', 'Iped One'], not: ['Vocal Arts', 'Basketball', 'Plain Elementary', 'Carmen Elementary'] }
+  };
+  for (const k of TAB_KEYS) {
+    await go(k);
+    const o = await checkDivisionMatrix(A, recs, k, null, 'sample');
+    const t = await view();
+    ok(expect[k].has.every(w => t.includes(w)) && expect[k].not.every(w => !t.includes(w)), `${k} tab shows its own areas and schools and nothing from the other categories`);
+    ok(t.toLowerCase().includes('viewing ' + { mapeh: 'mapeh', special_programs: 'special programs', iped: 'iped' }[k]), `${k} tab: banner names the category`);
+    const kpi = (o.divisionMps > 0 ? o.divisionMps.toFixed(2) + '%' : 'No data');
+    ok(t.includes(kpi), `${k} tab: category MPS ${kpi} (mean of district means, same method as before)`);
+    // learning-area filter lists only that category's areas
+    const opts = await P.evaluate(() => Array.from(document.querySelectorAll('#flt-subject option')).map(x => x.value).filter(v => v !== 'ALL'));
+    const prog = await P.evaluate(() => Object.fromEntries(SUBJECTS.map(a => [a, areaProgram(a)])));
+    ok(opts.length > 0 && opts.every(v => prog[v] === k || (k === 'mapeh' && !prog[v])), `${k} tab: Learning Area filter offers only ${k} areas`);
+  }
+  // special programs: SPA, SPS and SPFL results are all present
+  await go('special_programs');
+  { const t = await view(); ok(['SPA', 'SPS', 'SPFL'].every(w => new RegExp('\\b' + w + '\\b').test(t)), 'Special Programs tab reports SPA, SPS and SPFL'); }
+
+  // switching tabs updates the filters: an incompatible Learning Area is cleared, a compatible one stays
+  await P.evaluate(() => { document.getElementById('flt-subject').value = 'SPS - Basketball'; applyFilters(); }); await settled(P);
+  ok(await P.evaluate(() => DIV_TAB === 'special_programs' && filters.subject === 'SPS - Basketball'), 'choosing a Special Programs area keeps the Special Programs tab');
+  const bt = await view();
+  ok(bt.includes('Basketball') && !bt.includes('Vocal Arts'), 'with that area chosen only its records are counted');
+  await go('iped');
+  ok(await P.evaluate(() => filters.subject === 'ALL' && document.getElementById('flt-subject').value === 'ALL'), 'switching to IPED clears the Special Programs learning area');
+  // print title and the print banner follow the category
+  ok(await P.evaluate(() => document.getElementById('print-title').textContent.endsWith('- IPED')), 'the printed report title names the category');
+  // keyboard: arrow keys move between the tabs
+  await P.focus('.div-tab.is-active'); await P.keyboard.press('ArrowLeft'); await settled(P);
+  ok(await P.evaluate(() => DIV_TAB === 'special_programs'), 'ArrowLeft moves to the previous tab');
+  // CSV follows the category and the filters
+  await go('iped');
+  const [dl] = await Promise.all([P.waitForEvent('download'), P.click('#csv-btn')]);
+  const csv = fs.readFileSync(await dl.path(), 'utf8');
+  const lines = csv.split(/\r?\n/).filter(Boolean);
+  ok(/iped/.test(dl.suggestedFilename()) && lines.length === 3 && lines.slice(1).every(l => l.includes('IPED - English')), 'CSV on the IPED tab holds only the 2 IPED records (' + (lines.length - 1) + ')');
+  await P.evaluate(() => switchView('settings')); await settled(P);
+  const [dl2] = await Promise.all([P.waitForEvent('download'), P.click('#csv-btn')]);
+  ok(fs.readFileSync(await dl2.path(), 'utf8').split(/\r?\n/).filter(Boolean).length === recs.length + 1, 'CSV outside the Division Summary still exports every record');
+  // no records are changed by browsing the tabs
+  ok(await P.evaluate(n => window.__STUB.records.length === n, recs.length), 'switching tabs never changes the stored records');
+  await A.ctx.close();
+  // a district coordinator sees their own district only, on every tab
+  const C = await openNew('asuncion_elemcoord', recs, { schools: SCH, schoolPrograms: PRG });
+  await C.page.evaluate(() => { switchView('division'); }); await settled(C.page);
+  for (const k of TAB_KEYS) {
+    await C.page.evaluate(x => selectDivisionTab(x), k); await settled(C.page);
+    const rows = await divMatrix(C.page);
+    const t = await C.page.evaluate(() => document.getElementById('view-container').innerText);
+    ok(rows.length === 1 && rows[0].d === 'Asuncion' && !t.includes('Carmen') && !t.includes('Basketball'), `coordinator sees only Asuncion on the ${k} tab`);
+  }
+  ok(!(await C.page.locator('#csv-btn').isVisible()), 'a district coordinator has no CSV download');
+  await C.ctx.close();
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
