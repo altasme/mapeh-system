@@ -330,3 +330,16 @@ Run `supabase/migrations/0012_combined_mapeh_areas.sql` once in the SQL editor (
 | 10 | Proficiency Level "filler" (filter) | A Proficiency Level filter in the filter bar (Advanced, Proficient, Approaching, Developing, Beginning). It keeps the records whose own MPS is at that level (same 90 / 85 / 80 / 75 scale), in every view. |
 
 **Decisions to confirm.** (a) Item 9 reverses the client's earlier request to lock MAPEH - Overall in Key Stage 1: the latest document wins. Records entered meanwhile as Music and Arts or P.E. and Health in Grades 1 to 3 are kept and still shown. (b) Because Key Stage 1 now has only the recorded MAPEH, the (Music and Arts + P.E. and Health) / 2 formula covers Grades 4 and up; Key Stage 1's recorded MAPEH is shown in the Grade Level Breakdown and is not part of the division formula figure. (c) The Proficiency Level filter works per record, not per district or school average. If the client meant "show only districts or schools whose average is at that level", tell us. (d) The per-grade comparison is an added table; the key stage table is unchanged.
+
+
+## 23. Division Summary tabs (November 2026)
+
+The Division Summary View opens on three tabs: **MAPEH**, **Special Programs** (SPA, SPS, SPFL) and **IPED**, each in its own colour with a banner "Viewing <category>".
+
+- Each tab shows only its own records: category MPS, the district by term matrix, schools encoded / assigned, learning areas with data, then its section (MAPEH: components by district and school performance; Special Programs: SPA, SPS and SPFL with their disciplines and schools; IPED: subjects, Overall MAPEH (IPED) and schools).
+- The same calculation methods as before; nothing is stored or duplicated, and no migration is needed. Access control is unchanged (coordinators see only their district, enforced by the database).
+- The Program filter is hidden on this view (the tabs replace it); the Learning Area filter lists only the tab's areas, and switching tab clears an incompatible area. A Learning Area or Program chosen elsewhere opens the matching tab.
+- Print: the report title ends with the category. CSV (Admin/Supervisor): on the Division Summary it exports only the selected category and the view's filters; on other screens it exports every record as before.
+- Responsive: the tabs share the row on tablets and stack on phones; arrow keys move between tabs.
+- Tests: QA section [27] plus tab-aware sections [2], [3], [11], [22] (independent oracle computed from raw records).
+- Open points for the client: the single all-category Division MPS is no longer shown on this view (the Dashboard still shows it); confirm the category-scoped CSV.

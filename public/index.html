@@ -696,6 +696,22 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
 }
 
 .chart-analysis { margin: 12px 4px 2px; font-size: 0.85rem; line-height: 1.55; color: #3a4764; border-left: 3px solid #0B5CB5; padding-left: 10px; }
+/* ===== Division Summary tabs: one program category at a time ===== */
+body.view-division #flt-program-item { display: none; }
+.div-tabs { display: flex; gap: 6px; margin: 0 0 14px; border-bottom: 1px solid var(--rule, #dde3ee); flex-wrap: wrap; }
+.div-tab { appearance: none; background: transparent; border: 0; border-bottom: 4px solid transparent; padding: 10px 18px; font: inherit; font-weight: 600; font-size: 0.95rem; color: #3a4764; cursor: pointer; margin-bottom: -1px; border-radius: 6px 6px 0 0; }
+.div-tab:hover { background: #f1f4fa; }
+.div-tab.is-active { color: var(--tab-color); border-bottom-color: var(--tab-color); background: #fff; }
+.div-tab:focus-visible { outline: 2px solid var(--tab-color); outline-offset: -2px; }
+.div-banner { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 18px; padding: 10px 14px; border-left: 6px solid var(--tab-color); background: #f7f9fd; border-radius: 0 6px 6px 0; }
+.div-banner-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .06em; color: #56627e; }
+.div-banner strong { font-size: 1.1rem; color: var(--tab-color); }
+.div-banner-note { font-size: 0.85rem; color: #3a4764; }
+.card-box-sub { padding: 6px 18px 4px; }
+.card-box-sub h4, .card-box-sub-title { font-size: 0.9rem; color: var(--mp-navy, #10224F); margin: 14px 18px 6px; }
+.card-box-sub h4 { margin-left: 0; }
+@media (max-width: 640px) { .div-tab { flex: 1 1 0; padding: 10px 6px; font-size: 0.85rem; text-align: center; } .div-banner-note { flex-basis: 100%; } }
+@media print { .div-banner { border-left-width: 4px; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 /* ===== BRAND CONGRUENCE (client request, October 2026): the report pages carry the palette of the cover page: the five
    MAPEH letter colours, navy for text and rules. Additive. The original print block above is untouched; colour is applied
    only to rules, headings and table headers so the printed text, contrast and layout do not change. ===== */
@@ -882,7 +898,7 @@ header.top-header { padding: 14px 16px 8px; flex-wrap: wrap; gap: 8px 12px; alig
                 <!-- Dynamically populated -->
             </select>
         </div>
-        <div class="filter-item">
+        <div class="filter-item" id="flt-program-item">
             <label>Program</label>
             <select id="flt-program" onchange="applyFilters()">
                 <option value="ALL">All Programs</option>
@@ -1414,7 +1430,7 @@ const areaProgram = a => /^(SPA|SPS|SPFL) - /.test(a || "") ? "special_programs"
 // Program filter: MAPEH (every MAPEH learning area), Special Programs (SPA, SPS, SPFL) or IPED. Programs are judged from the learning area.
 // Proficiency Level filter: the proficiency level of each record (from its MPS, the same 90 / 85 / 80 / 75 scale as everywhere)
 const plOk = r => filters.pl === "ALL" || getPL(r.mps) === filters.pl;
-const programOk = r => filters.program === "ALL" || areaProgram(r.learningArea) === filters.program;
+const programOk = (r, p = filters.program) => p === "ALL" || areaProgram(r.learningArea) === p;
 // Key Stage means a band of grades. It is judged from the record's grade (as the Comparative Analysis does), because the
 // stored keyStage text can disagree with the grade after an Excel import that left the column blank (AUDIT M8).
 const keyStageOk = r => {
@@ -1423,7 +1439,7 @@ const keyStageOk = r => {
     return ks ? ks.grades.includes(r.gradeLevel) : false;
 };
 // The one filter every report section uses. `district` is the district in scope ("ALL" for the whole division).
-function matchesFilters(r, district) {
+function matchesFilters(r, district, program = filters.program) {
     if (filters.sy !== "ALL" && r.sy !== filters.sy) return false;
     if (filters.term !== "ALL" && r.term !== filters.term) return false;
     if (district !== "ALL" && r.district !== district) return false;
@@ -1431,7 +1447,7 @@ function matchesFilters(r, district) {
     if (!keyStageOk(r)) return false;
     if (!subjectOk(r)) return false;
     if (!plOk(r)) return false;
-    return programOk(r);
+    return programOk(r, program);
 }
 const meanMps = list => list.length ? list.reduce((a, c) => a + c.mps, 0) / list.length : 0;
 const hasMapehNew = recs => recs.some(r => isMapehFamily(r.learningArea));
@@ -1822,12 +1838,12 @@ function destroyCharts() {
     activeCharts = {};
 }
 
-async function getFilteredData() {
+async function getFilteredData(program) {
     const data = await getAllRecords();
     const userDist = currentUser ? currentUser.district : "ALL";
     const effectiveDistrict = userDist !== "ALL" ? userDist : filters.district;
 
-    const filtered = dedupGroupFilter(data.filter(r => matchesFilters(r, effectiveDistrict)));
+    const filtered = dedupGroupFilter(data.filter(r => matchesFilters(r, effectiveDistrict, program === undefined ? filters.program : program)));
     markSample(filtered);
     return filtered;
 }
@@ -2072,6 +2088,8 @@ function switchView(view) {
     if (!confirmDiscard()) return;
     destroyCharts();
     currentView = view;
+    document.body.classList.toggle('view-division', view === 'division');
+    if (view !== 'division') syncSubjectOptions();
     document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
     const activeNav = Array.from(document.querySelectorAll('.nav-item')).find(e => e.getAttribute('onclick')?.includes(view));
     if (activeNav) activeNav.classList.add('active');
@@ -2096,6 +2114,7 @@ function switchView(view) {
     const fn = renderers[view];
     Promise.resolve().then(() => fn ? fn(slot) : null).then(() => {
         if (token !== renderToken) return;
+        if (view === "division") updateSignatoriesUI();   // print title carries the category in view
         const loading = root.querySelector(".view-loading");
         if (loading) loading.remove();
         if (view === "data-input" || view === "settings" || view === "manage-records" || view === "schools") slot.classList.add("no-head");
@@ -2229,8 +2248,61 @@ function resetFilters() {
    SCHOOL_YEARS, KEY_STAGES, *_OFFERS), which are developer-controlled; (c) fragments already escaped where they
    were built (schoolDisplay, displayLoc, row and card HTML); (d) static markup and badge strings; (e) textContent
    sinks such as toast() and the print header, which do not parse HTML. */
+/* DIVISION SUMMARY: ONE PROGRAM CATEGORY AT A TIME (client request). Three tabs, MAPEH, Special Programs (SPA, SPS, SPFL) and IPED, each
+   showing only its own consolidated data. The tab is the Program filter of this view: the records, the matrix, the cards, the printed
+   report and the CSV all come from the same filtered records of the selected category, so nothing from another category can appear.
+   Access is unchanged: the records a user may read are decided by the database, and a district account still sees only its district. */
+const DIV_TABS = [
+    { key: "mapeh", label: "MAPEH", color: "#0B5CB5", blurb: "Regular MAPEH: Overall MAPEH, Music and Arts, P.E. and Health (and the Key Stage 4 subjects)" },
+    { key: "special_programs", label: "Special Programs", color: "#6B1FB1", blurb: "SPA (Arts), SPS (Sports) and SPFL (Foreign Languages)" },
+    { key: "iped", label: "IPED", color: "#B7791F", blurb: "Indigenous Peoples Education subjects" }
+];
+let DIV_TAB = "mapeh";
+// the category a learning-area filter value belongs to (the MAPEH combined options are MAPEH)
+const subjectTab = v => v === "ALL" ? null : groupOfFilter(v) ? "mapeh" : areaProgram(v);
+// The Learning Area filter lists only the areas of the category in view on the Division Summary, and every area elsewhere.
+let _subjOptsFor = null;
+function syncSubjectOptions() {
+    const want = currentView === "division" ? DIV_TAB : "";
+    const sel = document.getElementById("flt-subject");
+    if (!sel || _subjOptsFor === want) return;
+    _subjOptsFor = want;
+    sel.innerHTML = buildSubjectOptionsHTML(true, null, "", want);
+    sel.value = filters.subject;
+    if (sel.value !== filters.subject) { sel.value = "ALL"; filters.subject = "ALL"; }
+}
+function selectDivisionTab(key) {
+    if (!DIV_TABS.some(t => t.key === key) || key === DIV_TAB) return;
+    if (!confirmDiscard()) return;
+    DIV_TAB = key;
+    // a learning-area filter of another category would show nothing: clear it, as the filter list changes with the tab
+    if (subjectTab(filters.subject) && subjectTab(filters.subject) !== key) { filters.subject = "ALL"; }
+    _subjOptsFor = null; syncSubjectOptions();
+    updateFilterBadge();
+    switchView("division");
+}
+function divisionTabKey(ev, i) {
+    if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
+    ev.preventDefault();
+    const n = DIV_TABS[(i + (ev.key === "ArrowRight" ? 1 : DIV_TABS.length - 1)) % DIV_TABS.length];
+    selectDivisionTab(n.key);
+    setTimeout(() => { const b = document.querySelector(`.div-tab[data-tab="${n.key}"]`); if (b) b.focus(); }, 60);
+}
+// schools with records in view / schools assigned to the program (the school list), within the district and level in view
+function programSchoolCounts(recs, programKey) {
+    const enc = new Set(recs.map(r => r.schoolId ? "id:" + r.schoolId : "name:" + String(r.school || "").trim().toLowerCase()).filter(k => k !== "name:"));
+    const distIn = currentUser && currentUser.district !== "ALL" ? currentUser.district : filters.district, lvlIn = effectiveLevel();
+    const assigned = SCHOOLS.filter(x => x.active && x.programs.includes(programKey) && (distIn === "ALL" || x.district === distIn) && (lvlIn === "ALL" || !x.educationLevel || x.educationLevel === lvlIn)).length;
+    return { encoded: enc.size, assigned };
+}
+
 async function renderDivisionSummaryView(container) {
-    const data = await getFilteredData();
+    // a learning area chosen earlier decides the tab; otherwise the Program filter chosen in another view, otherwise the tab last used
+    const sTab = subjectTab(filters.subject);
+    if (sTab) DIV_TAB = sTab; else if (DIV_TABS.some(t => t.key === filters.program)) DIV_TAB = filters.program;
+    syncSubjectOptions();
+    const tab = DIV_TABS.find(t => t.key === DIV_TAB) || DIV_TABS[0];
+    const data = await getFilteredData(tab.key);
     const userDist = currentUser ? currentUser.district : "ALL";
     const districtsToDisplay = userDist !== "ALL" ? [userDist] : DEFAULT_DISTRICTS;
 
@@ -2272,29 +2344,44 @@ async function renderDivisionSummaryView(container) {
     }).join('');
 
     const divisionAvg = totalEntriesCount ? (overallDivisionMPS / totalEntriesCount).toFixed(2) : "0.00";
+    const sc = programSchoolCounts(data, tab.key);
+    const areasOf = tab.key === "mapeh" ? SUBJECTS.filter(a => a === MAPEH_OVERALL || isShsSubject(a)).concat(["Music and Arts", "P.E. and Health"]) : SUBJECTS.filter(a => areaProgram(a) === tab.key);
+    const areasWithData = tab.key === "mapeh"
+        ? [data.some(r => r.learningArea === MAPEH_OVERALL) ? 1 : 0, mapehGroupRecords(data, MAPEH_GROUPS[0]).length ? 1 : 0, mapehGroupRecords(data, MAPEH_GROUPS[1]).length ? 1 : 0, ...SHS_SUBJECTS.map(a => data.some(r => r.learningArea === a) ? 1 : 0)].reduce((a, b) => a + b, 0)
+        : new Set(data.map(r => r.learningArea)).size;
+    const scopeWord = userDist !== "ALL" ? `${esc(userDist)} District` : "Division";
+    const tabsHTML = `<div class="div-tabs screen-only" role="tablist" aria-label="Program category">${DIV_TABS.map((t, i) => `<button type="button" role="tab" class="div-tab${t.key === tab.key ? " is-active" : ""}" data-tab="${t.key}" style="--tab-color:${t.color};" aria-selected="${t.key === tab.key}" tabindex="${t.key === tab.key ? 0 : -1}" onclick="selectDivisionTab('${t.key}')" onkeydown="divisionTabKey(event, ${i})">${esc(t.label)}</button>`).join("")}</div>`;
+    const banner = `<div class="div-banner" role="status" style="--tab-color:${tab.color};"><span class="div-banner-label">Viewing</span> <strong>${esc(tab.label)}</strong><span class="div-banner-note">${esc(tab.blurb)}. ${scopeWord} figures; only ${esc(tab.label)} records are counted.</span></div>`;
 
     container.innerHTML = `
+    ${tabsHTML}
+    ${banner}
     <div class="kpi-grid">
-        <div class="kpi-card" style="border-top-color: var(--deped-blue);">
-            <div class="kpi-title">${userDist !== "ALL" ? `${esc(userDist)} District` : 'Division'} Mean Percentage Score (MPS)</div>
+        <div class="kpi-card" style="border-top-color: ${tab.color};">
+            <div class="kpi-title">${scopeWord} ${esc(tab.label)} MPS</div>
             <div class="kpi-value">${totalEntriesCount ? divisionAvg + '%' : '<span class="no-data">No data</span>'}</div>
             <div class="kpi-sub">${totalEntriesCount ? `<span class="badge ${getBadgeClass(getPL(parseFloat(divisionAvg)))}">${getPL(parseFloat(divisionAvg))}</span>` : ''}</div>
             ${totalEntriesCount ? profRuler(parseFloat(divisionAvg)) : ''}
         </div>
-        <div class="kpi-card" style="border-top-color: var(--success);">
-            <div class="kpi-title">Active Districts</div>
-            <div class="kpi-value">${districtsToDisplay.length}</div>
-            <div class="kpi-sub" style="color:var(--text-muted);">${userDist !== "ALL" ? 'Assigned Scope' : 'Fully Consolidated'}</div>
+        <div class="kpi-card" style="border-top-color: ${tab.color};">
+            <div class="kpi-title">Districts with ${esc(tab.label)} data</div>
+            <div class="kpi-value">${totalEntriesCount} / ${districtsToDisplay.length}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">${userDist !== "ALL" ? 'Assigned scope' : 'Reporting districts / all districts'}</div>
         </div>
-        <div class="kpi-card" style="border-top-color: var(--warning);">
-            <div class="kpi-title">Tracked Specializations</div>
-            <div class="kpi-value">${SUBJECTS.length - MAPEH_LEGACY.length - SHS_SUBJECTS.length}</div>
-            <div class="kpi-sub" style="color:var(--text-muted);">5 MAPEH, 7 SPA, 30 SPS, 10 SPFL & 8 IPED Subjects</div>
+        <div class="kpi-card" style="border-top-color: ${tab.color};">
+            <div class="kpi-title">Schools encoded / ${esc(tab.label)} schools</div>
+            <div class="kpi-value">${sc.encoded} / ${sc.assigned}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">${sc.assigned ? `${data.length} record(s) in view` : `No school is assigned to ${esc(tab.label)} yet`}</div>
+        </div>
+        <div class="kpi-card" style="border-top-color: ${tab.color};">
+            <div class="kpi-title">Learning areas with data</div>
+            <div class="kpi-value">${areasWithData} / ${areasOf.length}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">${tab.key === "mapeh" ? "Overall, Music and Arts, P.E. and Health, Key Stage 4" : tab.key === "iped" ? "9 IPED subjects" : "7 SPA, 30 SPS and 10 SPFL"}</div>
         </div>
     </div>
     <div class="card-box">
         <div class="card-box-header">
-            <h3>${userDist !== "ALL" ? `${esc(userDist)} District` : 'Division District'} vs Term Performance Matrix</h3>
+            <h3>${userDist !== "ALL" ? `${esc(userDist)} District` : 'Division District'} vs Term Performance Matrix: ${esc(tab.label)}</h3>
         </div>
         <div class="table-scroll"><table class="data-table">
             <thead>
@@ -2312,62 +2399,77 @@ async function renderDivisionSummaryView(container) {
             <tbody>${matrixRows}</tbody>
         </table></div>
     </div>
-    ${mapehComponentsByDistrictCard(data, districtsToDisplay, userDist !== "ALL" ? `${esc(userDist)} District` : 'Division')}
-    ${canAccessSettings() ? programOverallCards(data) : ''}`;
+    ${tab.key === "mapeh" ? mapehComponentsByDistrictCard(data, districtsToDisplay, scopeWord === "Division" ? 'Division' : `${esc(userDist)} District`) : ""}
+    ${programOverallCards(data, tab.key)}`;
 }
 
-/* OVERALL SPECIAL PROGRAMS AND OVERALL IPED (System Administrator and Supervisor, Division Summary). Built only from the
-   records in view (every filter already applied), each record counted once. Overall = plain mean of record MPS, the
-   method used for every other consolidated figure. MAPEH figures are shown only where the program records them: IPED
-   has "MAPEH (Music & Arts)" and "MAPEH (PE & Health)" subjects; Special Programs (SPA, SPS, SPFL) are assessed by
-   discipline and have no MAPEH record. No figure is derived or estimated. */
-function programOverallCards(data) {
-    const PROGRAMS = [
-        { key: "special_programs", title: "Overall Special Programs (SP)", groups: [["SPA", "SPA - "], ["SPS", "SPS - "], ["SPFL", "SPFL - "]], mapeh: null },
-        { key: "iped", title: "Overall IPED", groups: [], mapeh: { ma: "IPED - MAPEH (Music & Arts)", peh: "IPED - MAPEH (PE & Health)" } }
-    ];
+/* PROGRAM SECTION OF THE DIVISION SUMMARY (the part under the matrix, one per tab). Built only from the records in view (every
+   filter and the selected category already applied), each record counted once. Overall = plain mean of record MPS, the method
+   used for every other consolidated figure. Special Programs: SPA, SPS and SPFL each with its disciplines. IPED: its subjects and
+   Overall MAPEH (IPED) = (Music and Arts + PE and Health) / 2 when both have data. MAPEH: the school summary (the components
+   table is the card above). No figure is derived or estimated. */
+function programOverallCards(data, tabKey) {
     const mean = (list, f) => list.length ? list.reduce((a, c) => a + c[f], 0) / list.length : null;
     const pc = v => v === null ? '<span class="no-data">No data</span>' : `${v.toFixed(2)}%`;
     const pl = v => v === null ? '<span class="no-data">No data</span>' : `<span class="badge ${getBadgeClass(getPL(v))}">${getPL(v)}</span>`;
-    const card = P => {
-        const recs = data.filter(r => areaProgram(r.learningArea) === P.key);
-        if (!recs.length) return `<div class="card-box program-overall screen-only" data-program="${P.key}"><div class="card-box-header"><h3>${P.title}</h3></div>
-            <div class="empty-state" role="status" style="padding:24px;text-align:center;color:var(--text-muted);">No data available for the selected filters.</div></div>`;
-        const mps = mean(recs, "mps"), pct = mean(recs, "pct75");
-        const schools = new Set(recs.map(r => r.schoolId ? "id:" + r.schoolId : "name:" + String(r.school || "").trim().toLowerCase()).filter(k => k !== "name:"));
-        // schools assigned to the program (the school list), within the district and level in view
-        const distIn = currentUser && currentUser.district !== "ALL" ? currentUser.district : filters.district, lvlIn = effectiveLevel();
-        const assigned = SCHOOLS.filter(x => x.active && x.programs.includes(P.key) && (distIn === "ALL" || x.district === distIn) && (lvlIn === "ALL" || !x.educationLevel || x.educationLevel === lvlIn)).length;
-        const progShort = P.key === "iped" ? "IPED" : "Special Programs";
-        const areaRow = (label, list, note) => `<tr><td>${esc(label)}</td><td class="num">${list.length}</td><td class="num">${pc(mean(list, "mps"))}</td><td>${list.length ? pl(mean(list, "mps")) : (note || '<span class="no-data">No data</span>')}</td></tr>`;
-        let rows = "";
-        if (P.mapeh) {
-            const ma = recs.filter(r => r.learningArea === P.mapeh.ma), peh = recs.filter(r => r.learningArea === P.mapeh.peh);
-            rows += areaRow("Music and Arts (" + P.mapeh.ma + ")", ma) + areaRow("PE and Health (" + P.mapeh.peh + ")", peh);
-            // same rule as regular MAPEH: Overall = (Music and Arts + PE and Health) / 2, only when both have data
-            const maV = mean(ma, "mps"), pehV = mean(peh, "mps"), ovV = maV !== null && pehV !== null ? (maV + pehV) / 2 : null;
-            rows += `<tr><td>Overall MAPEH (IPED)<br><small style="color:var(--text-muted);">(Music and Arts + PE and Health) / 2</small></td><td class="num">${ovV === null ? 0 : ma.length + peh.length}</td><td class="num">${pc(ovV)}</td><td>${ovV === null ? '<span class="no-data">Needs both Music and Arts and PE and Health</span>' : pl(ovV)}</td></tr>`;
-            const other = Array.from(new Set(recs.map(r => r.learningArea).filter(a => a !== P.mapeh.ma && a !== P.mapeh.peh))).sort();
-            rows += other.map(a => areaRow(a, recs.filter(r => r.learningArea === a))).join('');
-        } else {
-            rows += P.groups.map(([name, prefix]) => areaRow(name, recs.filter(r => r.learningArea.startsWith(prefix)))).join('');
-            rows += `<tr><td>MAPEH (Music, Arts, PE, Health, Overall)</td><td class="num">-</td><td class="num"><span class="no-data">Not applicable</span></td><td><span class="no-data">Special Programs are assessed by discipline</span></td></tr>`;
-        }
-        const bySchool = {};
-        recs.forEach(r => { const k = r.school || "(no school named)"; (bySchool[k] = bySchool[k] || []).push(r); });
-        const schoolRows = Object.keys(bySchool).sort().map(k => `<tr><td>${esc(k)}</td><td class="num">${bySchool[k].length}</td><td class="num">${pc(mean(bySchool[k], "mps"))}</td><td>${pl(mean(bySchool[k], "mps"))}</td></tr>`).join('');
-        return `<div class="card-box program-overall screen-only" data-program="${P.key}">
-            <div class="card-box-header"><h3>${P.title}</h3></div>
-            <div class="kpi-grid">
-                <div class="kpi-card"><div class="kpi-title">Overall MPS</div><div class="kpi-value">${pc(mps)}</div><div class="kpi-sub">${pl(mps)}</div></div>
-                <div class="kpi-card"><div class="kpi-title">% Learners Achieving 75% and above</div><div class="kpi-value">${pc(pct)}</div></div>
-                <div class="kpi-card"><div class="kpi-title">Schools encoded / ${progShort} schools</div><div class="kpi-value">${schools.size} / ${assigned}</div><div class="kpi-sub" style="color:var(--text-muted);">${assigned ? `${recs.length} record(s) from ${schools.size} school(s)` : `No school is assigned to ${progShort} yet`}</div></div>
-            </div>
-            <div class="table-scroll"><table class="data-table"><thead><tr><th>Area</th><th class="num">Records</th><th class="num">MPS (%)</th><th>Proficiency Level</th></tr></thead><tbody>${rows}</tbody></table></div>
-            <div class="table-scroll"><table class="data-table"><thead><tr><th>School</th><th class="num">Records</th><th class="num">MPS (%)</th><th>Proficiency Level</th></tr></thead><tbody>${schoolRows}</tbody></table></div>
-        </div>`;
+    const emptyCard = (title, key) => `<div class="card-box program-overall" data-program="${key}"><div class="card-box-header"><h3>${esc(title)}</h3></div>
+        <div class="empty-state" role="status" style="padding:24px;text-align:center;color:var(--text-muted);">No data available for the selected filters.</div></div>`;
+    const areaRow = (label, list, note) => `<tr><td>${esc(label)}</td><td class="num">${list.length}</td><td class="num">${pc(mean(list, "mps"))}</td><td>${list.length ? pl(mean(list, "mps")) : (note || '<span class="no-data">No data</span>')}</td></tr>`;
+    const areaTable = (rows, first) => `<div class="table-scroll"><table class="data-table"><thead><tr><th>${first}</th><th class="num">Records</th><th class="num">MPS (%)</th><th>Proficiency Level</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    // schools with records, district order then A to Z; records without a school last
+    const schoolTable = (recs, mpsOf) => {
+        const by = new Map();
+        recs.forEach(r => { const k = r.schoolId ? "id:" + r.schoolId : "name:" + String(r.school || "").trim().toLowerCase(); if (!by.has(k)) by.set(k, { name: String(r.school || "").trim() || "(no school recorded)", district: r.district, list: [] }); by.get(k).list.push(r); });
+        const rank = d => { const i = DEFAULT_DISTRICTS.indexOf(d); return i < 0 ? 99 : i; };
+        const rows = Array.from(by.values()).sort((a, b) => (a.name.startsWith("(") - b.name.startsWith("(")) || rank(a.district) - rank(b.district) || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
+            .map(x => { const v = mpsOf(x.list); return `<tr><td>${esc(x.name)}</td><td>${esc(x.district)}</td><td class="num">${x.list.length}</td><td class="num">${pc(v)}</td><td>${pl(v)}</td></tr>`; }).join("");
+        return `<div class="table-scroll"><table class="data-table"><thead><tr><th>School</th><th>District</th><th class="num">Records</th><th class="num">MPS (%)</th><th>Proficiency Level</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     };
-    return PROGRAMS.map(card).join('');
+    if (tabKey === "mapeh") {
+        const fam = data.filter(r => isMapehFamily(r.learningArea) || isShsSubject(r.learningArea));
+        if (!fam.length) return emptyCard("MAPEH school performance", "mapeh");
+        return `<div class="card-box program-overall" data-program="mapeh"><div class="card-box-header"><h3>MAPEH school performance</h3></div>
+            ${schoolTable(fam, l => { const f = mapehOverallFigure(l.filter(r => isMapehFamily(r.learningArea))); return f.value !== null ? f.value : mean(l, "mps"); })}
+            <p class="comp-note">A school's MAPEH figure follows the same rule as the district table: (Music and Arts + P.E. and Health) / 2 when both have data, otherwise its recorded MAPEH; Key Stage 4 subject records use their own mean.</p></div>`;
+    }
+    if (tabKey === "special_programs") {
+        const recs = data.filter(r => areaProgram(r.learningArea) === "special_programs");
+        if (!recs.length) return emptyCard("Special Programs: SPA, SPS and SPFL", "special_programs");
+        const tracks = [["SPA", "SPA - ", "SPA (Special Program in the Arts)"], ["SPS", "SPS - ", "SPS (Special Program in Sports)"], ["SPFL", "SPFL - ", "SPFL (Special Program in Foreign Language)"]];
+        const sc = programSchoolCounts(recs, "special_programs");
+        const disc = ([name, prefix, title]) => { const list = recs.filter(r => r.learningArea.startsWith(prefix)); const areas = Array.from(new Set(list.map(r => r.learningArea))).sort();
+            return `<div class="card-box-sub"><h4>${esc(title)}</h4>${list.length ? areaTable(areas.map(a => areaRow(a, list.filter(r => r.learningArea === a))).join(""), "Discipline") : '<div class="empty-state" role="status" style="padding:10px 0;color:var(--text-muted);">No data for the selected filters.</div>'}</div>`; };
+        return `<div class="card-box program-overall" data-program="special_programs"><div class="card-box-header"><h3>Special Programs: SPA, SPS and SPFL</h3></div>
+            <div class="kpi-grid">
+                <div class="kpi-card"><div class="kpi-title">Special Programs MPS</div><div class="kpi-value">${pc(mean(recs, "mps"))}</div><div class="kpi-sub">${pl(mean(recs, "mps"))}</div></div>
+                <div class="kpi-card"><div class="kpi-title">% Learners Achieving 75% and above</div><div class="kpi-value">${pc(mean(recs, "pct75"))}</div></div>
+                <div class="kpi-card"><div class="kpi-title">Schools encoded / Special Programs schools</div><div class="kpi-value">${sc.encoded} / ${sc.assigned}</div><div class="kpi-sub" style="color:var(--text-muted);">${recs.length} record(s)</div></div>
+            </div>
+            ${areaTable(tracks.map(([name, prefix]) => areaRow(name, recs.filter(r => r.learningArea.startsWith(prefix)))).join(""), "Track")}
+            ${tracks.map(disc).join("")}
+            <h4 class="card-box-sub-title">Schools</h4>
+            ${schoolTable(recs, l => mean(l, "mps"))}
+        </div>`;
+    }
+    const recs = data.filter(r => areaProgram(r.learningArea) === "iped");
+    if (!recs.length) return emptyCard("IPED", "iped");
+    const maA = "IPED - MAPEH (Music & Arts)", pehA = "IPED - MAPEH (PE & Health)";
+    const ma = recs.filter(r => r.learningArea === maA), peh = recs.filter(r => r.learningArea === pehA);
+    const maV = mean(ma, "mps"), pehV = mean(peh, "mps"), ovV = maV !== null && pehV !== null ? (maV + pehV) / 2 : null;
+    const sc = programSchoolCounts(recs, "iped");
+    let rows = areaRow("Music and Arts (" + maA + ")", ma) + areaRow("PE and Health (" + pehA + ")", peh);
+    rows += `<tr><td>Overall MAPEH (IPED)<br><small style="color:var(--text-muted);">(Music and Arts + PE and Health) / 2</small></td><td class="num">${ovV === null ? 0 : ma.length + peh.length}</td><td class="num">${pc(ovV)}</td><td>${ovV === null ? '<span class="no-data">Needs both Music and Arts and PE and Health</span>' : pl(ovV)}</td></tr>`;
+    Array.from(new Set(recs.map(r => r.learningArea).filter(a => a !== maA && a !== pehA))).sort().forEach(a => { rows += areaRow(a, recs.filter(r => r.learningArea === a)); });
+    return `<div class="card-box program-overall" data-program="iped"><div class="card-box-header"><h3>IPED: subjects and schools</h3></div>
+        <div class="kpi-grid">
+            <div class="kpi-card"><div class="kpi-title">Overall IPED MPS</div><div class="kpi-value">${pc(mean(recs, "mps"))}</div><div class="kpi-sub">${pl(mean(recs, "mps"))}</div></div>
+            <div class="kpi-card"><div class="kpi-title">% Learners Achieving 75% and above</div><div class="kpi-value">${pc(mean(recs, "pct75"))}</div></div>
+            <div class="kpi-card"><div class="kpi-title">Schools encoded / IPED schools</div><div class="kpi-value">${sc.encoded} / ${sc.assigned}</div><div class="kpi-sub" style="color:var(--text-muted);">${sc.assigned ? `${recs.length} record(s) from ${sc.encoded} school(s)` : "No school is assigned to IPED yet"}</div></div>
+        </div>
+        ${areaTable(rows, "Area")}
+        <h4 class="card-box-sub-title">Schools</h4>
+        ${schoolTable(recs, l => mean(l, "mps"))}
+    </div>`;
 }
 
 async function renderDistrictProfileView(container) {
@@ -2545,7 +2647,7 @@ function changeDistrictView(dist) {
 }
 
 async function renderComparativeView(container) {
-    const records = (await getAllRecords()).filter(levelOk).filter(programOk).filter(plOk);
+    const records = (await getAllRecords()).filter(levelOk).filter(r => programOk(r)).filter(plOk);
     const userDist = currentUser ? currentUser.district : "ALL";
     const currentScope = userDist !== "ALL" ? userDist : filters.district;
     
@@ -4730,7 +4832,10 @@ function updateSignatoriesUI() {
     } else {
         document.getElementById("sig-p-name").textContent = settings.sigPrepName;
         document.getElementById("sig-p-pos").textContent = settings.sigPrepPos;
-        document.getElementById("print-title").textContent = `DIVISION DISTRICT & TERM${levelTitleWord()} PROFICIENCY CONSOLIDATION REPORT`;
+        {
+            const dt = currentView === "division" ? DIV_TABS.find(t => t.key === DIV_TAB) : null;
+            document.getElementById("print-title").textContent = `DIVISION DISTRICT & TERM${levelTitleWord()} PROFICIENCY CONSOLIDATION REPORT` + (dt ? ` - ${dt.label.toUpperCase()}` : "");
+        }
     }
     document.getElementById("sig-c-name").textContent = settings.sigCheckName;
     document.getElementById("sig-c-pos").textContent = settings.sigCheckPos;
@@ -4763,7 +4868,13 @@ async function downloadCsv(ev) {
     const btn = ev && ev.currentTarget;
     setBusy(btn, true);
     try {
-        const recs = await getAllRecords();
+        let recs = await getAllRecords();
+        // On the Division Summary the export follows the selected category tab and the view's filters
+        const divCat = currentView === "division" ? DIV_TAB : null;
+        if (divCat) {
+            const ed = currentUser && currentUser.district !== "ALL" ? currentUser.district : filters.district;
+            recs = recs.filter(r => matchesFilters(r, ed, divCat));
+        }
         if (!recs.length) { toast("There are no records to export.", "info"); return; }
         const rank = (list, v) => { const i = list.indexOf(v); return i < 0 ? list.length : i; };
         recs.sort((a, b) =>
@@ -4790,7 +4901,7 @@ async function downloadCsv(ev) {
         const blob = new Blob(["\uFEFF" + lines.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `mapeh-assessment-records-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download = `mapeh-assessment-records${divCat ? "-" + divCat.replace(/_/g, "-") : ""}-${new Date().toISOString().slice(0, 10)}.csv`;
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(a.href), 2000);
         toast(`Downloaded ${recs.length} record(s) as CSV.`);
