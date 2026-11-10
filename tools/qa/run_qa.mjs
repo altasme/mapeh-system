@@ -1793,6 +1793,7 @@ if (want(24)) {
   const optVals = async sel => A.page.evaluate(s => Array.from(document.querySelectorAll(s + ' option')).map(o => ({ v: o.value, t: o.textContent.trim() })), sel);
 
   // 1 + 2. selectors
+  await A.page.evaluate(() => switchView('district-view')); await settled(A.page);   // the Division Summary lists only the tab's own areas; other views list every area
   const sub = await optVals('#flt-subject'), prg = await optVals('#flt-program');
   ok(!sub.some(o => /^MAPEH - (Music|Arts|PE|Health)$/.test(o.v)) && sub.some(o => o.v === 'MAPEH - Overall') && sub.some(o => o.t === 'Music and Arts') && sub.some(o => o.t === 'P.E. and Health'), 'Learning Area selector: the four separate options are gone; Overall MAPEH, Music and Arts, and P.E. and Health remain');
   ok(sub.some(o => o.v === 'SPA - Vocal Arts') && sub.some(o => o.v === 'IPED - English') && sub.some(o => o.v.startsWith('SPS - ')) && sub.some(o => o.v.startsWith('SPFL - ')), 'unrelated learning areas and program tracks are untouched');
@@ -2145,6 +2146,7 @@ if (want(26)) {
   ok(await L.page.isVisible('#llc-log-body') && /Total Input Records: 1/i.test(await L.page.textContent('#view-container')), 'Show brings it back with all its records');
   // 6. IPED card
   await L.page.evaluate(() => { resetFilters(); switchView('division'); }); await settled(L.page);
+  await L.page.evaluate(() => selectDivisionTab('iped')); await settled(L.page);
   const ip = await L.page.evaluate(() => document.querySelector('.program-overall[data-program="iped"]').innerText.replace(/\s+/g, ' '));
   ok(/Schools encoded \/ IPED schools 2 \/ 3/i.test(ip), 'Overall IPED shows schools encoded / schools assigned to IPED (2 of 3 IPED schools have records): ' + ip.slice(ip.search(/Schools encoded/i), ip.search(/Schools encoded/i) + 60));
   const ipOv = (88 + 72) / 2;
