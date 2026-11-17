@@ -915,4 +915,76 @@ begin
   raise notice 'PASS signatories and Key Stage 1 regular MAPEH (0015)';
 end $$;
 
+-- Migration 0016: term availability for data entry
+do $$
+declare
+  asu smallint := (select id from public.districts where name = 'Asuncion');
+  denied boolean; msg text; n int; rid bigint;
+  admin text := '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
+  sup text := '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated"}';
+  ce text := '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}';
+begin
+  -- a record exists in Term 2 before the term is closed
+  perform set_config('request.jwt.claims', ce, true); set local role authenticated;
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
+    values ('2025-2026','Term 2',asu,'Key Stage 1','Grade 1','MAPEH - Overall',65,70,60,'x') returning id into rid;
+  reset role;
+  -- only the System Administrator can change availability
+  perform set_config('request.jwt.claims', ce, true); set local role authenticated;
+  denied := false; begin perform public.app_set_term_enabled('2025-2026', 'Term 2', false); exception when others then denied := sqlstate = '42501'; end;
+  assert denied, 'a coordinator cannot change term availability';
+  reset role;
+  perform set_config('request.jwt.claims', sup, true); set local role authenticated;
+  denied := false; begin perform public.app_set_term_enabled('2025-2026', 'Term 2', false); exception when others then denied := sqlstate = '42501'; end;
+  assert denied, 'a supervisor cannot change term availability';
+  reset role;
+  set local role anon;
+  denied := false; begin perform public.app_set_term_enabled('2025-2026', 'Term 2', false); exception when others then denied := true; end;
+  assert denied, 'signed out: denied';
+  reset role;
+  perform set_config('request.jwt.claims', admin, true); set local role authenticated;
+  denied := false; begin perform public.app_set_term_enabled('2025-2026', 'Term 4', false); exception when others then denied := true; end;
+  assert denied, 'an unknown term is refused';
+  perform public.app_set_term_enabled('2025-2026', 'Term 2', false);
+  reset role;
+  -- the closed term refuses new records through the database; the other terms and years are untouched
+  perform set_config('request.jwt.claims', ce, true); set local role authenticated;
+  denied := false; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
+    values ('2025-2026','Term 2',asu,'Key Stage 1','Grade 2','MAPEH - Overall',65,70,60,'x'); exception when others then msg := sqlerrm; denied := msg like '%Term 2 of school year 2025-2026 is not open%'; end;
+  assert denied, 'a disabled term refuses a new record (' || coalesce(msg, 'no error') || ')';
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
+    values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 2','MAPEH - Overall',65,70,60,'x');
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
+    values ('2026-2027','Term 2',asu,'Key Stage 1','Grade 2','MAPEH - Overall',65,70,60,'x');
+  -- bulk insert is one statement: one row in the closed term rejects the whole file
+  n := (select count(*) from public.assessment_records);
+  denied := false; begin insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
+    values ('2025-2026','Term 1',asu,'Key Stage 1','Grade 3','MAPEH - Overall',65,70,60,'x'), ('2025-2026','Term 2',asu,'Key Stage 1','Grade 3','MAPEH - Overall',65,70,60,'x'); exception when others then denied := true; end;
+  assert denied, 'a file with one row in a disabled term is refused as a whole';
+  assert (select count(*) from public.assessment_records) = n, 'and nothing of it was saved';
+  -- moving a record into the closed term is a new submission too
+  denied := false; begin update public.assessment_records set term = 'Term 2' where sy = '2025-2026' and term = 'Term 1' and grade_level = 'Grade 2'; exception when others then denied := true; end;
+  assert denied, 'moving a record into a disabled term is refused';
+  -- history stays: the earlier Term 2 record is still readable and its other fields can be corrected
+  assert (select count(*) from public.assessment_records where id = rid and term = 'Term 2') = 1, 'the record encoded before is still readable';
+  update public.assessment_records set mps = 71 where id = rid;
+  assert (select mps from public.assessment_records where id = rid) = 71, 'and can still be corrected (no new submission)';
+  assert (select count(*) from public.term_availability where not enabled) = 1 and (select count(*) from public.term_availability) = 1, 'every signed-in user can read availability';
+  reset role;
+  -- the Administrator opens it again: no row remains, new records are accepted
+  perform set_config('request.jwt.claims', admin, true); set local role authenticated;
+  perform public.app_set_term_enabled('2025-2026', 'Term 2', true);
+  assert (select count(*) from public.term_availability) = 0, 'enabling removes the row (no row means open)';
+  reset role;
+  perform set_config('request.jwt.claims', ce, true); set local role authenticated;
+  insert into public.assessment_records (sy,term,district_id,key_stage,grade_level,learning_area,baseline_mps,mps,pct75,proficiency_level)
+    values ('2025-2026','Term 2',asu,'Key Stage 1','Grade 2','MAPEH - Overall',65,70,60,'x');
+  reset role;
+  set local role anon;
+  denied := false; begin perform 1 from public.term_availability limit 1; exception when insufficient_privilege then denied := true; end;
+  assert denied, 'signed out cannot read availability';
+  reset role;
+  raise notice 'PASS term availability (0016)';
+end $$;
+
 rollback;

@@ -7,7 +7,9 @@
   S.schools = S.schools || []; S.school_programs = S.school_programs || [];
   S.report_signatories = S.report_signatories || [];
   S.school_years = S.school_years || Array.from({ length: 10 }, (_, i) => ({ sy: `${2025 + i}-${2026 + i}`, enabled: true }));
+  S.term_availability = S.term_availability || [];
   const T = {
+    term_availability: S.term_availability,
     districts: S.districts, profiles: S.profiles, assessment_records: S.records,
     comparative_notes: S.notes, app_settings: [{ id: 1, data: S.settings }], schools: S.schools, school_programs: S.school_programs, school_years: S.school_years, report_signatories: S.report_signatories
   };
@@ -38,10 +40,11 @@
   const ruleProblem = (g, a) => {
     if (SHS.includes(a)) return ['Grade 11', 'Grade 12'].includes(g) ? null : 'Life and Career Skills and Sports/Health/Wellness are Key Stage 4 subjects: enter them for Grades 11 and 12 only.';
     if (a !== 'MAPEH - Overall' && !COMP.includes(a) && !LEG.includes(a)) return null;
-    if (['Grade 1','Grade 2','Grade 3'].includes(g) && a !== 'MAPEH - Overall') return 'Key Stage 1 (Grades 1 to 3) is entered as MAPEH - Overall only. Music and Arts, P.E. and Health and the separate components are not entered for these grades.';
+    if (['Grade 1','Grade 2','Grade 3'].includes(g) && a !== 'MAPEH - Overall') return 'Key Stage 1 (Grades 1 to 3) is entered as MAPEH - Overall only. Music and Arts, PE and Health and the separate components are not entered for these grades.';
     if (['Grade 11','Grade 12'].includes(g)) return 'MAPEH is not assessed in Grades 11 and 12.';
     return null;
   };
+  const termClosed = (sy, t) => T.term_availability.some(x => x.sy === sy && x.term === t && x.enabled === false);
   const syClosed = sy => { const r = T.school_years.find(x => x.sy === sy); return !!r && !r.enabled; };
   const canSeeRecord = r => (isDivision() || coordScope(r.district_id, levelOf(r.grade_level)));
   // school accounts (migration 0010): one school, its program(s) only, its district, never deleted rows
@@ -85,7 +88,7 @@
       return isDivision() || coordScope(row.district_id, levelOf(row.grade_level)) || schoolWriteOk(row);
     }
     if (table === 'comparative_notes') return op !== 'delete' && canRead('comparative_notes', row);
-    if (table === 'schools' || table === 'school_programs' || table === 'school_years' || table === 'report_signatories') return false;   // written only through the app_save_school / app_import_schools functions
+    if (table === 'schools' || table === 'school_programs' || table === 'school_years' || table === 'term_availability' || table === 'report_signatories') return false;   // written only through the app_save_school / app_import_schools functions
     if (table === 'districts' || table === 'app_settings') return op === 'update' && isDivision();
     return false;
   }
@@ -154,6 +157,7 @@
           if (this.table === 'assessment_records') {
             if (Object.keys(r0).some(k => !WRITABLE.includes(k))) return { data: null, error: err('42501', 'permission denied for table assessment_records'), count: null };
             if (syClosed(r.sy)) return { data: null, error: err('23514', `School year ${r.sy} is not open for data entry.`), count: null };
+            if (termClosed(r.sy, r.term)) return { data: null, error: err('23514', `${r.term} of school year ${r.sy} is not open for data entry.`), count: null };
             const rp = ruleProblem(r.grade_level, r.learning_area);
             if (rp) return { data: null, error: err('23514', rp), count: null };
             const sg = schoolGuard(r, null); if (sg) return { data: null, error: err('P0001', sg), count: null };
@@ -182,7 +186,7 @@
         if (this.table === 'assessment_records' && Object.keys(this.vals).some(k => !WRITABLE.includes(k))) return { data: null, error: err('42501', 'permission denied for table assessment_records'), count: null };
         const hits = tbl.filter(r => canRead(this.table, r) && match(r) && !(this.table === 'assessment_records' && isDel(r)));
         if (this.table === 'assessment_records') {
-          for (const r of hits) { if (this.vals.sy !== undefined && this.vals.sy !== r.sy && syClosed(this.vals.sy)) return { data: null, error: err('23514', `School year ${this.vals.sy} is not open for data entry.`), count: null }; const sg = schoolGuard(Object.assign({}, r, this.vals), r); if (sg) return { data: null, error: err('P0001', sg), count: null }; }
+          for (const r of hits) { if ((this.vals.term !== undefined && this.vals.term !== r.term || this.vals.sy !== undefined && this.vals.sy !== r.sy) && termClosed(this.vals.sy !== undefined ? this.vals.sy : r.sy, this.vals.term !== undefined ? this.vals.term : r.term)) return { data: null, error: err('23514', `${this.vals.term !== undefined ? this.vals.term : r.term} of school year ${this.vals.sy !== undefined ? this.vals.sy : r.sy} is not open for data entry.`), count: null }; if (this.vals.sy !== undefined && this.vals.sy !== r.sy && syClosed(this.vals.sy)) return { data: null, error: err('23514', `School year ${this.vals.sy} is not open for data entry.`), count: null }; const sg = schoolGuard(Object.assign({}, r, this.vals), r); if (sg) return { data: null, error: err('P0001', sg), count: null }; }
         }
         if (this.table === 'assessment_records') {
           for (const r of hits) {
@@ -261,6 +265,16 @@
               let row = T.report_signatories.find(x => sid ? x.school_id === sid : (!x.school_id && x.district_id === d && x.education_level === lvl));
               if (row) Object.assign(row, f); else { row = Object.assign({ id: T.report_signatories.length + 1, district_id: d, education_level: sid ? null : lvl, school_id: sid }, f); T.report_signatories.push(row); }
               return { data: row.id, error: null };
+            }
+            if (name === 'app_set_term_enabled') {
+              const pm = me();
+              if (!sessionOk() || pm.role !== 'admin') return { data: null, error: err('42501', 'Only the System Administrator can change term availability.') };
+              if (!/^[0-9]{4}-[0-9]{4}$/.test(String(a.p_sy || ''))) return fail('Choose a school year.');
+              if (!['Term 1', 'Term 2', 'Term 3'].includes(a.p_term)) return fail('Choose a term.');
+              T.term_availability = T.term_availability.filter(x => !(x.sy === a.p_sy && x.term === a.p_term));
+              S.term_availability = T.term_availability;
+              if (!a.p_enabled) T.term_availability.push({ sy: a.p_sy, term: a.p_term, enabled: false });
+              return { data: null, error: null };
             }
             if (name === 'app_set_school_year_enabled') {
               const pm = me();
