@@ -1963,6 +1963,23 @@ end $$;
 revoke execute on function public.app_set_term_enabled(text, text, boolean) from public, anon;
 grant execute on function public.app_set_term_enabled(text, text, boolean) to authenticated;
 
+-- Terminology (Additional Enhancements 1.1): the rule message says "PE and Health", as everywhere else on screen. Same rules as 0015.
+create or replace function public.app_mapeh_rule_problem(g text, area text) returns text
+language sql immutable parallel safe set search_path = '' as $$
+  select case
+    when area in ('SHS - Life and Career Skills', 'SHS - Sports/Health/Wellness') then
+      case when g in ('Grade 11', 'Grade 12') then null
+           else 'Life and Career Skills and Sports/Health/Wellness are Key Stage 4 subjects: enter them for Grades 11 and 12 only.' end
+    when area not in ('MAPEH - Overall','MAPEH - Music','MAPEH - Arts','MAPEH - PE','MAPEH - Health',
+                      'MAPEH - Music & Arts','MAPEH - PE & Health') then null
+    when g in ('Grade 1','Grade 2','Grade 3') and area <> 'MAPEH - Overall'
+      then 'Key Stage 1 (Grades 1 to 3) is entered as MAPEH - Overall only. Music and Arts, PE and Health and the separate components are not entered for these grades.'
+    when g in ('Grade 11','Grade 12')
+      then 'MAPEH is not assessed in Grades 11 and 12.'
+    else null
+  end
+$$;
+
 -- records guard: the 0014 version plus the term check
 create or replace function public.app_records_guard() returns trigger
 language plpgsql set search_path = '' as $$

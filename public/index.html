@@ -542,11 +542,10 @@ table.data-table td small { color: var(--muted); }
 table.data-table td.loc-cell { min-width: 300px; white-space: normal; }
 .card-box-header[data-tint] { background: transparent !important; }
 .card-note { background: transparent !important; border: 0 !important; padding: 0 0 14px !important; font-size: 0.86rem !important; }
-.card-box-header h3 { text-transform: lowercase; }
-.card-box-header h3::first-letter { text-transform: uppercase; }
+/* card titles keep the capitalization they are written with (MAPEH, SPA, SPS, SPFL, IPED, PE stay in capitals) */
+.card-box-header h3 { text-transform: none; }
 .sheet-title { text-align: left !important; margin-bottom: 18px !important; }
-.sheet-title h3 { color: var(--ink) !important; font-size: 1.08rem; font-weight: 650; text-transform: lowercase !important; }
-.sheet-title h3::first-letter { text-transform: uppercase; }
+.sheet-title h3 { color: var(--ink) !important; font-size: 1.08rem; font-weight: 650; text-transform: none !important; }
 .sheet-title p { color: var(--muted) !important; font-size: 0.8rem !important; font-weight: 500 !important; }
 .ruler-cell { display: flex; flex-direction: column; align-items: flex-end; }
 .ruler-cell .ruler-sm { width: 120px; }
@@ -1343,14 +1342,14 @@ const MAPEH_LEGACY = ["MAPEH - Music & Arts", "MAPEH - PE & Health"];
 const isMapehComponent = a => MAPEH_COMPONENTS.some(c => c.area === a);
 const isMapehLegacy = a => MAPEH_LEGACY.includes(a);
 const isMapehFamily = a => a === MAPEH_OVERALL || isMapehComponent(a) || isMapehLegacy(a);
-/* COMBINED REPORTING GROUPS. Reports show two combined components, Music and Arts and P.E. and Health (client revision of
+/* COMBINED REPORTING GROUPS. Reports show two combined components, Music and Arts and PE and Health (client revision of
    2026-10, replacing the four separate columns). Records stay as entered (Music, Arts, PE, Health, and the older combined areas); nothing is rewritten.
    Method: the established one, a plain unweighted mean of record MPS over the records in the group. A record filed under the
    older combined area counts only where the same school, year, term and grade has no Music or Arts (or PE or Health)
    record, so a figure is never counted twice. A group with only one of its two parts says so beside the figure. */
 const MAPEH_GROUPS = [
     { key: "MAPEH - MA", short: "Music and Arts", col: "Music and Arts", label: "Music and Arts", parts: ["MAPEH - Music", "MAPEH - Arts"], names: ["Music", "Arts"], legacy: "MAPEH - Music & Arts" },
-    { key: "MAPEH - PEH", short: "P.E. and Health", col: "Physical Education (PE) and Health", label: "P.E. and Health", parts: ["MAPEH - PE", "MAPEH - Health"], names: ["PE", "Health"], legacy: "MAPEH - PE & Health" }
+    { key: "MAPEH - PEH", short: "PE and Health", col: "Physical Education (PE) and Health", label: "PE and Health", parts: ["MAPEH - PE", "MAPEH - Health"], names: ["PE", "Health"], legacy: "MAPEH - PE & Health" }
 ];
 const groupOfFilter = v => MAPEH_GROUPS.find(g => g.key === v);
 const subjectOk = (r, v = filters.subject) => {
@@ -1374,8 +1373,8 @@ function mapehGroupFigure(recs, g) {
     const note = !hasLegacy && present.length === 1 ? `${g.names[g.parts.indexOf(present[0])]} only` : "";
     return { value: parseFloat(meanMps(list).toFixed(2)), note };
 }
-/* OVERALL MAPEH (client formula, October 2026):  Overall MAPEH MPS = (Music and Arts MPS + P.E. and Health MPS) / 2.
-   Music and Arts and P.E. and Health are the plain means of their records (see mapehGroupRecords). The formula is used
+/* OVERALL MAPEH (client formula, October 2026):  Overall MAPEH MPS = (Music and Arts MPS + PE and Health MPS) / 2.
+   Music and Arts and PE and Health are the plain means of their records (see mapehGroupRecords). The formula is used
    only when BOTH components have data. A missing component is never treated as zero: the figure is then taken from the
    official "MAPEH - Overall" records, if there are any (basis "recorded", shown as such), and is otherwise No data. */
 function mapehOverallFigure(recs, field = "mps") {
@@ -1386,7 +1385,7 @@ function mapehOverallFigure(recs, field = "mps") {
     if (ov.length) return { value: ov.reduce((a, c) => a + (c[field] !== undefined ? c[field] : 65), 0) / ov.length, basis: "recorded" };
     return { value: null, basis: null };
 }
-const RECORDED_NOTE = '<br><small class="bl-sy-note">from Overall records (Music and Arts or P.E. and Health missing)</small>';
+const RECORDED_NOTE = '<br><small class="bl-sy-note">from Overall records (Music and Arts or PE and Health missing)</small>';
 // When the learning-area filter is MA or PEH, keep each combined figure once.
 const dedupGroupFilter = list => { const g = groupOfFilter(filters.subject); return g ? mapehGroupRecords(list, g) : list; };
 // What the "MAPEH total" figures count: official overall records plus the combined records (unchanged totals).
@@ -1395,15 +1394,15 @@ const isMapehConsolidated = a => a === MAPEH_OVERALL || isMapehLegacy(a);
 const SHS_SUBJECTS = ["SHS - Life and Career Skills", "SHS - Sports/Health/Wellness"];
 const isShsSubject = a => SHS_SUBJECTS.includes(a);
 // Mirror of public.app_mapeh_rule_problem() in the database, which is the enforcement. Returns "" when the pair is allowed.
-//   Grades 1 to 3 (Key Stage 1): MAPEH - Overall (the regular MAPEH) ONLY; no Music and Arts, P.E. and Health or separate components
-//   Grades 4 to 10             : MAPEH - Overall, Music and Arts, P.E. and Health (the four older components stay valid)
+//   Grades 1 to 3 (Key Stage 1): MAPEH - Overall (the regular MAPEH) ONLY; no Music and Arts, PE and Health or separate components
+//   Grades 4 to 10             : MAPEH - Overall, Music and Arts, PE and Health (the four older components stay valid)
 //   Grades 11 to 12            : no MAPEH; the two Key Stage 4 subjects instead
 function mapehRuleProblem(grade, area) {
     if (isShsSubject(area))
         return ["Grade 11", "Grade 12"].includes(grade) ? "" : "Life and Career Skills and Sports/Health/Wellness are Key Stage 4 subjects: enter them for Grades 11 and 12 only.";
     if (!isMapehFamily(area)) return "";
     if (["Grade 1", "Grade 2", "Grade 3"].includes(grade) && area !== MAPEH_OVERALL)
-        return "Key Stage 1 (Grades 1 to 3) is entered as MAPEH - Overall only. Music and Arts, P.E. and Health and the separate components are not entered for these grades.";
+        return "Key Stage 1 (Grades 1 to 3) is entered as MAPEH - Overall only. Music and Arts, PE and Health and the separate components are not entered for these grades.";
     if (["Grade 11", "Grade 12"].includes(grade)) return "MAPEH is not assessed in Grades 11 and 12.";
     return "";
 }
@@ -2268,7 +2267,7 @@ function resetFilters() {
    report and the CSV all come from the same filtered records of the selected category, so nothing from another category can appear.
    Access is unchanged: the records a user may read are decided by the database, and a district account still sees only its district. */
 const DIV_TABS = [
-    { key: "mapeh", label: "MAPEH", color: "#0B5CB5", blurb: "Regular MAPEH: Overall MAPEH, Music and Arts, P.E. and Health (and the Key Stage 4 subjects)" },
+    { key: "mapeh", label: "MAPEH", color: "#0B5CB5", blurb: "Regular MAPEH: Overall MAPEH, Music and Arts, PE and Health (and the Key Stage 4 subjects)" },
     { key: "special_programs", label: "Special Programs", color: "#6B1FB1", blurb: "SPA (Arts), SPS (Sports) and SPFL (Foreign Languages)" },
     { key: "iped", label: "IPED", color: "#B7791F", blurb: "Indigenous Peoples Education subjects" }
 ];
@@ -2400,7 +2399,7 @@ async function renderDivisionSummaryView(container) {
 
     const divisionAvg = totalEntriesCount ? (overallDivisionMPS / totalEntriesCount).toFixed(2) : "0.00";
     const sc = programSchoolCounts(data, tab.tabKey);
-    const areasOf = tab.key === "mapeh" ? SUBJECTS.filter(a => a === MAPEH_OVERALL || isShsSubject(a)).concat(["Music and Arts", "P.E. and Health"]) : SUBJECTS.filter(a => areaProgram(a) === tab.tabKey && (!tab.sub || a.startsWith(tab.sub + " - ")));
+    const areasOf = tab.key === "mapeh" ? SUBJECTS.filter(a => a === MAPEH_OVERALL || isShsSubject(a)).concat(["Music and Arts", "PE and Health"]) : SUBJECTS.filter(a => areaProgram(a) === tab.tabKey && (!tab.sub || a.startsWith(tab.sub + " - ")));
     const areasWithData = tab.key === "mapeh"
         ? [data.some(r => r.learningArea === MAPEH_OVERALL) ? 1 : 0, mapehGroupRecords(data, MAPEH_GROUPS[0]).length ? 1 : 0, mapehGroupRecords(data, MAPEH_GROUPS[1]).length ? 1 : 0, ...SHS_SUBJECTS.map(a => data.some(r => r.learningArea === a) ? 1 : 0)].reduce((a, b) => a + b, 0)
         : new Set(data.map(r => r.learningArea)).size;
@@ -2433,7 +2432,7 @@ async function renderDivisionSummaryView(container) {
         <div class="kpi-card" style="border-top-color: ${tab.color};">
             <div class="kpi-title">Learning areas with data</div>
             <div class="kpi-value">${areasWithData} / ${areasOf.length}</div>
-            <div class="kpi-sub" style="color:var(--text-muted);">${tab.key === "mapeh" ? "Overall, Music and Arts, P.E. and Health, Key Stage 4" : tab.key === "iped" ? "9 IPED subjects" : tab.sub === "SPA" ? "7 SPA disciplines" : tab.sub === "SPS" ? "30 SPS sports" : "10 SPFL languages"}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">${tab.key === "mapeh" ? "Overall, Music and Arts, PE and Health, Key Stage 4" : tab.key === "iped" ? "9 IPED subjects" : tab.sub === "SPA" ? "7 SPA disciplines" : tab.sub === "SPS" ? "30 SPS sports" : "10 SPFL languages"}</div>
         </div>
     </div>
     <div class="card-box">
@@ -2495,7 +2494,7 @@ function programOverallCards(data, tabKey, sub) {
         if (!fam.length) return emptyCard("MAPEH school performance", "mapeh");
         return `<div class="card-box program-overall" data-program="mapeh"><div class="card-box-header"><h3>MAPEH school performance</h3></div>
             ${schoolTable(fam, l => { const f = mapehOverallFigure(l.filter(r => isMapehFamily(r.learningArea))); return f.value !== null ? f.value : mean(l, "mps"); })}
-            <p class="comp-note">A school's MAPEH figure follows the same rule as the district table: (Music and Arts + P.E. and Health) / 2 when both have data, otherwise its recorded MAPEH; Key Stage 4 subject records use their own mean.</p></div>`;
+            <p class="comp-note">A school's MAPEH figure follows the same rule as the district table: (Music and Arts + PE and Health) / 2 when both have data, otherwise its recorded MAPEH; Key Stage 4 subject records use their own mean.</p></div>`;
     }
     if (tabKey === "special_programs") {
         const tracks = [["SPA", "SPA - ", "SPA (Special Program in the Arts)"], ["SPS", "SPS - ", "SPS (Special Program in Sports)"], ["SPFL", "SPFL - ", "SPFL (Special Program in Foreign Language)"]].filter(t => !sub || t[0] === sub);
@@ -2557,13 +2556,13 @@ async function renderDistrictProfileView(container) {
     const districtOptions = (userDist !== "ALL" ? [userDist] : DEFAULT_DISTRICTS)
         .map(d => `<option value="${esc(d)}" ${d === selectedDistrict ? 'selected' : ''}>${esc(d)}</option>`).join('');
 
-    // One row per area with records. Music and Arts, and P.E. and Health, are reported together; Overall MAPEH is the client's formula.
+    // One row per area with records. Music and Arts, and PE and Health, are reported together; Overall MAPEH is the client's formula.
     const rowDefs = [];
     const familyRecs = distRecords.filter(r => isMapehFamily(r.learningArea));
     SUBJECTS.forEach(sub => {
         if (isMapehComponent(sub) || isMapehLegacy(sub)) return;
         if (sub === MAPEH_OVERALL) {
-            if (mapehOverallFigure(familyRecs).value !== null) rowDefs.push({ label: sub, note: "(Music and Arts + P.E. and Health) / 2", recs: familyRecs, fn: l => mapehOverallFigure(l).value });
+            if (mapehOverallFigure(familyRecs).value !== null) rowDefs.push({ label: sub, note: "(Music and Arts + PE and Health) / 2", recs: familyRecs, fn: l => mapehOverallFigure(l).value });
             MAPEH_GROUPS.forEach(g => { const gr = mapehGroupRecords(distRecords, g); if (gr.length) rowDefs.push({ label: g.label, recs: gr }); });
             return;
         }
@@ -2669,7 +2668,7 @@ function districtSchoolCard(distRecords, district, noMatch) {
         const rows = [];
         const fam = recs.filter(r => isMapehFamily(r.learningArea));
         const ov = mapehOverallFigure(fam);
-        if (ov.value !== null) rows.push({ label: MAPEH_OVERALL, note: ov.basis === "recorded" ? "from Overall records" : "(Music and Arts + P.E. and Health) / 2", list: fam, v: ov.value });
+        if (ov.value !== null) rows.push({ label: MAPEH_OVERALL, note: ov.basis === "recorded" ? "from Overall records" : "(Music and Arts + PE and Health) / 2", list: fam, v: ov.value });
         MAPEH_GROUPS.forEach(g => { const l = mapehGroupRecords(recs, g); if (l.length) rows.push({ label: g.label, list: l, v: meanMps(l) }); });
         SUBJECTS.forEach(sub => { if (isMapehFamily(sub)) return; const l = recs.filter(r => r.learningArea === sub); if (l.length) rows.push({ label: sub, list: l, v: meanMps(l) }); });
         return rows;
@@ -3070,11 +3069,11 @@ function describeTracks(items, missing) {   // items with data: [{ name, v }]; m
 function describeMapeh(ma, peh, ov) {   // each: number or null
     const f = (name, v) => v === null ? `${name} has no data` : `${name} ${plainPct(v)} (${getPL(v)})`;
     if (ma === null && peh === null && ov === null) return "No MAPEH data for the selected filters.";
-    let t = `${f("Music and Arts", ma)}; ${f("P.E. and Health", peh)}. `;
+    let t = `${f("Music and Arts", ma)}; ${f("PE and Health", peh)}. `;
     if (ma !== null && peh !== null) {
         t += `Overall MAPEH = (${ma.toFixed(2)} + ${peh.toFixed(2)}) / 2 = ${plainPct(ov)} (${getPL(ov)}). `;
         const d = Math.abs(ma - peh);
-        t += d < 0.005 ? "The two components are equal." : `${ma > peh ? "Music and Arts" : "P.E. and Health"} is higher by ${d.toFixed(2)} percentage points.`;
+        t += d < 0.005 ? "The two components are equal." : `${ma > peh ? "Music and Arts" : "PE and Health"} is higher by ${d.toFixed(2)} percentage points.`;
     } else if (ov !== null) t += `Overall MAPEH is shown from the Overall records (${plainPct(ov)}, ${getPL(ov)}) because one component has no data; it is not calculated from a missing component.`;
     return t;
 }
@@ -3122,14 +3121,14 @@ async function schoolProgressCardHTML() {
 async function renderDashboard(container) {
     const data = await getFilteredData();
     const userDist = currentUser ? currentUser.district : "ALL";
-    const isCoord = !!currentUser && currentUser.role === "District Coordinator";   // district accounts see School Progress instead of the district comparison
+    const isCoord = !!currentUser && !currentUser.isSchool && currentUser.district !== "ALL";   // a district coordinator (Elementary or Secondary)   // district accounts see School Progress instead of the district comparison
     const progressHTML = isCoord ? await schoolProgressCardHTML() : "";
 
     const avgMPS = data.length ? parseFloat((data.reduce((a, c) => a + c.mps, 0) / data.length).toFixed(2)) : 0;
     const avgPct75 = data.length ? parseFloat((data.reduce((a, c) => a + c.pct75, 0) / data.length).toFixed(2)) : 0;
     const overallPL = getPL(avgMPS);
 
-    const mapehFig = mapehOverallFigure(data.filter(r => isMapehFamily(r.learningArea)));   // client formula: (Music and Arts + P.E. and Health) / 2
+    const mapehFig = mapehOverallFigure(data.filter(r => isMapehFamily(r.learningArea)));   // client formula: (Music and Arts + PE and Health) / 2
     const mapehData = mapehFig.value === null ? [] : [mapehFig];
     const mapehAvgMPS = mapehFig.value !== null ? mapehFig.value.toFixed(2) : "0.00";
     const mapehPL = getPL(parseFloat(mapehAvgMPS));
@@ -3209,7 +3208,7 @@ async function renderDashboard(container) {
             <div class="chart-container"><canvas id="c-subj-mps"></canvas></div>
         </div>
         ${hasMapehNew(data) ? `<div class="chart-card mapeh-comp-chart">
-            <h4>Music and Arts, P.E. and Health and Overall MAPEH (MPS %)</h4>
+            <h4>Music and Arts, PE and Health and Overall MAPEH (MPS %)</h4>
             <div class="chart-container"><canvas id="c-mapeh-comp"></canvas></div>
         </div>` : ''}
     </div>`;
@@ -3926,13 +3925,13 @@ function syncGradeWithKeyStage(ksCode) {
 }
 
 // Learning-area choices follow the grade (Grades 1 to 3 offer overall MAPEH only; Grades 11 to 12 offer no MAPEH).
-// Tells the user why Music and Arts / P.E. and Health are not in the list for the chosen grade.
+// Tells the user why Music and Arts / PE and Health are not in the list for the chosen grade.
 function updateAreaHint() {
     const el = document.getElementById("m-area-hint"), grade = document.getElementById("m-grade");
     if (!el || !grade) return;
     const g = grade.value;
     el.textContent = currentUser && currentUser.isSchool ? "" :
-        ["Grade 1", "Grade 2", "Grade 3"].includes(g) ? "Key Stage 1 (Grades 1 to 3): MAPEH is entered as MAPEH - Overall only (regular MAPEH). Music and Arts and P.E. and Health start in Grade 4." :
+        ["Grade 1", "Grade 2", "Grade 3"].includes(g) ? "Key Stage 1 (Grades 1 to 3): MAPEH is entered as MAPEH - Overall only (regular MAPEH). Music and Arts and PE and Health start in Grade 4." :
         ["Grade 11", "Grade 12"].includes(g) ? "Key Stage 4 (Grades 11 and 12): MAPEH is not assessed; Life and Career Skills and Sports/Health/Wellness are available." : "";
 }
 function refreshManualSubjects() {
@@ -4438,7 +4437,7 @@ function mapehMeanFor(recs, area) {
     return list.length ? parseFloat(meanMps(list).toFixed(2)) : null;
 }
 const pctCell = v => v ? `${v.toFixed(2)}%` : '<span class="no-data">No data</span>';
-const COMP_NOTE = `<p class="comp-note">Overall MAPEH MPS = (Music and Arts MPS + P.E. and Health MPS) / 2, as specified by the client. Music and Arts, and P.E. and Health, are plain averages of the record MPS of their records (Music, Arts, PE, Health and the combined entries; an older Music, Arts, PE or Health record is left out where a combined record covers the same school, year, term and grade, so nothing is counted twice). Where one component has no data the Overall is not calculated from it: the figure from the Overall MAPEH records is shown and marked, or No data. Key Stage 1 (Grades 1 to 3) is entered as MAPEH - Overall only, so it has no Music and Arts or P.E. and Health figures; its recorded Overall is shown in the Grade Level Breakdown and is not part of the formula.</p>`;
+const COMP_NOTE = `<p class="comp-note">Overall MAPEH MPS = (Music and Arts MPS + PE and Health MPS) / 2, as specified by the client. Music and Arts, and PE and Health, are plain averages of the record MPS of their records (Music, Arts, PE, Health and the combined entries; an older Music, Arts, PE or Health record is left out where a combined record covers the same school, year, term and grade, so nothing is counted twice). Where one component has no data the Overall is not calculated from it: the figure from the Overall MAPEH records is shown and marked, or No data. Key Stage 1 (Grades 1 to 3) is entered as MAPEH - Overall only, so it has no Music and Arts or PE and Health figures; its recorded Overall is shown in the Grade Level Breakdown and is not part of the formula.</p>`;
 const groupCell = (recs, g, grade) => {
     const f = mapehGroupFigure(recs, g);
     // a grade that does not take this component (Key Stage 1, Grades 11 and 12) says so; figures entered earlier are still shown
@@ -4448,7 +4447,7 @@ const groupCell = (recs, g, grade) => {
 
 function mapehComponentsByGradeCard(data, grades, scopeLabel) {
     if (!hasMapehNew(data)) {
-        return `<p class="comp-note screen-only">MAPEH component figures (Music and Arts, P.E. and Health, and Overall MAPEH) appear here once records are entered.</p>`;
+        return `<p class="comp-note screen-only">MAPEH component figures (Music and Arts, PE and Health, and Overall MAPEH) appear here once records are entered.</p>`;
     }
     const row = (label, recs, g) => {
         const fig = mapehOverallFigure(recs.filter(r => isMapehFamily(r.learningArea)));
@@ -4475,7 +4474,7 @@ function mapehComponentsByGradeCard(data, grades, scopeLabel) {
 }
 
 // Division / district summary: per district, mean of term means (the method of the matrix above it). Overall MAPEH is the
-// client's formula, (Music and Arts + P.E. and Health) / 2, at every level; a missing component is never counted as zero.
+// client's formula, (Music and Arts + PE and Health) / 2, at every level; a missing component is never counted as zero.
 function mapehComponentsByDistrictCard(data, districts, scopeLabel) {
     if (!hasMapehNew(data)) return "";
     const termMean = (recs) => {
