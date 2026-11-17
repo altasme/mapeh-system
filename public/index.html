@@ -703,6 +703,7 @@ body.view-division #flt-program-item { display: none; }
 .div-tab:hover { background: #f1f4fa; }
 .div-tab.is-active { color: var(--tab-color); border-bottom-color: var(--tab-color); background: #fff; }
 .div-tab:focus-visible { outline: 2px solid var(--tab-color); outline-offset: -2px; }
+.school-progress-card { grid-column: 1 / -1; }
 .div-subtabs { margin-top: -6px; padding-left: 14px; }
 .div-subtab { font-size: 0.85rem; padding: 7px 16px; }
 .div-banner { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 18px; padding: 10px 14px; border-left: 6px solid var(--tab-color); background: #f7f9fd; border-radius: 0 6px 6px 0; }
@@ -1028,7 +1029,7 @@ function friendlyError(err) {
     if (code === "PGRST301" || /jwt expired|jwt/i.test(msg)) {
         return "Your session expired. Please log in again.";
     }
-    if (code === "23514" && /^(Grades? \d|Key Stage \d|MAPEH|Life and Career|School year \d{4}-\d{4} is not open|That is a (elementary|secondary) school)/.test(msg)) return msg;
+    if (code === "23514" && /^(Grades? \d|Key Stage \d|MAPEH|Life and Career|School year \d{4}-\d{4} is not open|Term \d of school year \d{4}-\d{4} is not open|That is a (elementary|secondary) school)/.test(msg)) return msg;
     if (code === "23514") {
         if (/_mps_check/.test(msg) && !/baseline/.test(msg)) return "MPS must be between 0 and 100.";
         if (/baseline_mps_check/.test(msg)) return "Baseline MPS must be between 0 and 100.";
@@ -1290,6 +1291,17 @@ const availableSchoolYears = () => SCHOOL_YEARS.filter(schoolYearEnabled);
 async function loadSchoolYears() {
     const { data, error } = await sb().from("school_years").select("sy, enabled").order("sy");
     SY_RULES = error || !data ? null : data;
+}
+/* TERM AVAILABILITY (Additional Enhancements 1.1). public.term_availability lists the (school year, term) pairs the System
+   Administrator closed for data entry; a pair with no row is open. It only controls NEW records: closed terms stay in every
+   report and filter, and nothing recorded in them is changed. Before migration 0016 every term is open. */
+const TERMS = ["Term 1", "Term 2", "Term 3"];
+let TERM_RULES = null;   // [{ sy, term, enabled }] or null when the table does not exist yet
+const termEnabled = (sy, term) => !TERM_RULES || !TERM_RULES.some(r => r.sy === sy && r.term === term && r.enabled === false);
+const termClosedMessage = (sy, term) => `${term} of school year ${sy} is closed for data entry. Existing records are not affected. Ask the System Administrator to open it.`;
+async function loadTermRules() {
+    const { data, error } = await sb().from("term_availability").select("sy, term, enabled");
+    TERM_RULES = error || !data ? null : data;
 }
 let DEFAULT_DISTRICTS = [
     "Asuncion", "B.E. Dujali", "Carmen", "Kapalong East", "Kapalong West",
@@ -1603,6 +1615,7 @@ async function initDB() {
     if (sRes.data && sRes.data.data) Object.assign(settings, sRes.data.data);
     await loadSchools();
     await loadSchoolYears();
+    await loadTermRules();
     await loadSignatories();
 }
 
@@ -3067,9 +3080,50 @@ function describeMapeh(ma, peh, ov) {   // each: number or null
 }
 const analysisHTML = t => `<p class="chart-analysis"><strong>Analysis:</strong> ${esc(t)}</p>`;
 
+/* SCHOOL PROGRESS (district coordinator dashboard, Additional Enhancements 1.1). One row for each active school of the signed-in
+   coordinator's own district (and education level), built only from saved records, with the same plain MPS mean used everywhere.
+   Defined measures, none of them a guessed percentage:
+     Subjects encoded = distinct subjects with a saved record for the school (see subjectsEncoded);
+     Terms encoded    = how many of Term 1, Term 2 and Term 3 have at least one saved record for the school;
+     Term MPS         = mean MPS of the school's records in that term; Latest MPS = the latest term that has records;
+     Change           = Latest MPS minus the MPS of the term before it that has records (percentage points).
+   The system holds no list of the subjects each school must report, so no completion percentage is shown. The School Year,
+   Education Level and Program filters apply; the Term filter does not, because the table compares the terms. */
+async function schoolProgressCardHTML() {
+    const userDist = currentUser.district, lvl = effectiveLevel();
+    const listed = SCHOOLS.filter(x => x.active && x.district === userDist && (lvl === "ALL" || !x.educationLevel || x.educationLevel === lvl)
+        && (filters.program === "ALL" || x.programs.includes(filters.program)));
+    const ids = new Set(listed.map(x => x.id));
+    const recs = (await getAllRecords()).filter(r => r.district === userDist && r.schoolId && ids.has(r.schoolId) && levelOk(r)
+        && (filters.sy === "ALL" || r.sy === filters.sy) && programOk(r));
+    const pcv = v => v === null ? '<span class="no-data">-</span>' : v.toFixed(2) + "%";
+    const rows = listed.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })).map(sc => {
+        const mine = recs.filter(r => r.schoolId === sc.id);
+        const perTerm = TERMS.map(t => { const l = mine.filter(r => r.term === t); return l.length ? l.reduce((a, c) => a + c.mps, 0) / l.length : null; });
+        const have = perTerm.map((v, i) => v === null ? -1 : i).filter(i => i >= 0);
+        const latest = have.length ? perTerm[have[have.length - 1]] : null;
+        const change = have.length > 1 ? perTerm[have[have.length - 1]] - perTerm[have[have.length - 2]] : null;
+        const chips = TERMS.map((t, i) => `<span class="badge ${perTerm[i] === null ? "badge-critical" : "badge-proficient"}" title="${t}: ${perTerm[i] === null ? "no records yet" : "has records"}">T${i + 1}</span>`).join(" ");
+        return `<tr><td>${esc(sc.name)}</td><td class="num">${subjectsEncoded(mine)}</td><td>${mine.length ? have.length + " / 3 " : '<span class="no-data">None yet</span> '}${chips}</td>
+            ${perTerm.map(v => `<td class="num">${pcv(v)}</td>`).join("")}
+            <td class="num">${latest === null ? pcv(null) : `<strong>${latest.toFixed(2)}%</strong>`}</td>
+            <td>${latest === null ? '<span class="no-data">No data</span>' : `<span class="badge ${getBadgeClass(getPL(latest))}">${getPL(latest)}</span>`}</td>
+            <td class="num">${change === null ? pcv(null) : `${change > 0 ? "+" : ""}${change.toFixed(2)} pts`}</td></tr>`;
+    }).join("");
+    const started = new Set(recs.map(r => r.schoolId)).size;
+    return `<div class="chart-card school-progress-card" id="school-progress">
+        <h4>School Progress: ${esc(userDist)} District</h4>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin:0 0 10px;"><strong>${started} of ${listed.length}</strong> school(s) have saved records in view. Progress shows what has been encoded; the system has no list of the subjects each school must report, so it does not show a completion percentage.</p>
+        ${listed.length ? `<div class="table-scroll"><table class="data-table"><thead><tr><th>School</th><th class="num" title="Distinct subjects with a saved record">Subjects encoded</th><th title="Terms with at least one saved record">Terms encoded</th><th class="num">Term 1 MPS</th><th class="num">Term 2 MPS</th><th class="num">Term 3 MPS</th><th class="num">Latest MPS</th><th>Proficiency Level</th><th class="num" title="Latest term compared with the term before it that has records">Change</th></tr></thead><tbody>${rows}</tbody></table></div>`
+            : '<div class="empty-state" role="status" style="padding:24px;text-align:center;color:var(--text-muted);">No school of this district matches the filters.</div>'}
+    </div>`;
+}
+
 async function renderDashboard(container) {
     const data = await getFilteredData();
     const userDist = currentUser ? currentUser.district : "ALL";
+    const isCoord = !!currentUser && currentUser.role === "District Coordinator";   // district accounts see School Progress instead of the district comparison
+    const progressHTML = isCoord ? await schoolProgressCardHTML() : "";
 
     const avgMPS = data.length ? parseFloat((data.reduce((a, c) => a + c.mps, 0) / data.length).toFixed(2)) : 0;
     const avgPct75 = data.length ? parseFloat((data.reduce((a, c) => a + c.pct75, 0) / data.length).toFixed(2)) : 0;
@@ -3146,10 +3200,10 @@ async function renderDashboard(container) {
         </div>
     </div>
     <div class="chart-grid">
-        <div class="chart-card">
+        ${isCoord ? progressHTML : `<div class="chart-card">
             <h4>District Performance Comparison (MPS %)</h4>
             <div class="chart-container"><canvas id="c-dist-mps"></canvas></div>
-        </div>
+        </div>`}
         <div class="chart-card">
             <h4>Program Track Consolidated Comparison (MPS %)</h4>
             <div class="chart-container"><canvas id="c-subj-mps"></canvas></div>
@@ -3199,7 +3253,7 @@ async function renderDashboard(container) {
         }
     };
 
-    activeCharts['distMps'] = new Chart(document.getElementById('c-dist-mps'), {
+    if (!isCoord) activeCharts['distMps'] = new Chart(document.getElementById('c-dist-mps'), {
         type: 'line',   // client revision: the district comparison is a line graph (one point per district, same data)
         data: { labels: dLabels, datasets: [{ label: 'District MPS (%)', data: dVals.map(Number), borderColor: '#0038A8', backgroundColor: '#0038A8', borderWidth: 2.5, tension: 0.15, fill: false,
             pointBackgroundColor: dLabels.map(districtColor), pointBorderColor: '#ffffff', pointBorderWidth: 2, pointRadius: 6, pointHoverRadius: 8 }] },
@@ -3220,7 +3274,7 @@ async function renderDashboard(container) {
 
     // automatic descriptive analysis at the bottom of each graph
     const addAnalysis = (canvasId, text) => { const c = document.getElementById(canvasId); if (c) c.closest(".chart-card").insertAdjacentHTML("beforeend", analysisHTML(text)); };
-    addAnalysis("c-dist-mps", describeDistricts(dLabels.map((d, i) => ({ name: d, v: parseFloat(dVals[i]) }))));
+    if (!isCoord) addAnalysis("c-dist-mps", describeDistricts(dLabels.map((d, i) => ({ name: d, v: parseFloat(dVals[i]) }))));
     const trackDefs = [["MAPEH Total", mapehData.length, parseFloat(mapehAvgMPS)], ["SPA Total", spaData.length, parseFloat(spaAvgMPS)], ["SPS Total", spsData.length, parseFloat(spsAvgMPS)],
         ["SPFL Total", spflData.length, parseFloat(spflAvgMPS)], ["IPED Total", ipedData.length, parseFloat(ipedAvgMPS)]];
     addAnalysis("c-subj-mps", describeTracks(trackDefs.filter(x => x[1]).map(x => ({ name: x[0], v: x[2] })), trackDefs.filter(x => !x[1]).map(x => x[0])));
@@ -3603,7 +3657,7 @@ function openRecordEditor(id) {
         <form id="rec-form" onsubmit="saveRecordEdit(event, ${r.id})">
             <div class="form-grid">
                 <div class="form-group"><label for="e-sy">School year</label>${sel("e-sy", Array.from(new Set([...availableSchoolYears(), r.sy])), r.sy)}</div>
-                <div class="form-group"><label for="e-term">Term</label>${sel("e-term", ["Term 1", "Term 2", "Term 3"], r.term)}</div>
+                <div class="form-group"><label for="e-term">Term</label>${sel("e-term", TERMS.filter(tm => tm === r.term || termEnabled(r.sy, tm)), r.term)}</div>
                 <div class="form-group"><label for="e-district">District</label>${sel("e-district", dists, r.district, userDist !== "ALL" ? "disabled" : "")}</div>
                 <div class="form-group"><label for="e-grade">Grade level</label>${sel("e-grade", grades, r.gradeLevel, 'onchange="refreshEditSubjects()"')}</div>
                 <div class="form-group span-2"><label for="e-subject">Learning area</label><select id="e-subject" data-orig="${esc(r.learningArea)}"></select></div>
@@ -3762,8 +3816,9 @@ async function renderDataInputView(container) {
             <form onsubmit="handleManualSave(event)" oninput="markDirty()">
                 <h4 style="color:var(--deped-blue); margin-bottom:12px;">1. District & School Year Context</h4>
                 <div class="form-grid">
-                    <div class="form-group"><label>School Year</label><select id="m-sy" onchange="syncBaselineSy()">${syOptionsHTML}</select></div>
-                    <div class="form-group"><label>Term</label><select id="m-term"><option value="Term 1">Term 1</option><option value="Term 2">Term 2</option><option value="Term 3">Term 3</option></select></div>
+                    <div class="form-group"><label>School Year</label><select id="m-sy" onchange="syncBaselineSy(); refreshTermOptions()">${syOptionsHTML}</select></div>
+                    <div class="form-group"><label>Term</label><select id="m-term" onchange="refreshTermOptions()"><option value="Term 1">Term 1</option><option value="Term 2">Term 2</option><option value="Term 3">Term 3</option></select>
+                        <small id="m-term-msg" class="comp-note" role="status" style="margin:4px 0 0; color:var(--danger);"></small></div>
                     <div class="form-group"><label>District</label><select id="m-district"></select></div>
                     <div class="form-group"><label>Key Stage</label><select id="m-keystage" onchange="syncGradeWithKeyStage(this.value)">${keyStageOptionsHTML}</select></div>
                     <div class="form-group"><label>Grade Level (${levelGrades[0]} to ${levelGrades[levelGrades.length - 1]})</label><select id="m-grade" onchange="refreshManualSubjects()">${gradeOptionsHTML}</select></div>
@@ -3836,9 +3891,25 @@ async function renderDataInputView(container) {
     toggleSchoolField(currentSubj);
     updateAreaHint();
     syncBaselineSy();
+    refreshTermOptions();
 }
 
 // the baseline school year follows the chosen school year (the year before it) unless changed by hand
+// Fast Data Entry: a term the Administrator closed for the chosen school year cannot be selected; the form says why.
+function refreshTermOptions() {
+    const sy = document.getElementById("m-sy"), t = document.getElementById("m-term"), msg = document.getElementById("m-term-msg");
+    if (!sy || !t) return;
+    Array.from(t.options).forEach(o => { const open = termEnabled(sy.value, o.value); o.disabled = !open; o.textContent = open ? o.value : `${o.value} (closed)`; });
+    if (t.options[t.selectedIndex] && t.options[t.selectedIndex].disabled) {
+        const firstOpen = Array.from(t.options).find(o => !o.disabled);
+        if (firstOpen) t.value = firstOpen.value;
+    }
+    const allClosed = Array.from(t.options).every(o => o.disabled);
+    const closed = Array.from(t.options).filter(o => o.disabled).map(o => o.value);
+    if (msg) msg.textContent = allClosed ? `Every term of school year ${sy.value} is closed for data entry. Existing records are not affected.` : closed.length ? `${closed.join(", ")} closed for data entry in school year ${sy.value}.` : "";
+    const save = document.querySelector('#tab-manual-container button[type="submit"]');
+    if (save) save.disabled = allClosed;
+}
 function syncBaselineSy() {
     const sy = document.getElementById("m-sy"), bs = document.getElementById("m-baseline-sy");
     if (sy && bs && Array.from(bs.options).some(o => o.value === prevSy(sy.value))) bs.value = prevSy(sy.value);
@@ -3897,6 +3968,7 @@ function validateRecordInput(rec, orig) {
     if (!/^[0-9]{4}-[0-9]{4}$/.test(String(rec.sy))) p.push("School year must look like 2025-2026.");
     if (!["Term 1", "Term 2", "Term 3"].includes(rec.term)) p.push("Term must be Term 1, Term 2 or Term 3.");
     if (districtIdByName[rec.district] === undefined) p.push(`Unknown district "${rec.district}".`);
+    if ((!orig || orig.sy !== rec.sy || orig.term !== rec.term) && TERMS.includes(rec.term) && !termEnabled(rec.sy, rec.term)) p.push(termClosedMessage(rec.sy, rec.term));
     const lv = levelOfGrade(rec.gradeLevel);
     const own = currentUser ? currentUser.educationLevel : "ALL";
     if (!lv) p.push("Grade level must be one of Grade 1 to Grade 12.");
@@ -4702,7 +4774,7 @@ function renderSettingsView(container) {
         <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 12px;">Clear ALL database records across all school years. Requires you to re-enter your password.</p>
         <button class="btn btn-danger" onclick="clearAllData()">Clear All Database Records</button>
     </div>`;
-    if (currentUser && currentUser.role === "Admin") container.insertAdjacentHTML("afterbegin", schoolYearCardHTML());
+    if (currentUser && currentUser.role === "Admin") container.insertAdjacentHTML("afterbegin", schoolYearCardHTML() + termAvailabilityCardHTML());
 }
 
 /* SCHOOL YEAR AVAILABILITY (System Administrator only). Turning a year off removes it from the filters and from data entry
@@ -4719,6 +4791,31 @@ function schoolYearCardHTML() {
         ${SY_RULES ? "" : '<p class="comp-note">School year control needs database migration 0014. Until it is applied every year stays available.</p>'}
         <div class="table-scroll"><table class="data-table"><thead><tr><th>School Year</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>`;
+}
+/* TERM AVAILABILITY (System Administrator only): for each school year, which terms can take NEW records. Closing a term never
+   deletes or changes what was encoded and never hides it from the reports; the database refuses new records in a closed term. */
+function termAvailabilityCardHTML() {
+    const rows = SCHOOL_YEARS.map(sy => `<tr><td><strong>SY ${esc(sy)}</strong>${schoolYearEnabled(sy) ? "" : ' <span class="badge badge-critical">Year disabled</span>'}</td>${TERMS.map(t => {
+        const on = termEnabled(sy, t);
+        return `<td><span class="badge ${on ? "badge-proficient" : "badge-critical"}">${on ? "Open" : "Closed"}</span>
+            <button class="btn ${on ? "btn-secondary" : "btn-primary"} btn-sm" onclick="setTermEnabled('${sy}', '${t}', ${!on})" aria-label="${on ? "Close" : "Open"} ${t} of school year ${esc(sy)} for data entry">${on ? "Close" : "Open"}</button></td>`;
+    }).join("")}</tr>`).join("");
+    return `<div class="card-box" id="term-admin-card" style="padding: 20px; margin-bottom:20px;">
+        <h3>Term Availability for Data Entry</h3>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom: 12px;">Choose which terms can take new records, separately for each school year. A closed term cannot be chosen in Fast Data Entry and the database refuses new records in it. Records already encoded stay in the reports and filters and are never changed.</p>
+        ${TERM_RULES ? "" : '<p class="comp-note">Term control needs database migration 0016. Until it is applied every term stays open.</p>'}
+        <div class="table-scroll"><table class="data-table"><thead><tr><th>School Year</th>${TERMS.map(t => `<th>${t}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>
+    </div>`;
+}
+async function setTermEnabled(sy, term, enabled) {
+    try {
+        const { error } = await sb().rpc("app_set_term_enabled", { p_sy: sy, p_term: term, p_enabled: enabled });
+        if (error) throw error;
+        await loadTermRules();
+        const card = document.getElementById("term-admin-card");
+        if (card) card.outerHTML = termAvailabilityCardHTML();
+        toast(`${term} of SY ${sy} is now ${enabled ? "open" : "closed"} for data entry. Existing records are unchanged.`);
+    } catch (err) { toast(friendlyError(err), "error"); }
 }
 async function setSchoolYearEnabled(sy, enabled) {
     try {
