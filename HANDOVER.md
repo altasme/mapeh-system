@@ -343,3 +343,20 @@ The Division Summary View opens on three tabs: **MAPEH**, **Special Programs** (
 - Responsive: the tabs share the row on tablets and stack on phones; arrow keys move between tabs.
 - Tests: QA section [27] plus tab-aware sections [2], [3], [11], [22] (independent oracle computed from raw records).
 - Open points for the client: the single all-category Division MPS is no longer shown on this view (the Dashboard still shows it); confirm the category-scoped CSV.
+
+
+## 24. Additional Enhancements 1.1 (November 2026)
+
+| # | Request | What was done |
+|---|---------|---------------|
+| 1 | Separate SPA, SPS, SPFL | Under the Special Programs tab of the Division Summary there are three sub-tabs. Each shows only its own records, matrix, KPIs, disciplines, schools, proficiency, printed title and CSV. The three are never mixed on this view. |
+| 2 | Terminology | One spelling on every screen: MAPEH, PE and Health, SPA, SPS, SPFL, IPED. Card titles were being forced to lower case by CSS ("Mapeh", "Iped"); fixed. Database identifiers are unchanged. The cover description still says "IPEd" (client's own text, editable in the admin panel). |
+| 3 | Per-school record counts | Replaced by "Subjects encoded" (distinct subjects with a saved record for the school in the School Year, Term and program in view). The same logic is used for MAPEH, Special Programs and IPED. |
+| 4 | Term availability | Migration **0016**. Settings > Term Availability (System Administrator only): open or close Term 1, 2 or 3 per school year. Closed terms are greyed out in Fast Data Entry with a message, Excel imports containing them are refused, and the database refuses new records in them. Existing records and every report and filter are unchanged. |
+| 5 | School Progress | District coordinator dashboard: School Progress replaces the district comparison. Only the coordinator's own district and level. Columns: subjects encoded, terms encoded (n / 3), Term 1 to 3 MPS, latest MPS and proficiency level, change versus the previous term with records. |
+
+**Run 0016 in the Supabase SQL editor** (new projects: `setup_all.sql` already includes it). Until then every term stays open and the Term Availability card says so.
+
+**Definitions** (the system stores no list of the subjects each school must offer, so no completion percentage is shown): Subjects encoded = distinct subjects with a saved record. Terms encoded = terms with at least one saved record for the school. Change = latest term MPS minus the previous term that has records.
+
+**Decisions for the client:** (a) IPEd or IPED as the single spelling (IPED now; the cover text says IPEd). (b) A true completion percentage needs a required-subject list per school; say if it should be added. (c) Special Programs schools are assigned as one program, so assigned counts are for Special Programs, not per track.
