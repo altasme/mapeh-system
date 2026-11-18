@@ -515,12 +515,15 @@ if (want(10)) {
       await pg.pdf({ path: f, format: 'A4', printBackground: true }); files.push(f);
     }
     const txt = f => execSync(`pdftotext -layout ${f} -`).toString().replace(/\s+/g, ' ').trim().replace(/\(Music & Arts \+ PE & Health\)/g, '(Overall MAPEH)').replace(/\(Music & Arts \+ PE\)/g, '(Overall MAPEH)').replace(/ ?SY not recorded/g, '').replace(/ ?TOTAL DISTRICT RECORDS \d+ Consolidated Entries/gi, '');
+    // the original still prints the Total District Records card, which was removed on purpose: take exactly its words (and its figure) out of the original's text
+    const legacyKpi = view === 'dashboard' ? await L.page.evaluate(() => { const c = Array.from(document.querySelectorAll('.kpi-card')).find(x => /Total District Records/i.test(x.innerText)); return c ? c.querySelector('.kpi-value').innerText.trim() : null; }) : null;
+    const dropKpi = t => legacyKpi === null ? t : [legacyKpi, 'TOTAL', 'DISTRICT', 'RECORDS', 'Consolidated', 'Entries'].reduce((a, w) => a.replace(new RegExp('(^| )' + w + '(?= |$)'), ' '), t).replace(/\s+/g, ' ').trim();
     ok(/SAMPLE DATA/.test(txt(files[1])), `print ${label}/${view}: ported report carries the SAMPLE DATA line (sample rows in view)`);
     ok(!/SAMPLE DATA/.test(txt(files[2])), `print ${label}/${view}: flag off removes the line`);
     // the same words and figures in the printed report; the order of the text stream may follow the new table styling (client request: cover colours)
     const bag = x => x.replace(/\s/g, '').split('').sort().join('');   // every letter and digit of the printed report, whatever order or spacing the PDF text comes out in
-    ok(bag(txt(files[0])) === bag(txt(files[2])), `print ${label}/${view}: printed text identical to the original (same filters)`);
-    if (bag(txt(files[0])) !== bag(txt(files[2]))) { const cnt = s => s.split(' ').reduce((m, w) => (m[w] = (m[w] || 0) + 1, m), {}); const A = cnt(txt(files[0])), B = cnt(txt(files[2])); console.log('    word differences (legacy vs ported):', JSON.stringify(Object.keys({ ...A, ...B }).filter(w => A[w] !== B[w]).map(w => [w, A[w] || 0, B[w] || 0]))); }
+    ok(bag(dropKpi(txt(files[0]))) === bag(txt(files[2])), `print ${label}/${view}: printed text identical to the original (same filters)`);
+    if (bag(dropKpi(txt(files[0]))) !== bag(txt(files[2]))) { const cnt = s => s.split(' ').reduce((m, w) => (m[w] = (m[w] || 0) + 1, m), {}); const A = cnt(txt(files[0])), B = cnt(txt(files[2])); console.log('    word differences (legacy vs ported):', JSON.stringify(Object.keys({ ...A, ...B }).filter(w => A[w] !== B[w]).map(w => [w, A[w] || 0, B[w] || 0]))); }
     execSync(`cp ${files[2]} ${OUT}/print-${label}-ported.pdf`);
     execSync(`pdftoppm -r 60 -png -f 1 -l 1 ${files[0]} ${OUT}/pp-${label}-legacy && pdftoppm -r 60 -png -f 1 -l 1 ${files[1]} ${OUT}/pp-${label}-ported`);
     await L.ctx.close(); await N.ctx.close();
