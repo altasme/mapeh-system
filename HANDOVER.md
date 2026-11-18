@@ -373,4 +373,4 @@ The revised document supersedes section 24 where they differ.
 
 ## 26. Label: Special Curricular Programs
 
-On the Division Summary View the tab, banner, section titles, KPI titles and printed report title now say **Special Curricular Programs** (constant `SCP_LABEL` in `public/index.html`). Display only: the program code stays `special_programs`, SPA, SPS and SPFL work as before, and screens outside the Division Summary (filters, data entry, schools list) keep their wording. Verified at 1280, 768 and 360 px.
+Everywhere on screen (Division Summary tab, banner, section and KPI titles, printed title, filters, Fast Data Entry, schools list, admin panel) "Special Programs" now reads **Special Curricular Programs** (constant `SCP_LABEL` in `public/index.html`). Display only: the program code stays `special_programs`, SPA, SPS and SPFL work as before, and the official track names ("Special Program in the Arts") are unchanged. A few admin-only database error messages (migrations 0010 to 0014) still say "Special Programs". Verified at 1280, 768 and 360 px.

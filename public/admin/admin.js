@@ -12,7 +12,7 @@ const fmt = t => t ? new Date(t).toLocaleString(undefined, { dateStyle: 'medium'
 const IDLE_MS = 30 * 60 * 1000;
 const ROLE_LABEL = { admin: 'Administrator', supervisor: 'Supervisor', district_coordinator: 'District Coordinator', school: 'School Account' };
 const LEVEL_LABEL = { elementary: 'Elementary', secondary: 'Secondary' };
-const PROGRAM_LABEL = { special_programs: 'Special Programs', iped: 'IPED' };
+const PROGRAM_LABEL = { special_programs: 'Special Curricular Programs', iped: 'IPED' };
 const S = { me: null, dirty: false, lookups: null, idleAt: Date.now() };
 
 /* ---------- helpers ---------- */
@@ -225,7 +225,7 @@ async function pUsers(page) {
       <div><label for="u-role">Role</label><select id="u-role"><option value="">All roles</option>${Object.entries(ROLE_LABEL).map(([k, v]) => `<option value="${k}" ${U.role === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       <div><label for="u-district">District</label><select id="u-district"><option value="">All districts</option>${L.districts.map(d => `<option value="${d.id}" ${U.district == d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select></div>
       <div><label for="u-school">School</label><select id="u-school"><option value="">All schools</option>${L.schools.map(s => `<option value="${s.id}" ${U.school == s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
-      <div><label for="u-program">Program</label><select id="u-program"><option value="">All programs</option><option value="special_programs" ${U.program === 'special_programs' ? 'selected' : ''}>Special Programs</option><option value="iped" ${U.program === 'iped' ? 'selected' : ''}>IPED</option></select></div>
+      <div><label for="u-program">Program</label><select id="u-program"><option value="">All programs</option><option value="special_programs" ${U.program === 'special_programs' ? 'selected' : ''}>Special Curricular Programs</option><option value="iped" ${U.program === 'iped' ? 'selected' : ''}>IPED</option></select></div>
       <div><label for="u-status">Status</label><select id="u-status"><option value="">Any status</option><option value="active" ${U.status === 'active' ? 'selected' : ''}>Active</option><option value="disabled" ${U.status === 'disabled' ? 'selected' : ''}>Disabled</option></select></div>
       <div><button class="btn" id="u-new">Create user</button></div>
     </div>

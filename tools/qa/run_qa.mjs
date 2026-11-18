@@ -217,9 +217,9 @@ const llcRows = async page => (await page.evaluate(() => Array.from(document.que
 const dashCount = page => page.evaluate(async () => (await getFilteredData()).length);
 const FILTERS = [null, { 'flt-term': 'Term 1' }, { 'flt-term': 'ALL', 'flt-keystage': 'Key Stage 3' }, { 'flt-keystage': 'ALL', 'flt-subject': 'SPS - Basketball' }, { 'flt-subject': 'ALL', 'flt-district': 'Carmen' }];
 
-// Division Summary is split into category tabs (MAPEH / Special Programs / IPED). Its matrix is checked against an oracle that is
+// Division Summary is split into category tabs (MAPEH / Special Curricular Programs / IPED). Its matrix is checked against an oracle that is
 // computed here from the raw records (not by the app): mean per district and term, district MPS = mean of its non-empty term means.
-const TAB_KEYS = ['mapeh', 'SPA', 'SPS', 'SPFL', 'iped'];   // Special Programs is split into three independent categories
+const TAB_KEYS = ['mapeh', 'SPA', 'SPS', 'SPFL', 'iped'];   // Special Curricular Programs is split into three independent categories
 const catOf = a => /^SP(A|S|FL) - /.test(a) ? a.split(' - ')[0] : /^IPED - /.test(a) ? 'iped' : 'mapeh';
 const openCat = (page, k) => page.evaluate(x => (['SPA', 'SPS', 'SPFL'].includes(x) ? selectDivisionSub(x) : selectDivisionTab(x)), k);
 async function divOracle(page, records, tabKey, f) {
@@ -1098,7 +1098,7 @@ if (want(18)) {
 }
 
 
-console.log('\n[19] Baseline school year, Special Programs / IPED classification, school accounts');
+console.log('\n[19] Baseline school year, Special Curricular Programs / IPED classification, school accounts');
 if (want(19)) {
   const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
   const SCH = [{ id: 1, name: 'Alpha IPED School', district_id: 1, active: true }, { id: 2, name: 'Beta SP School', district_id: 1, active: true }, { id: 3, name: 'Gamma School', district_id: 3, active: true },
@@ -1176,23 +1176,23 @@ if (want(19)) {
     const total = () => dashCount(N.page);
     ok(await total() === recs.length, 'dashboard total before filtering');
     await N.page.selectOption('#flt-program', 'special_programs'); await settled(N.page);
-    ok(await total() === recs.filter(r => isSP(r.learningArea)).length, 'Program filter "Special Programs": only SPA, SPS and SPFL records');
+    ok(await total() === recs.filter(r => isSP(r.learningArea)).length, 'Program filter "Special Curricular Programs": only SPA, SPS and SPFL records');
     await N.page.selectOption('#flt-program', 'iped'); await settled(N.page);
     ok(await total() === recs.filter(r => isIP(r.learningArea)).length, 'Program filter "IPED": only IPED records');
     await N.page.click('text=Clear Filters'); await settled(N.page);
     ok(await N.page.inputValue('#flt-program') === 'ALL' && await total() === recs.length, 'Clear Filters resets the program filter');
     await N.page.evaluate(() => { document.getElementById('flt-program').value = 'iped'; applyFilters(); }); await settled(N.page);
     await N.page.evaluate(() => switchView('comparative')); await settled(N.page);
-    ok(await N.page.evaluate(() => Array.from(document.querySelectorAll('tr.mapeh-row')).filter(tr => /SPA|SPS|SPFL/.test(tr.children[0].textContent)).every(tr => !/[0-9]%/.test(tr.innerText))) && /IPED/.test(await text(N.page)), 'the comparative sheet honours the program filter (Special Programs totals are empty under IPED)');
+    ok(await N.page.evaluate(() => Array.from(document.querySelectorAll('tr.mapeh-row')).filter(tr => /SPA|SPS|SPFL/.test(tr.children[0].textContent)).every(tr => !/[0-9]%/.test(tr.innerText))) && /IPED/.test(await text(N.page)), 'the comparative sheet honours the program filter (Special Curricular Programs totals are empty under IPED)');
     await N.page.evaluate(() => { resetFilters(); });
     await N.page.evaluate(() => switchView('schools')); await settled(N.page);
     const kp = await N.page.evaluate(() => Array.from(document.querySelectorAll('.sv-kpi')).map(k => [k.querySelector('span').textContent, Number(k.querySelector('strong').textContent)]));
-    ok(JSON.stringify(kp) === JSON.stringify([['MAPEH schools', 3], ['Special Programs schools', 2], ['IPED schools', 3], ['With 2 or 3 programs', 3], ['Schools in the list', 4], ['With an active account', 1]]), 'school counts come from the list and the classifications: ' + JSON.stringify(kp.map(k => k[1])));
+    ok(JSON.stringify(kp) === JSON.stringify([['MAPEH schools', 3], ['Special Curricular Programs schools', 2], ['IPED schools', 3], ['With 2 or 3 programs', 3], ['Schools in the list', 4], ['With an active account', 1]]), 'school counts come from the list and the classifications: ' + JSON.stringify(kp.map(k => k[1])));
     await N.page.selectOption('#sv-program', 'iped');
     const names = async () => N.page.evaluate(() => Array.from(document.querySelectorAll('#sv-table tbody tr td:first-child')).map(t => t.textContent.trim()));
     ok(JSON.stringify((await names()).sort()) === JSON.stringify(['Alpha IPED School', 'Asuncion IPED Central Elementary School', 'Gamma School']), 'IPED list: exactly the IPED schools (a school in both programs appears in both lists)');
     await N.page.selectOption('#sv-program', 'special_programs');
-    ok(JSON.stringify((await names()).sort()) === JSON.stringify(['Beta SP School', 'Gamma School']), 'Special Programs list: exactly those schools');
+    ok(JSON.stringify((await names()).sort()) === JSON.stringify(['Beta SP School', 'Gamma School']), 'Special Curricular Programs list: exactly those schools');
     await N.page.selectOption('#sv-program', 'ALL'); await N.page.selectOption('#sv-district', 'Carmen');
     ok(JSON.stringify(await names()) === JSON.stringify(['Gamma School']), 'district filter');
     await N.page.selectOption('#sv-district', 'ALL');
@@ -1201,9 +1201,9 @@ if (want(19)) {
     await N.page.waitForFunction(() => document.getElementById('rec-error').textContent.length > 0);
     ok(/already exists/.test(await N.page.textContent('#rec-error')) && await N.page.evaluate(() => window.__STUB.schools.length) === 4, 'a duplicate school (same district and name) is refused, not added');
     await N.page.fill('#sc-name', 'Delta School'); await N.page.uncheck('#sc-iped'); await N.page.click('#school-save'); await N.page.waitForSelector('.toast-success');
-    ok(await N.page.evaluate(() => window.__STUB.schools.filter(s => s.name === 'Delta School').length === 1 && window.__STUB.school_programs.filter(p => p.school_id === 5).map(p => p.program).join() === 'mapeh'), 'a new school starts with MAPEH only; no Special Programs or IPED is assigned unless chosen');
+    ok(await N.page.evaluate(() => window.__STUB.schools.filter(s => s.name === 'Delta School').length === 1 && window.__STUB.school_programs.filter(p => p.school_id === 5).map(p => p.program).join() === 'mapeh'), 'a new school starts with MAPEH only; no Special Curricular Programs or IPED is assigned unless chosen');
     await N.page.evaluate(() => openSchoolEditor(5)); await N.page.check('#sc-sp'); await N.page.check('#sc-iped'); await N.page.click('#school-save'); await N.page.waitForSelector('.toast-success');
-    ok(await N.page.evaluate(() => window.__STUB.schools.filter(s => s.name === 'Delta School').length === 1 && window.__STUB.school_programs.filter(p => p.school_id === 5).length === 3), 'a school with MAPEH, Special Programs and IPED is one school with three assignments');
+    ok(await N.page.evaluate(() => window.__STUB.schools.filter(s => s.name === 'Delta School').length === 1 && window.__STUB.school_programs.filter(p => p.school_id === 5).length === 3), 'a school with MAPEH, Special Curricular Programs and IPED is one school with three assignments');
     // edit: add a program to an existing school
     await N.page.evaluate(() => openSchoolEditor(2)); await N.page.check('#sc-iped'); await N.page.click('#school-save'); await N.page.waitForSelector('.toast-success');
     ok(await N.page.evaluate(() => window.__STUB.schools.filter(s => s.name === 'Beta SP School').length === 1 && window.__STUB.school_programs.filter(p => p.school_id === 2).length === 3), 'assigning a further program updates the school (no duplicate school record)');
@@ -1227,7 +1227,7 @@ if (want(19)) {
     await N.page.waitForSelector('.toast-error');
     ok(JSON.stringify(await cnt()) === JSON.stringify(c0) && /Nothing was imported/.test(await N.page.textContent('#toast-host')), 'an import with an unknown district creates nothing');
     await N.page.evaluate(() => { document.getElementById('toast-host').innerHTML = ''; });
-    await N.page.setInputFiles('#sv-import', { name: 's.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await sx([{ 'School Name': 'Epsilon', District: 'Carmen', Program: 'IPED' }, { 'School Name': 'alpha iped school', District: 'asuncion', Program: 'Both' }, { 'School Name': 'Eta', District: 'Langilan', Program: 'Special Programs' }])) });
+    await N.page.setInputFiles('#sv-import', { name: 's.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await sx([{ 'School Name': 'Epsilon', District: 'Carmen', Program: 'IPED' }, { 'School Name': 'alpha iped school', District: 'asuncion', Program: 'Both' }, { 'School Name': 'Eta', District: 'Langilan', Program: 'Special Curricular Programs' }])) });
     await N.page.waitForSelector('.toast-success');
     const c1 = await cnt();
     ok(c1[0] === c0[0] + 2 && /2 new, 1 already listed/.test(await N.page.textContent('#toast-host')) && await N.page.evaluate(() => window.__STUB.school_programs.filter(p => p.school_id === 1).length) === 2, 'import creates new schools, merges the program into an existing school (no duplicate), counts reported');
@@ -1278,13 +1278,13 @@ if (want(19)) {
       ok(opts.includes('Alpha IPED School') && opts.includes('Asuncion IPED Central Elementary School') && !opts.includes('Beta SP School') && !opts.includes('Gamma School'), `${user}: the school list for an IPED area shows only IPED schools of their district`);
       await C.page.selectOption('#m-subject', 'SPA - Vocal Arts');
       const opts2 = await C.page.evaluate(() => Array.from(document.querySelectorAll('#m-school-pick option')).map(o => o.textContent));
-      ok(opts2.includes('Beta SP School') && !opts2.includes('Alpha IPED School'), `${user}: and only Special Programs schools for an SPA area`);
+      ok(opts2.includes('Beta SP School') && !opts2.includes('Alpha IPED School'), `${user}: and only Special Curricular Programs schools for an SPA area`);
       await C.page.selectOption('#m-subject', 'IPED - English'); await C.page.selectOption('#m-school-pick', { label: 'Alpha IPED School' });
       await C.page.selectOption('#m-grade', 'Grade 3'); await C.page.fill('#m-mps', '82'); await C.page.fill('#m-pct75', '70'); await C.page.click('button:has-text("Save District Record")'); await C.page.waitForSelector('.toast-success');
       const saved = await C.page.evaluate(() => window.__STUB.records[window.__STUB.records.length - 1]);
       ok(saved.school_id === 1 && saved.school === 'Alpha IPED School' && saved.learning_area === 'IPED - English', `${user}: the record is saved linked to the chosen school`);
       const wrong = await C.page.evaluate(async () => (await sb().from('assessment_records').insert({ sy: '2025-2026', term: 'Term 1', district_id: 1, school_id: 2, key_stage: 'Key Stage 1', grade_level: 'Grade 3', learning_area: 'IPED - English', baseline_mps: 65, mps: 80, pct75: 70, proficiency_level: 'x' })).error?.message);
-      ok(/not classified under the program/.test(wrong), `${user}: the backend refuses linking a Special Programs school to an IPED record`);
+      ok(/not classified under the program/.test(wrong), `${user}: the backend refuses linking a Special Curricular Programs school to an IPED record`);
       await C.ctx.close();
     }
   }
@@ -1710,7 +1710,7 @@ if (want(21)) {
   await N.ctx.close();
 }
 
-console.log('\n[22] Overall Special Programs and Overall IPED for the System Administrator ');
+console.log('\n[22] Overall Special Curricular Programs and Overall IPED for the System Administrator ');
 if (want(22)) {
   const base = demoNew[0];
   const KS = { 'Grade 4': 'Key Stage 2', 'Grade 5': 'Key Stage 2', 'Grade 6': 'Key Stage 2', 'Grade 7': 'Key Stage 3' };
@@ -1808,11 +1808,11 @@ if (want(24)) {
   const sub = await optVals('#flt-subject'), prg = await optVals('#flt-program');
   ok(!sub.some(o => /^MAPEH - (Music|Arts|PE|Health)$/.test(o.v)) && sub.some(o => o.v === 'MAPEH - Overall') && sub.some(o => o.t === 'Music and Arts') && sub.some(o => o.t === 'PE and Health'), 'Learning Area selector: the four separate options are gone; Overall MAPEH, Music and Arts, and PE and Health remain');
   ok(sub.some(o => o.v === 'SPA - Vocal Arts') && sub.some(o => o.v === 'IPED - English') && sub.some(o => o.v.startsWith('SPS - ')) && sub.some(o => o.v.startsWith('SPFL - ')), 'unrelated learning areas and program tracks are untouched');
-  ok(JSON.stringify(prg.map(o => o.v)) === JSON.stringify(['ALL', 'mapeh', 'special_programs', 'iped']) && prg.find(o => o.v === 'mapeh').t === 'MAPEH', 'Program filter: MAPEH added next to Special Programs and IPED');
+  ok(JSON.stringify(prg.map(o => o.v)) === JSON.stringify(['ALL', 'mapeh', 'special_programs', 'iped']) && prg.find(o => o.v === 'mapeh').t === 'MAPEH', 'Program filter: MAPEH added next to Special Curricular Programs and IPED');
   const prog = async p => A.page.evaluate(async p => { resetFilters(); document.getElementById('flt-program').value = p; applyFilters(); return (await getFilteredData()).map(r => r.learningArea); }, p);
   const pm = await prog('mapeh'), ps = await prog('special_programs'), pi = await prog('iped'), pa = await prog('ALL');
-  ok(pm.length === 14 && pm.every(a => a.startsWith('MAPEH - ')), `program = MAPEH: ${pm.length} records, MAPEH areas only (no IPED or Special Programs)`);
-  ok(ps.length === 1 && ps[0] === 'SPA - Vocal Arts' && pi.length === 1 && pi[0] === 'IPED - English' && pa.length === 16, 'program = Special Programs / IPED still return only their own records; All Programs returns everything');
+  ok(pm.length === 14 && pm.every(a => a.startsWith('MAPEH - ')), `program = MAPEH: ${pm.length} records, MAPEH areas only (no IPED or Special Curricular Programs)`);
+  ok(ps.length === 1 && ps[0] === 'SPA - Vocal Arts' && pi.length === 1 && pi[0] === 'IPED - English' && pa.length === 16, 'program = Special Curricular Programs / IPED still return only their own records; All Programs returns everything');
   // 3. Division summary component table
   await A.page.evaluate(() => { resetFilters(); switchView('division'); }); await settled(A.page);
   const hdr = await A.page.evaluate(() => Array.from(Array.from(document.querySelectorAll('#view-container .card-box')).find(c => c.querySelector('h3').textContent.includes('MAPEH Components by District')).querySelectorAll('thead th')).map(t => t.innerText.trim()));
@@ -1850,7 +1850,7 @@ if (want(24)) {
   const e1 = await entry('Grade 5', 'MAPEH - Music & Arts', 'Asuncion');
   ok(e1.group !== 'none' && e1.schools.join('|') === ['Asuncion IPED Elem', 'Asuncion SP Elem', 'Test Elem A', 'Test Elem B'].join('|'), 'MAPEH: the school list appears, with the Elementary schools of the district only (' + e1.schools.join(', ') + ')');
   const e2 = await entry('Grade 5', 'IPED - English', 'Asuncion'), e3 = await entry('Grade 5', 'SPA - Vocal Arts', 'Asuncion'), e4 = await entry('Grade 8', 'MAPEH - Overall', 'Asuncion');
-  ok(e2.schools.join() === 'Asuncion IPED Elem' && e3.schools.join() === 'Asuncion SP Elem', 'IPED lists only IPED schools and SP lists only Special Programs schools (assignments are never guessed)');
+  ok(e2.schools.join() === 'Asuncion IPED Elem' && e3.schools.join() === 'Asuncion SP Elem', 'IPED lists only IPED schools and SP lists only Special Curricular Programs schools (assignments are never guessed)');
   ok(e4.schools.join() === 'Test Sec A', 'Secondary grade: only the Secondary school of the district');
   const e5 = await entry('Grade 5', 'MAPEH - Overall', 'Carmen');
   ok(e5.schools.join() === 'Carmen Elem', 'another district lists its own school only (admin choosing Carmen)');
@@ -1924,7 +1924,7 @@ if (want(24)) {
   ok(sv.schools.every(s => ['Asuncion', 'B.E. Dujali', 'Carmen', 'Kapalong East', 'Kapalong West', 'Langilan', 'New Corella', 'San Isidro', 'Sto. Tomas East', 'Sto. Tomas West', 'Talaingod'].includes(s.district)), 'every school maps to one of the 11 districts (Kap. East / Kap. West / BE. Dujali / san Isidro normalised)');
   ok(sv.issues.filter(i => i.type === 'no school ID').map(i => i.name).sort().join('|') === '**Mamaon Extension|**Mangga Extension|**New Katipunan Extension', 'the three rows without an ID are reported, not imported');
   const sqlText = fs.readFileSync(`${ROOT}/supabase/seed/school_import.sql`, 'utf8');
-  ok((sqlText.match(/^  \(\d+, /gm) || []).length === 264 && !/\bdelete\b|\btruncate\b|\bdrop\b/i.test(sqlText.replace(/-- .*/g, '').replace(/on commit drop/g, '')) && !/special_programs|'iped'/.test(sqlText.replace(/-- .*/g, '')) && /'mapeh'/.test(sqlText), 'the import SQL has 264 rows, deletes nothing, tags schools MAPEH only, and creates no Special Programs / IPED assignments');
+  ok((sqlText.match(/^  \(\d+, /gm) || []).length === 264 && !/\bdelete\b|\btruncate\b|\bdrop\b/i.test(sqlText.replace(/-- .*/g, '').replace(/on commit drop/g, '')) && !/special_programs|'iped'/.test(sqlText.replace(/-- .*/g, '')) && /'mapeh'/.test(sqlText), 'the import SQL has 264 rows, deletes nothing, tags schools MAPEH only, and creates no Special Curricular Programs / IPED assignments');
 }
 
 console.log('\n[25] Revision 2: Key Stage 1 and 4 rules, program tags, school years, school rows, LLC order, line graph, official reports, cover text');
@@ -1985,7 +1985,7 @@ if (want(25)) {
              noTag: (await sb().from('assessment_records').insert(row('Grade 5', 'SPA - Vocal Arts', 1))).error?.message || null };
   });
   ok(/Key Stage 1/.test(api.ks1 || '') && /Key Stage 4 subjects/.test(api.shsBad || '') && api.shsOk === null && api.maOk === null, 'the database refuses Music and Arts in Key Stage 1 and a Key Stage 4 subject in Grade 9, and accepts Key Stage 4 subjects in Grade 12 and MAPEH - Overall in Grade 1');
-  ok(/not classified/.test(api.noTag || ''), 'a school without the Special Programs assignment cannot take Special Programs records');
+  ok(/not classified/.test(api.noTag || ''), 'a school without the Special Curricular Programs assignment cannot take Special Curricular Programs records');
   const shs = await A.page.evaluate(async () => { formDirty = false; document.getElementById('flt-subject').value = 'SHS - Sports/Health/Wellness'; applyFilters(); return (await getFilteredData()).map(r => r.learningArea + ':' + r.gradeLevel + ':' + r.school); });
   ok(JSON.stringify(shs) === JSON.stringify(['SHS - Sports/Health/Wellness:Grade 12:Asuncion NHS']), 'the Key Stage 4 subject is saved and retrieved through the filter: ' + JSON.stringify(shs));
   // ---- program tags: several programs for one school, no duplicate school
@@ -1995,7 +1995,7 @@ if (want(25)) {
   ok(await A.page.isChecked('#sc-mapeh'), 'a new school starts with MAPEH ticked');
   await A.page.check('#sc-sp'); await A.page.check('#sc-iped'); await A.page.click('#school-save'); await A.page.waitForSelector('.toast-success');
   const st = await A.page.evaluate(() => { const s = window.__STUB.schools.find(x => x.name === 'Sto. Tomas NHS'); return { n: window.__STUB.schools.length, progs: window.__STUB.school_programs.filter(p => p.school_id === s.id).map(p => p.program).sort().join() }; });
-  ok(st.n === before + 1 && st.progs === 'iped,mapeh,special_programs', 'one school carries MAPEH, Special Programs and IPED together: a single school record, three assignments');
+  ok(st.n === before + 1 && st.progs === 'iped,mapeh,special_programs', 'one school carries MAPEH, Special Curricular Programs and IPED together: a single school record, three assignments');
   ok(await A.page.evaluate(() => Array.from(document.querySelectorAll('#sv-program option')).some(o => o.value === 'mapeh')) && /MAPEH/.test(await A.page.textContent('#sv-kpis')), 'Schools & Accounts filters and counts by the MAPEH program too');
   // ---- School years (System Administrator only)
   await A.page.evaluate(() => { formDirty = false; switchView('settings'); }); await settled(A.page);
@@ -2192,7 +2192,7 @@ if (want(26)) {
   }
   ok(/Filters \(1\)/.test(await L.page.textContent('#filters-toggle')), 'the filter counter includes it');
   await L.page.evaluate(() => { document.getElementById('flt-pl').value = 'Beginning'; document.getElementById('flt-program').value = 'special_programs'; applyFilters(); }); await settled(L.page);
-  ok(await L.page.evaluate(async () => (await getFilteredData()).every(r => r.learningArea.startsWith('SPA') && r.mps < 75 && r.learningArea !== '')), 'it combines with the other filters (Beginning + Special Programs)');
+  ok(await L.page.evaluate(async () => (await getFilteredData()).every(r => r.learningArea.startsWith('SPA') && r.mps < 75 && r.learningArea !== '')), 'it combines with the other filters (Beginning + Special Curricular Programs)');
   await L.page.evaluate(() => resetFilters());
   ok(await L.page.inputValue('#flt-pl') === 'ALL', 'Clear Filters resets it');
   ok(L.errors.length === 0, 'no page errors' + (L.errors[0] ? ': ' + L.errors[0] : ''));
@@ -2224,7 +2224,7 @@ if (want(26)) {
   await AS.ctx.close();
 }
 
-console.log('\n[27] Division Summary tabs: MAPEH, Special Programs and IPED each show only their own data');
+console.log('\n[27] Division Summary tabs: MAPEH, Special Curricular Programs and IPED each show only their own data');
 if (want(27)) {
   const base = demoNew[0];
   const SCH = [
@@ -2250,7 +2250,7 @@ if (want(27)) {
   await P.evaluate(() => { resetFilters(); switchView('division'); }); await settled(P);
 
   const tabs = await P.evaluate(() => Array.from(document.querySelectorAll('.div-tab')).map(b => ({ t: b.innerText.trim(), sel: b.getAttribute('aria-selected') })));
-  ok(tabs.map(x => x.t).join('|') === 'MAPEH|Special Curricular Programs|IPED' && tabs[0].sel === 'true' && tabs[1].sel === 'false', 'three tabs MAPEH, Special Programs and IPED; MAPEH is selected first');
+  ok(tabs.map(x => x.t).join('|') === 'MAPEH|Special Curricular Programs|IPED' && tabs[0].sel === 'true' && tabs[1].sel === 'false', 'three tabs MAPEH, Special Curricular Programs and IPED; MAPEH is selected first');
   ok(await P.evaluate(() => /viewing\s+mapeh/i.test(document.querySelector('.div-banner').innerText) && !!document.querySelector('.div-tabs[role="tablist"]')), 'a banner says which category is being viewed');
   ok(await P.evaluate(() => getComputedStyle(document.getElementById('flt-program-item')).display === 'none'), 'the Program filter is replaced by the tabs on the Division Summary');
 
@@ -2274,11 +2274,11 @@ if (want(27)) {
     const opts = await P.evaluate(() => Array.from(document.querySelectorAll('#flt-subject option')).map(x => x.value).filter(v => v !== 'ALL'));
     ok(opts.length > 0 && opts.every(v => catOf(v) === k || (k === 'mapeh' && catOf(v) === 'mapeh') || (/^MAPEH - (MA|PEH)$/.test(v) && k === 'mapeh')), `${k} tab: Learning Area filter offers only ${k} areas`);
   }
-  // Special Programs: SPA, SPS and SPFL are three independent sub-tabs, shown only under Special Programs
+  // Special Curricular Programs: SPA, SPS and SPFL are three independent sub-tabs, shown only under Special Curricular Programs
   await go('SPS');
   const subs = await P.evaluate(() => Array.from(document.querySelectorAll('.div-subtab')).map(b => ({ t: b.innerText.trim(), sel: b.getAttribute('aria-selected') })));
-  ok(subs.map(x => x.t).join('|') === 'SPA|SPS|SPFL' && subs[1].sel === 'true' && subs[0].sel === 'false', 'Special Programs has three sub-tabs SPA, SPS and SPFL, independently selectable');
-  ok(await P.evaluate(() => document.querySelector('.div-tab[data-tab="special_programs"]').getAttribute('aria-selected') === 'true'), 'the Special Programs tab stays selected while a sub-tab is open');
+  ok(subs.map(x => x.t).join('|') === 'SPA|SPS|SPFL' && subs[1].sel === 'true' && subs[0].sel === 'false', 'Special Curricular Programs has three sub-tabs SPA, SPS and SPFL, independently selectable');
+  ok(await P.evaluate(() => document.querySelector('.div-tab[data-tab="special_programs"]').getAttribute('aria-selected') === 'true'), 'the Special Curricular Programs tab stays selected while a sub-tab is open');
   await go('mapeh'); ok(await P.evaluate(() => document.querySelectorAll('.div-subtab').length === 0), 'no sub-tabs under MAPEH or IPED');
 
   // switching tabs updates the filters: an incompatible Learning Area is cleared, a compatible one stays
@@ -2291,7 +2291,7 @@ if (want(27)) {
   ok((await view()).includes('Vocal Arts') && !(await view()).includes('Basketball'), 'with an SPA area chosen only SPA records are counted');
   await P.evaluate(() => { formDirty = false; resetFilters(); }); await settled(P);
   await go('iped');
-  ok(await P.evaluate(() => filters.subject === 'ALL' && document.getElementById('flt-subject').value === 'ALL'), 'switching to IPED clears the Special Programs learning area');
+  ok(await P.evaluate(() => filters.subject === 'ALL' && document.getElementById('flt-subject').value === 'ALL'), 'switching to IPED clears the Special Curricular Programs learning area');
   // print title and the print banner follow the category
   ok(await P.evaluate(() => document.getElementById('print-title').textContent.endsWith('- IPED')), 'the printed report title names the category');
   // keyboard: arrow keys move between the tabs
@@ -2489,7 +2489,15 @@ if (want(29)) {
       ok(await P.evaluate(() => document.getElementById('print-title').textContent.endsWith('SPECIAL CURRICULAR PROGRAMS - SPFL')), 'the printed report title uses the label');
       // unrelated references keep their wording
       await P.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(P);
-      ok(/Special Programs \(SPA, SPS, SPFL\)/.test(await P.evaluate(() => document.getElementById('view-container').innerHTML)), 'Fast Data Entry keeps its own wording for the program (not the Division Summary category)');
+      ok(/Special Curricular Programs \(SPA, SPS, SPFL\)/.test(await P.evaluate(() => document.getElementById('view-container').innerHTML)), 'Fast Data Entry uses the new label too');
+      const old = [];
+      for (const v of ['division', 'district-view', 'comparative', 'dashboard', 'data-input', 'least-learned', 'grade-view', 'reports', 'settings', 'schools', 'manage-records']) {
+        await P.evaluate(x => { formDirty = false; resetFilters(); switchView(x); }, v); await settled(P);
+        if (v === 'data-input') await P.click('text=Method 2: Fast Manual Entry');
+        const t = await P.evaluate(() => document.body.innerText + Array.from(document.querySelectorAll('option, [aria-label], [title]')).map(e => e.textContent + ' ' + (e.getAttribute('aria-label') || '') + ' ' + (e.getAttribute('title') || '')).join(' '));
+        if (/Special Programs|SPECIAL PROGRAMS/.test(t)) old.push(v);
+      }
+      ok(old.length === 0, 'no screen still says "Special Programs" (every one says Special Curricular Programs)' + (old.length ? ': ' + old.join(', ') : ''));
     }
     await A.ctx.close();
   }
