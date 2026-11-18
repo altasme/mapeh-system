@@ -190,6 +190,7 @@ function canonLegacy(t) {
     .replace(/-65\.00% decreased beginning/g, '- - -')
     .replace(/(?<![\d.])(?:0\.00%|0%) beginning/g, 'nd')
     // intended label changes of the MAPEH restructure (the legacy records are still counted exactly as before)
+    .replace(/total district records \d+ consolidated entries ?/g, '')   // KPI card removed on purpose
     .replace(/\(music & arts \+ pe\)/g, '(overall mapeh)')
     .replace(/consolidated mapeh total \(music & arts \+ pe & health\)/g, 'consolidated mapeh total (overall mapeh)')
     .replace(/tracked specializations \d+ \d+ mapeh,/g, 'tracked specializations N N mapeh,')
@@ -212,6 +213,8 @@ function diffLines(a, b) {
 const VIEWS = ['division', 'district-view', 'comparative', 'dashboard', 'least-learned', 'grade-view'];   // Reports & Signatories has its own tests (official report selector)
 // Least Learned Competencies are now listed Grade 1 to Grade 12 (client request): compare the rows as sets, without the running number
 const llcRows = async page => (await page.evaluate(() => Array.from(document.querySelectorAll('#view-container tbody tr')).map(tr => Array.from(tr.children).filter(td => !td.classList.contains('screen-only')).slice(1).map(td => td.innerText.replace(/\s+/g, ' ').trim().toLowerCase()).join(' | ')))).sort().join('\n');
+// the Total District Records KPI was removed from the dashboard (revised Enhancement 1.1): the number of records the dashboard is built from is read from the app's own filtered data
+const dashCount = page => page.evaluate(async () => (await getFilteredData()).length);
 const FILTERS = [null, { 'flt-term': 'Term 1' }, { 'flt-term': 'ALL', 'flt-keystage': 'Key Stage 3' }, { 'flt-keystage': 'ALL', 'flt-subject': 'SPS - Basketball' }, { 'flt-subject': 'ALL', 'flt-district': 'Carmen' }];
 
 // Division Summary is split into category tabs (MAPEH / Special Programs / IPED). Its matrix is checked against an oracle that is
@@ -289,7 +292,7 @@ if (want(2)) {
   // pagination: 1452 rows > 1000-row cap
   await N.page.evaluate(() => { resetFilters(); switchView('dashboard'); }); await settled(N.page);
   const t = await text(N.page);
-  ok(/TOTAL DISTRICT RECORDS\s+1452/i.test(t), 'pagination: all 1,452 rows are read although the server caps responses at 1,000');
+  ok(await dashCount(N.page) === 1452, 'pagination: all 1,452 rows are read although the server caps responses at 1,000');
   await L.ctx.close(); await N.ctx.close();
 }
 
@@ -356,7 +359,7 @@ if (want(5)) {
   ok(t.includes('Carmen') && !t.includes('Asuncion'), 'coordinator sees only own district (Division Summary)');
   ok(await N.page.evaluate(() => document.getElementById('nav-settings').style.display !== 'none' && getComputedStyle(document.getElementById('nav-schools')).display === 'none'), 'Settings & Branding is open to a coordinator (District Signatories only); Schools & Accounts stays hidden');
   await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
-  ok(/TOTAL DISTRICT RECORDS\s+66/i.test(await text(N.page)), 'elementary coordinator sees 66 records: own district and own level only (database filtered)');
+  ok(await dashCount(N.page) === 66, 'elementary coordinator sees 66 records: own district and own level only (database filtered)');
   await N.page.evaluate(() => switchView('settings')); await settled(N.page);
   { const sp = await text(N.page); ok(/District Signatories/i.test(sp) && !/print header|complete database reset|save district coordinators|clear all database/i.test(sp), 'Settings shows a coordinator only their District Signatories (no branding, Division signatories, coordinators or reset)'); }
   await N.ctx.close();
@@ -511,7 +514,7 @@ if (want(10)) {
       const f = `${OUT}/print-${label}-${tag}.pdf`;
       await pg.pdf({ path: f, format: 'A4', printBackground: true }); files.push(f);
     }
-    const txt = f => execSync(`pdftotext -layout ${f} -`).toString().replace(/\s+/g, ' ').trim().replace(/\(Music & Arts \+ PE & Health\)/g, '(Overall MAPEH)').replace(/\(Music & Arts \+ PE\)/g, '(Overall MAPEH)').replace(/ ?SY not recorded/g, '');
+    const txt = f => execSync(`pdftotext -layout ${f} -`).toString().replace(/\s+/g, ' ').trim().replace(/\(Music & Arts \+ PE & Health\)/g, '(Overall MAPEH)').replace(/\(Music & Arts \+ PE\)/g, '(Overall MAPEH)').replace(/ ?SY not recorded/g, '').replace(/ ?TOTAL DISTRICT RECORDS \d+ Consolidated Entries/gi, '');
     ok(/SAMPLE DATA/.test(txt(files[1])), `print ${label}/${view}: ported report carries the SAMPLE DATA line (sample rows in view)`);
     ok(!/SAMPLE DATA/.test(txt(files[2])), `print ${label}/${view}: flag off removes the line`);
     // the same words and figures in the printed report; the order of the text stream may follow the new table styling (client request: cover colours)
@@ -699,9 +702,9 @@ if (want(12)) {
     const N = await openNew(user, demo);
     ok(await N.page.evaluate(() => !document.getElementById('flt-level').disabled && document.getElementById('flt-level').value === 'ALL'), `${user}: Education Level filter is free (All Levels)`);
     await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
-    ok(/TOTAL DISTRICT RECORDS\s+1452/i.test(await text(N.page)), `${user}: sees both levels (1452 records)`);
+    ok(await dashCount(N.page) === 1452, `${user}: sees both levels (1452 records)`);
     await N.page.selectOption('#flt-level', 'elementary'); await settled(N.page);
-    ok(/TOTAL DISTRICT RECORDS\s+726/i.test(await text(N.page)), `${user}: Elementary filter shows 726 records`);
+    ok(await dashCount(N.page) === 726, `${user}: Elementary filter shows 726 records`);
     ok(JSON.stringify(await N.page.evaluate(() => Array.from(document.querySelectorAll('#flt-keystage option')).filter(o => !o.disabled).map(o => o.value))) === JSON.stringify(['ALL', 'Key Stage 1', 'Key Stage 2']), `${user}: key stages narrow to the chosen level`);
     ok(await N.page.evaluate(() => document.getElementById('print-title').textContent.includes('ELEMENTARY')), `${user}: the printed report title names the level`);
     await N.page.evaluate(() => switchView('grade-view')); await settled(N.page);
@@ -710,7 +713,7 @@ if (want(12)) {
     ok((await N.page.locator('.excel-table-container:not(.comp-grade-card) .editable-baseline-input').count()) === 2, `${user}: comparative analysis shows the two Elementary key stages`);
     await N.page.selectOption('#flt-level', 'secondary'); await settled(N.page);
     await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
-    ok(/TOTAL DISTRICT RECORDS\s+726/i.test(await text(N.page)), `${user}: Secondary filter shows the other 726`);
+    ok(await dashCount(N.page) === 726, `${user}: Secondary filter shows the other 726`);
     const [dl] = await Promise.all([N.page.waitForEvent('download'), N.page.click('#csv-btn')]);
     await dl.saveAs(`${OUT}/levels-${user}.csv`); const lines = fs.readFileSync(`${OUT}/levels-${user}.csv`, 'utf8').replace(/^﻿/, '').trim().split(/\r?\n/);
     const hdr = lines[0].split(','); const li = hdr.indexOf('Education Level');
@@ -883,7 +886,7 @@ if (want(16)) {
     rec = await N.page.evaluate(id => window.__STUB.records.find(r => r.id === id), asuG4);
     ok(!!rec.deleted_at && rec.delete_reason === 'entered by mistake' && !!rec.deleted_by && await N.page.evaluate(() => window.__STUB.records.length) === total, 'delete is soft: the row stays, with who, when and why');
     await N.page.evaluate(() => { switchView('dashboard'); }); await settled(N.page);
-    ok(new RegExp('TOTAL DISTRICT RECORDS\\s+' + (total - 1) + '\\b', 'i').test(await text(N.page)), 'dashboards no longer count the deleted record');
+    ok(await dashCount(N.page) === total - 1, 'dashboards no longer count the deleted record');
     await N.page.evaluate(() => switchView('grade-view')); await settled(N.page);
     const g2 = await cardRows(N.page, 'MAPEH Components by Grade Level');
     const afterMean = mean(demoNew.filter((r, i) => r.gradeLevel === 'Grade 4' && (r.learningArea === 'MAPEH - Music' || r.learningArea === 'MAPEH - Arts') && i + 1 !== asuG4).map(r => r.mps));
@@ -1167,7 +1170,7 @@ if (want(19)) {
   {
     const N = await openNew('admin', recs, ex);
     await N.page.evaluate(() => switchView('dashboard')); await settled(N.page);
-    const total = async () => Number((/TOTAL DISTRICT RECORDS\s+(\d+)/i.exec(await text(N.page)) || [])[1]);
+    const total = () => dashCount(N.page);
     ok(await total() === recs.length, 'dashboard total before filtering');
     await N.page.selectOption('#flt-program', 'special_programs'); await settled(N.page);
     ok(await total() === recs.filter(r => isSP(r.learningArea)).length, 'Program filter "Special Programs": only SPA, SPS and SPFL records');
@@ -1294,7 +1297,7 @@ if (want(19)) {
     await A.page.evaluate(() => switchView('schools')); await settled(A.page);
     ok(/Performance|Mean Percentage Score/i.test(await text(A.page)) && !/Access Restricted/.test(await text(A.page)) || await A.page.evaluate(() => currentView) === 'dashboard', 'opening a restricted screen lands on the dashboard');
     await A.page.evaluate(() => switchView('dashboard')); await settled(A.page);
-    ok(new RegExp('TOTAL DISTRICT RECORDS\\s+' + mine + '\\b', 'i').test(await text(A.page)) || mine === 0, `dashboard counts only this school's records (${mine})`);
+    ok(await dashCount(A.page) === mine || mine === 0, `dashboard counts only this school's records (${mine})`);
     const ids = await A.page.evaluate(async () => (await getAllRecords()).map(r => r.schoolId).filter((v, i, a) => a.indexOf(v) === i));
     ok(JSON.stringify(ids) === '[1]' || ids.length === 0, 'every record it can load belongs to its school');
     // other schools' records by id
