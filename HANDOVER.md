@@ -360,3 +360,13 @@ The Division Summary View opens on three tabs: **MAPEH**, **Special Programs** (
 **Definitions** (the system stores no list of the subjects each school must offer, so no completion percentage is shown): Subjects encoded = distinct subjects with a saved record. Terms encoded = terms with at least one saved record for the school. Change = latest term MPS minus the previous term that has records.
 
 **Decisions for the client:** (a) IPEd or IPED as the single spelling (IPED now; the cover text says IPEd). (b) A true completion percentage needs a required-subject list per school; say if it should be added. (c) Special Programs schools are assigned as one program, so assigned counts are for Special Programs, not per track.
+
+
+## 25. Revision to Additional Enhancements 1.1 (November 2026)
+
+The revised document supersedes section 24 where they differ.
+- **Total District Records** KPI removed from the Performance Dashboard. The other seven KPI cards fill every row (4 columns on wide screens, 2 on tablets, 1 on phones; the last card takes the rest of its row). No record or calculation was touched.
+- **Record counts:** the Division Summary (MAPEH, SPA, SPS, SPFL, IPED) shows no Records column and no replacement count. School tables show school, district, MPS and proficiency level; area tables show area, MPS and proficiency level. (The "Subjects encoded" column of section 24 was removed. It stays in the coordinator's School Progress table only.)
+- **Term availability** is in **Fast Data Entry** for the System Administrator (collapsible card at the top), no longer under Settings. Behaviour is unchanged (migration 0016, already described in section 24).
+- SPA / SPS / SPFL sub-tabs, terminology and School Progress were already done in section 24 and are unchanged.
+- No new database migration.
