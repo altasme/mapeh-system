@@ -2250,7 +2250,7 @@ if (want(27)) {
   await P.evaluate(() => { resetFilters(); switchView('division'); }); await settled(P);
 
   const tabs = await P.evaluate(() => Array.from(document.querySelectorAll('.div-tab')).map(b => ({ t: b.innerText.trim(), sel: b.getAttribute('aria-selected') })));
-  ok(tabs.map(x => x.t).join('|') === 'MAPEH|Special Programs|IPED' && tabs[0].sel === 'true' && tabs[1].sel === 'false', 'three tabs MAPEH, Special Programs and IPED; MAPEH is selected first');
+  ok(tabs.map(x => x.t).join('|') === 'MAPEH|Special Curricular Programs|IPED' && tabs[0].sel === 'true' && tabs[1].sel === 'false', 'three tabs MAPEH, Special Programs and IPED; MAPEH is selected first');
   ok(await P.evaluate(() => /viewing\s+mapeh/i.test(document.querySelector('.div-banner').innerText) && !!document.querySelector('.div-tabs[role="tablist"]')), 'a banner says which category is being viewed');
   ok(await P.evaluate(() => getComputedStyle(document.getElementById('flt-program-item')).display === 'none'), 'the Program filter is replaced by the tabs on the Division Summary');
 
@@ -2267,7 +2267,7 @@ if (want(27)) {
     const o = await checkDivisionMatrix(A, recs, k, null, 'sample');
     const t = await view();
     ok(expect[k].has.every(w => t.includes(w)) && expect[k].not.every(w => !t.includes(w)), `${k} tab shows its own areas and schools and nothing from the other categories`);
-    ok(t.toLowerCase().includes('viewing ' + { mapeh: 'mapeh', SPA: 'special programs: spa', SPS: 'special programs: sps', SPFL: 'special programs: spfl', iped: 'iped' }[k]), `${k} tab: banner names the category`);
+    ok(t.toLowerCase().includes('viewing ' + { mapeh: 'mapeh', SPA: 'special curricular programs: spa', SPS: 'special curricular programs: sps', SPFL: 'special curricular programs: spfl', iped: 'iped' }[k]), `${k} tab: banner names the category`);
     const kpi = (o.divisionMps > 0 ? o.divisionMps.toFixed(2) + '%' : 'No data');
     ok(t.includes(kpi), `${k} tab: category MPS ${kpi} (mean of district means, same method as before)`);
     // learning-area filter lists only that category's areas
@@ -2357,7 +2357,7 @@ if (want(28)) {
   const spaCsv = async () => { const [d] = await Promise.all([P.waitForEvent('download'), P.click('#csv-btn')]); return { name: d.suggestedFilename(), rows: fs.readFileSync(await d.path(), 'utf8').split(/\r?\n/).filter(Boolean) }; };
   const c1 = await spaCsv();
   ok(/spa/.test(c1.name) && c1.rows.length === 2 && c1.rows[1].includes('SPA - Vocal Arts'), 'CSV on the SPA sub-tab holds only the SPA record');
-  ok(await P.evaluate(() => document.getElementById('print-title').textContent.endsWith('SPECIAL PROGRAMS - SPA')), 'the printed report title names Special Programs and SPA');
+  ok(await P.evaluate(() => document.getElementById('print-title').textContent.endsWith('SPECIAL CURRICULAR PROGRAMS - SPA')), 'the printed report title names Special Curricular Programs and SPA');
 
   // 3 + 5. subjects encoded, not record counts
   const tbl = async (k, title) => { await goCat(k); return P.evaluate(t => { const c = Array.from(document.querySelectorAll('.program-overall')).find(x => x.querySelector('h3')); if (!c) return null;
@@ -2461,6 +2461,38 @@ if (want(28)) {
   ok(await C.page.evaluate(() => { const o = document.getElementById('m-term').options; return o[2].disabled && !o[0].disabled && !o[1].disabled; }), 'a coordinator sees the closed term greyed out in Fast Data Entry');
   ok(C.errors.length === 0, 'no page errors' + (C.errors[0] ? ': ' + C.errors[0] : ''));
   await C.ctx.close();
+}
+
+console.log('\n[29] Label: Special Curricular Programs (display only)');
+if (want(29)) {
+  const base = demoNew[0];
+  const rec = (area, mps) => Object.assign({}, base, { district: 'Asuncion', sy: '2025-2026', term: 'Term 1', gradeLevel: 'Grade 5', keyStage: 'Key Stage 2', learningArea: area, mps, pct75: 70, baselineMps: 65, school: '', schoolId: null, leastLearned: [], isDemo: false });
+  const recs = [rec('SPA - Vocal Arts', 80), rec('SPS - Basketball', 70), rec('SPFL - Spanish', 90), rec('IPED - English', 75), rec('MAPEH - Music & Arts', 85)];
+  for (const [w, h] of [[1280, 900], [768, 1024], [360, 740]]) {
+    const A = await openNew('admin', recs, {}, { width: w, height: h });
+    const P = A.page;
+    await P.evaluate(() => { resetFilters(); switchView('division'); }); await settled(P);
+    await openCat(P, 'SPS'); await settled(P);
+    const g = await P.evaluate(() => {
+      const tabs = Array.from(document.querySelectorAll('.div-tabs:not(.div-subtabs) .div-tab')), sub = Array.from(document.querySelectorAll('.div-subtab')), bar = document.querySelector('.div-tabs').getBoundingClientRect();
+      const inside = b => { const r = b.getBoundingClientRect(); return r.left >= bar.left - 1 && r.right <= bar.right + 1 && b.scrollWidth <= b.clientWidth + 1; };
+      return { labels: tabs.map(b => b.innerText.trim()), allInside: tabs.concat(sub).every(inside), pageScroll: document.documentElement.scrollWidth > window.innerWidth + 1,
+        banner: document.querySelector('.div-banner').innerText.replace(/\s+/g, ' '), code: document.querySelector('.div-tab[data-tab="special_programs"]') !== null, title: document.querySelector('.program-overall h3') ? document.querySelector('.program-overall h3').innerText : '' };
+    });
+    ok(g.labels.join('|') === 'MAPEH|Special Curricular Programs|IPED' && g.allInside && !g.pageScroll, `${w}px: the tab reads "Special Curricular Programs", every tab stays inside the bar, no page-level horizontal scroll`);
+    if (w === 1280) {
+      ok(/Special Curricular Programs: SPS/.test(g.banner) && g.code, 'the banner and section use the new label; the program code (data-tab="special_programs") is unchanged');
+      const kt = await P.evaluate(() => Array.from(document.querySelectorAll('.div-subtab')).map(b => b.innerText.trim()).join('|'));
+      ok(kt === 'SPA|SPS|SPFL', 'SPA, SPS and SPFL sub-tabs are unchanged');
+      await openCat(P, 'SPFL'); await settled(P);
+      ok(/90\.00%/.test(await P.evaluate(() => document.getElementById('view-container').innerText)) && !/80\.00%|70\.00%/.test(await P.evaluate(() => document.querySelector('.kpi-grid').innerText)), 'figures are unchanged: SPFL shows only its own 90.00%');
+      ok(await P.evaluate(() => document.getElementById('print-title').textContent.endsWith('SPECIAL CURRICULAR PROGRAMS - SPFL')), 'the printed report title uses the label');
+      // unrelated references keep their wording
+      await P.evaluate(() => { formDirty = false; switchView('data-input'); }); await settled(P);
+      ok(/Special Programs \(SPA, SPS, SPFL\)/.test(await P.evaluate(() => document.getElementById('view-container').innerHTML)), 'Fast Data Entry keeps its own wording for the program (not the Division Summary category)');
+    }
+    await A.ctx.close();
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

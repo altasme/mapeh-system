@@ -716,7 +716,7 @@ body.view-division #flt-program-item { display: none; }
 .card-box-sub { padding: 6px 18px 4px; }
 .card-box-sub h4, .card-box-sub-title { font-size: 0.9rem; color: var(--mp-navy, #10224F); margin: 14px 18px 6px; }
 .card-box-sub h4 { margin-left: 0; }
-@media (max-width: 640px) { .div-tab { flex: 1 1 0; padding: 10px 6px; font-size: 0.85rem; text-align: center; } .div-subtabs { padding-left: 0; } .div-banner-note { flex-basis: 100%; } }
+@media (max-width: 640px) { .div-tab { flex: 1 1 0; min-width: 0; padding: 10px 6px; font-size: 0.85rem; line-height: 1.2; text-align: center; overflow-wrap: anywhere; } .div-subtabs { padding-left: 0; } .div-banner-note { flex-basis: 100%; } }
 @media print { .div-banner { border-left-width: 4px; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 /* ===== BRAND CONGRUENCE (client request, October 2026): the report pages carry the palette of the cover page: the five
    MAPEH letter colours, navy for text and rules. Additive. The original print block above is untouched; colour is applied
@@ -2270,9 +2270,11 @@ function resetFilters() {
    showing only its own consolidated data. The tab is the Program filter of this view: the records, the matrix, the cards, the printed
    report and the CSV all come from the same filtered records of the selected category, so nothing from another category can appear.
    Access is unchanged: the records a user may read are decided by the database, and a district account still sees only its district. */
+/* display label of the Special Programs category in the Division Summary View only (program code stays special_programs) */
+const SCP_LABEL = "Special Curricular Programs";
 const DIV_TABS = [
     { key: "mapeh", label: "MAPEH", color: "#0B5CB5", blurb: "Regular MAPEH: Overall MAPEH, Music and Arts, PE and Health (and the Key Stage 4 subjects)" },
-    { key: "special_programs", label: "Special Programs", color: "#6B1FB1", blurb: "SPA (Arts), SPS (Sports) and SPFL (Foreign Languages)" },
+    { key: "special_programs", label: SCP_LABEL, color: "#6B1FB1", blurb: "SPA (Arts), SPS (Sports) and SPFL (Foreign Languages)" },
     { key: "iped", label: "IPED", color: "#B7791F", blurb: "Indigenous Peoples Education subjects" }
 ];
 let DIV_TAB = "mapeh";
@@ -2409,8 +2411,8 @@ async function renderDivisionSummaryView(container) {
         : new Set(data.map(r => r.learningArea)).size;
     const scopeWord = userDist !== "ALL" ? `${esc(userDist)} District` : "Division";
     const tabsHTML = `<div class="div-tabs screen-only" role="tablist" aria-label="Program category">${DIV_TABS.map((t, i) => `<button type="button" role="tab" class="div-tab${t.key === tab.tabKey ? " is-active" : ""}" data-tab="${t.key}" style="--tab-color:${t.color};" aria-selected="${t.key === tab.tabKey}" tabindex="${t.key === tab.tabKey ? 0 : -1}" onclick="selectDivisionTab('${t.key}')" onkeydown="divisionTabKey(event, ${i})">${esc(t.label)}</button>`).join("")}</div>`;
-    const subTabsHTML = tab.sub ? `<div class="div-tabs div-subtabs screen-only" role="tablist" aria-label="Special Programs category">${SP_SUBS.map((t, i) => `<button type="button" role="tab" class="div-tab div-subtab${t.key === tab.sub ? " is-active" : ""}" data-sub="${t.key}" style="--tab-color:${t.color};" aria-selected="${t.key === tab.sub}" tabindex="${t.key === tab.sub ? 0 : -1}" onclick="selectDivisionSub('${t.key}')" onkeydown="divisionSubKey(event, ${i})">${esc(t.label)}</button>`).join("")}</div>` : "";
-    const banner = `<div class="div-banner" role="status" style="--tab-color:${tab.color};"><span class="div-banner-label">Viewing</span> <strong>${tab.sub ? "Special Programs: " : ""}${esc(tab.label)}</strong><span class="div-banner-note">${esc(tab.blurb)}. ${scopeWord} figures; only ${esc(tab.label)} records are counted.</span></div>`;
+    const subTabsHTML = tab.sub ? `<div class="div-tabs div-subtabs screen-only" role="tablist" aria-label="${SCP_LABEL} category">${SP_SUBS.map((t, i) => `<button type="button" role="tab" class="div-tab div-subtab${t.key === tab.sub ? " is-active" : ""}" data-sub="${t.key}" style="--tab-color:${t.color};" aria-selected="${t.key === tab.sub}" tabindex="${t.key === tab.sub ? 0 : -1}" onclick="selectDivisionSub('${t.key}')" onkeydown="divisionSubKey(event, ${i})">${esc(t.label)}</button>`).join("")}</div>` : "";
+    const banner = `<div class="div-banner" role="status" style="--tab-color:${tab.color};"><span class="div-banner-label">Viewing</span> <strong>${tab.sub ? SCP_LABEL + ": " : ""}${esc(tab.label)}</strong><span class="div-banner-note">${esc(tab.blurb)}. ${scopeWord} figures; only ${esc(tab.label)} records are counted.</span></div>`;
 
     container.innerHTML = `
     ${tabsHTML}
@@ -2431,7 +2433,7 @@ async function renderDivisionSummaryView(container) {
         <div class="kpi-card" style="border-top-color: ${tab.color};">
             <div class="kpi-title">${tab.sub ? `Schools with ${esc(tab.label)} data` : `Schools encoded / ${esc(tab.label)} schools`}</div>
             <div class="kpi-value">${tab.sub ? sc.encoded : `${sc.encoded} / ${sc.assigned}`}</div>
-            <div class="kpi-sub" style="color:var(--text-muted);">${tab.sub ? `${sc.assigned} school(s) assigned to Special Programs` : sc.assigned ? "" : `No school is assigned to ${esc(tab.label)} yet`}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">${tab.sub ? `${sc.assigned} school(s) assigned to ${SCP_LABEL}` : sc.assigned ? "" : `No school is assigned to ${esc(tab.label)} yet`}</div>
         </div>
         <div class="kpi-card" style="border-top-color: ${tab.color};">
             <div class="kpi-title">Learning areas with data</div>
@@ -2502,7 +2504,7 @@ function programOverallCards(data, tabKey, sub) {
     if (tabKey === "special_programs") {
         const tracks = [["SPA", "SPA - ", "SPA (Special Program in the Arts)"], ["SPS", "SPS - ", "SPS (Special Program in Sports)"], ["SPFL", "SPFL - ", "SPFL (Special Program in Foreign Language)"]].filter(t => !sub || t[0] === sub);
         const trk = tracks[0];
-        const title = sub ? `${trk[2]}: disciplines and schools` : "Special Programs: SPA, SPS and SPFL";
+        const title = sub ? `${trk[2]}: disciplines and schools` : `${SCP_LABEL}: SPA, SPS and SPFL`;
         const recs = data.filter(r => areaProgram(r.learningArea) === "special_programs" && (!sub || r.learningArea.startsWith(sub + " - ")));
         if (!recs.length) return emptyCard(title, "special_programs");
         const sc = programSchoolCounts(recs, "special_programs");
@@ -2510,9 +2512,9 @@ function programOverallCards(data, tabKey, sub) {
             return `<div class="card-box-sub"><h4>${esc(ttl)}</h4>${list.length ? areaTable(areas.map(a => areaRow(a, list.filter(r => r.learningArea === a))).join(""), "Discipline") : '<div class="empty-state" role="status" style="padding:10px 0;color:var(--text-muted);">No data for the selected filters.</div>'}</div>`; };
         return `<div class="card-box program-overall" data-program="special_programs"${sub ? ` data-sub="${sub}"` : ""}><div class="card-box-header"><h3>${esc(title)}</h3></div>
             <div class="kpi-grid">
-                <div class="kpi-card"><div class="kpi-title">${sub ? esc(sub) : "Special Programs"} MPS</div><div class="kpi-value">${pc(mean(recs, "mps"))}</div><div class="kpi-sub">${pl(mean(recs, "mps"))}</div></div>
+                <div class="kpi-card"><div class="kpi-title">${sub ? esc(sub) : SCP_LABEL} MPS</div><div class="kpi-value">${pc(mean(recs, "mps"))}</div><div class="kpi-sub">${pl(mean(recs, "mps"))}</div></div>
                 <div class="kpi-card"><div class="kpi-title">% Learners Achieving 75% and above</div><div class="kpi-value">${pc(mean(recs, "pct75"))}</div></div>
-                <div class="kpi-card"><div class="kpi-title">${sub ? `Schools with ${esc(sub)} data` : "Schools encoded / Special Programs schools"}</div><div class="kpi-value">${sub ? sc.encoded : `${sc.encoded} / ${sc.assigned}`}</div></div>
+                <div class="kpi-card"><div class="kpi-title">${sub ? `Schools with ${esc(sub)} data` : `Schools encoded / ${SCP_LABEL} schools`}</div><div class="kpi-value">${sub ? sc.encoded : `${sc.encoded} / ${sc.assigned}`}</div></div>
             </div>
             ${sub ? "" : areaTable(tracks.map(([name, prefix]) => areaRow(name, recs.filter(r => r.learningArea.startsWith(prefix)))).join(""), "Track")}
             ${tracks.map(disc).join("")}
@@ -4984,7 +4986,7 @@ function updateSignatoriesUI() {
         document.getElementById("sig-p-pos").textContent = settings.sigPrepPos;
         {
             const dt = currentView === "division" ? divCat() : null;
-            document.getElementById("print-title").textContent = `DIVISION DISTRICT & TERM${levelTitleWord()} PROFICIENCY CONSOLIDATION REPORT` + (dt ? ` - ${dt.sub ? "SPECIAL PROGRAMS - " : ""}${dt.label.toUpperCase()}` : "");
+            document.getElementById("print-title").textContent = `DIVISION DISTRICT & TERM${levelTitleWord()} PROFICIENCY CONSOLIDATION REPORT` + (dt ? ` - ${dt.sub ? SCP_LABEL.toUpperCase() + " - " : ""}${dt.label.toUpperCase()}` : "");
         }
     }
     document.getElementById("sig-c-name").textContent = settings.sigCheckName;
