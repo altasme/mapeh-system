@@ -716,7 +716,7 @@ body.view-division #flt-program-item { display: none; }
 .card-box-sub { padding: 6px 18px 4px; }
 .card-box-sub h4, .card-box-sub-title { font-size: 0.9rem; color: var(--mp-navy, #10224F); margin: 14px 18px 6px; }
 .card-box-sub h4 { margin-left: 0; }
-@media (max-width: 640px) { .div-tab { flex: 1 1 0; padding: 10px 6px; font-size: 0.85rem; text-align: center; } .div-subtabs { padding-left: 0; } .div-banner-note { flex-basis: 100%; } }
+@media (max-width: 640px) { .div-tab { flex: 1 1 0; min-width: 0; padding: 10px 6px; font-size: 0.85rem; line-height: 1.2; text-align: center; overflow-wrap: anywhere; } .div-subtabs { padding-left: 0; } .div-banner-note { flex-basis: 100%; } }
 @media print { .div-banner { border-left-width: 4px; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 /* ===== BRAND CONGRUENCE (client request, October 2026): the report pages carry the palette of the cover page: the five
    MAPEH letter colours, navy for text and rules. Additive. The original print block above is untouched; colour is applied
@@ -909,7 +909,7 @@ body.view-division #flt-program-item { display: none; }
             <select id="flt-program" onchange="applyFilters()">
                 <option value="ALL">All Programs</option>
                 <option value="mapeh">MAPEH</option>
-                <option value="special_programs">Special Programs (SPA, SPS, SPFL)</option>
+                <option value="special_programs">Special Curricular Programs (SPA, SPS, SPFL)</option>
                 <option value="iped">IPED</option>
             </select>
         </div>
@@ -936,7 +936,7 @@ body.view-division #flt-program-item { display: none; }
         <div class="print-header-l2" id="print-h-l2">Department of Education</div>
         <div class="print-header-l3" id="print-h-l3">REGION XI</div>
         <div class="print-header-l4" id="print-h-l4">SCHOOLS DIVISION OF DAVAO DEL NORTE</div>
-        <h2 style="text-decoration: underline; margin-top:10px;" id="print-title">MAPEH & SPECIAL PROGRAMS PROFICIENCY CONSOLIDATION REPORT</h2>
+        <h2 style="text-decoration: underline; margin-top:10px;" id="print-title">MAPEH & SPECIAL CURRICULAR PROGRAMS PROFICIENCY CONSOLIDATION REPORT</h2>
         <p id="print-sy-label">All School Years</p>
         <p id="print-sample-line">SAMPLE DATA</p>
     </div>
@@ -1441,10 +1441,10 @@ function baselineSyLabel(recs) {
 }
 const baselineSyNote = recs => recs.length ? `<br><small class="bl-sy-note">${esc(baselineSyLabel(recs))}</small>` : "";
 
-/* PROGRAMS. Special Programs (SPA, SPS, SPFL) and IPED are separate classifications of a school; a school can be in one or both. */
-const PROGRAM_LABELS = { mapeh: "MAPEH", special_programs: "Special Programs", iped: "IPED" };
+/* PROGRAMS. Special Curricular Programs (SPA, SPS, SPFL) and IPED are separate classifications of a school; a school can be in one or both. */
+const PROGRAM_LABELS = { mapeh: "MAPEH", special_programs: "Special Curricular Programs", iped: "IPED" };
 const areaProgram = a => /^(SPA|SPS|SPFL) - /.test(a || "") ? "special_programs" : /^IPED - /.test(a || "") ? "iped" : /^(MAPEH|SHS) - /.test(a || "") ? "mapeh" : null;
-// Program filter: MAPEH (every MAPEH learning area), Special Programs (SPA, SPS, SPFL) or IPED. Programs are judged from the learning area.
+// Program filter: MAPEH (every MAPEH learning area), Special Curricular Programs (SPA, SPS, SPFL) or IPED. Programs are judged from the learning area.
 // Proficiency Level filter: the proficiency level of each record (from its MPS, the same 90 / 85 / 80 / 75 scale as everywhere)
 const plOk = r => filters.pl === "ALL" || getPL(r.mps) === filters.pl;
 const programOk = (r, p = filters.program) => p === "ALL" || areaProgram(r.learningArea) === p;
@@ -1970,13 +1970,13 @@ function programOptionsHTML(programs) {
     const opt = a => `<option value="${esc(a)}">${esc(a)}</option>`;
     let h = "";
     if (programs.includes("mapeh")) h += `<optgroup label="MAPEH">${mapehAreasForGrade((document.getElementById("m-grade") || {}).value || "Grade 4").map(a => `<option value="${esc(a)}">${esc(a === MAPEH_LEGACY[0] ? "MAPEH - Music and Arts" : a === MAPEH_LEGACY[1] ? "MAPEH - Physical Education (PE) and Health" : a)}</option>`).join("")}${["Grade 11", "Grade 12"].includes((document.getElementById("m-grade") || {}).value) ? SHS_SUBJECTS.map(opt).join("") : ""}</optgroup>`;
-    if (programs.includes("special_programs")) h += `<optgroup label="Special Programs (SPA, SPS, SPFL)">${SUBJECTS.filter(a => /^(SPA|SPS|SPFL) - /.test(a)).map(opt).join("")}</optgroup>`;
+    if (programs.includes("special_programs")) h += `<optgroup label="Special Curricular Programs (SPA, SPS, SPFL)">${SUBJECTS.filter(a => /^(SPA|SPS|SPFL) - /.test(a)).map(opt).join("")}</optgroup>`;
     if (programs.includes("iped")) h += `<optgroup label="IPED Learning Subjects">${IPED_OFFERS.map(opt).join("")}</optgroup>`;
     return h;
 }
 
 // The school field offers the school list: schools of the chosen district, of the education level of the chosen grade, and,
-// for Special Programs and IPED, of that program. MAPEH is not a program assignment, so every school of the district and
+// for Special Curricular Programs and IPED, of that program. MAPEH is not a program assignment, so every school of the district and
 // level is offered. Typing a name stays possible. The database repeats the district and level checks.
 function refreshSchoolPicker() {
     const pick = document.getElementById("m-school-pick"), input = document.getElementById("m-school");
@@ -2007,7 +2007,7 @@ function schoolPickChanged() {
     input.style.display = other ? "" : "none"; input.required = other;
 }
 
-// Every learning area (MAPEH, Special Programs, IPED) is entered for a school of the district: the school list always shows.
+// Every learning area (MAPEH, Special Curricular Programs, IPED) is entered for a school of the district: the school list always shows.
 function toggleSchoolField(subjectValue) {
     const schoolGroup = document.getElementById("m-school-group");
     const schoolInput = document.getElementById("m-school");
@@ -2266,17 +2266,19 @@ function resetFilters() {
    SCHOOL_YEARS, KEY_STAGES, *_OFFERS), which are developer-controlled; (c) fragments already escaped where they
    were built (schoolDisplay, displayLoc, row and card HTML); (d) static markup and badge strings; (e) textContent
    sinks such as toast() and the print header, which do not parse HTML. */
-/* DIVISION SUMMARY: ONE PROGRAM CATEGORY AT A TIME (client request). Three tabs, MAPEH, Special Programs (SPA, SPS, SPFL) and IPED, each
+/* DIVISION SUMMARY: ONE PROGRAM CATEGORY AT A TIME (client request). Three tabs, MAPEH, Special Curricular Programs (SPA, SPS, SPFL) and IPED, each
    showing only its own consolidated data. The tab is the Program filter of this view: the records, the matrix, the cards, the printed
    report and the CSV all come from the same filtered records of the selected category, so nothing from another category can appear.
    Access is unchanged: the records a user may read are decided by the database, and a district account still sees only its district. */
+/* display label of the Special Curricular Programs category in the Division Summary View only (program code stays special_programs) */
+const SCP_LABEL = "Special Curricular Programs";
 const DIV_TABS = [
     { key: "mapeh", label: "MAPEH", color: "#0B5CB5", blurb: "Regular MAPEH: Overall MAPEH, Music and Arts, PE and Health (and the Key Stage 4 subjects)" },
-    { key: "special_programs", label: "Special Programs", color: "#6B1FB1", blurb: "SPA (Arts), SPS (Sports) and SPFL (Foreign Languages)" },
+    { key: "special_programs", label: SCP_LABEL, color: "#6B1FB1", blurb: "SPA (Arts), SPS (Sports) and SPFL (Foreign Languages)" },
     { key: "iped", label: "IPED", color: "#B7791F", blurb: "Indigenous Peoples Education subjects" }
 ];
 let DIV_TAB = "mapeh";
-/* SPECIAL PROGRAMS SUB-TABS (Additional Enhancements 1.1): under Special Programs, SPA, SPS and SPFL are three independent categories.
+/* SPECIAL CURRICULAR PROGRAMS SUB-TABS (Additional Enhancements 1.1): under Special Curricular Programs, SPA, SPS and SPFL are three independent categories.
    Each shows only its own records, schools, MPS and proficiency; the three are never averaged together on this view. */
 const SP_SUBS = [
     { key: "SPA", label: "SPA", color: "#6B1FB1", blurb: "Special Program in the Arts (7 disciplines)" },
@@ -2409,8 +2411,8 @@ async function renderDivisionSummaryView(container) {
         : new Set(data.map(r => r.learningArea)).size;
     const scopeWord = userDist !== "ALL" ? `${esc(userDist)} District` : "Division";
     const tabsHTML = `<div class="div-tabs screen-only" role="tablist" aria-label="Program category">${DIV_TABS.map((t, i) => `<button type="button" role="tab" class="div-tab${t.key === tab.tabKey ? " is-active" : ""}" data-tab="${t.key}" style="--tab-color:${t.color};" aria-selected="${t.key === tab.tabKey}" tabindex="${t.key === tab.tabKey ? 0 : -1}" onclick="selectDivisionTab('${t.key}')" onkeydown="divisionTabKey(event, ${i})">${esc(t.label)}</button>`).join("")}</div>`;
-    const subTabsHTML = tab.sub ? `<div class="div-tabs div-subtabs screen-only" role="tablist" aria-label="Special Programs category">${SP_SUBS.map((t, i) => `<button type="button" role="tab" class="div-tab div-subtab${t.key === tab.sub ? " is-active" : ""}" data-sub="${t.key}" style="--tab-color:${t.color};" aria-selected="${t.key === tab.sub}" tabindex="${t.key === tab.sub ? 0 : -1}" onclick="selectDivisionSub('${t.key}')" onkeydown="divisionSubKey(event, ${i})">${esc(t.label)}</button>`).join("")}</div>` : "";
-    const banner = `<div class="div-banner" role="status" style="--tab-color:${tab.color};"><span class="div-banner-label">Viewing</span> <strong>${tab.sub ? "Special Programs: " : ""}${esc(tab.label)}</strong><span class="div-banner-note">${esc(tab.blurb)}. ${scopeWord} figures; only ${esc(tab.label)} records are counted.</span></div>`;
+    const subTabsHTML = tab.sub ? `<div class="div-tabs div-subtabs screen-only" role="tablist" aria-label="${SCP_LABEL} category">${SP_SUBS.map((t, i) => `<button type="button" role="tab" class="div-tab div-subtab${t.key === tab.sub ? " is-active" : ""}" data-sub="${t.key}" style="--tab-color:${t.color};" aria-selected="${t.key === tab.sub}" tabindex="${t.key === tab.sub ? 0 : -1}" onclick="selectDivisionSub('${t.key}')" onkeydown="divisionSubKey(event, ${i})">${esc(t.label)}</button>`).join("")}</div>` : "";
+    const banner = `<div class="div-banner" role="status" style="--tab-color:${tab.color};"><span class="div-banner-label">Viewing</span> <strong>${tab.sub ? SCP_LABEL + ": " : ""}${esc(tab.label)}</strong><span class="div-banner-note">${esc(tab.blurb)}. ${scopeWord} figures; only ${esc(tab.label)} records are counted.</span></div>`;
 
     container.innerHTML = `
     ${tabsHTML}
@@ -2431,7 +2433,7 @@ async function renderDivisionSummaryView(container) {
         <div class="kpi-card" style="border-top-color: ${tab.color};">
             <div class="kpi-title">${tab.sub ? `Schools with ${esc(tab.label)} data` : `Schools encoded / ${esc(tab.label)} schools`}</div>
             <div class="kpi-value">${tab.sub ? sc.encoded : `${sc.encoded} / ${sc.assigned}`}</div>
-            <div class="kpi-sub" style="color:var(--text-muted);">${tab.sub ? `${sc.assigned} school(s) assigned to Special Programs` : sc.assigned ? "" : `No school is assigned to ${esc(tab.label)} yet`}</div>
+            <div class="kpi-sub" style="color:var(--text-muted);">${tab.sub ? `${sc.assigned} school(s) assigned to ${SCP_LABEL}` : sc.assigned ? "" : `No school is assigned to ${esc(tab.label)} yet`}</div>
         </div>
         <div class="kpi-card" style="border-top-color: ${tab.color};">
             <div class="kpi-title">Learning areas with data</div>
@@ -2465,7 +2467,7 @@ async function renderDivisionSummaryView(container) {
 
 /* PROGRAM SECTION OF THE DIVISION SUMMARY (the part under the matrix, one per tab). Built only from the records in view (every
    filter and the selected category already applied), each record counted once. Overall = plain mean of record MPS, the method
-   used for every other consolidated figure. Special Programs: SPA, SPS and SPFL each with its disciplines. IPED: its subjects and
+   used for every other consolidated figure. Special Curricular Programs: SPA, SPS and SPFL each with its disciplines. IPED: its subjects and
    Overall MAPEH (IPED) = (Music and Arts + PE and Health) / 2 when both have data. MAPEH: the school summary (the components
    table is the card above). No figure is derived or estimated. */
 /* SUBJECTS ENCODED (Additional Enhancements 1.1): the number of DISTINCT subjects that have a saved record for a school within the
@@ -2502,7 +2504,7 @@ function programOverallCards(data, tabKey, sub) {
     if (tabKey === "special_programs") {
         const tracks = [["SPA", "SPA - ", "SPA (Special Program in the Arts)"], ["SPS", "SPS - ", "SPS (Special Program in Sports)"], ["SPFL", "SPFL - ", "SPFL (Special Program in Foreign Language)"]].filter(t => !sub || t[0] === sub);
         const trk = tracks[0];
-        const title = sub ? `${trk[2]}: disciplines and schools` : "Special Programs: SPA, SPS and SPFL";
+        const title = sub ? `${trk[2]}: disciplines and schools` : `${SCP_LABEL}: SPA, SPS and SPFL`;
         const recs = data.filter(r => areaProgram(r.learningArea) === "special_programs" && (!sub || r.learningArea.startsWith(sub + " - ")));
         if (!recs.length) return emptyCard(title, "special_programs");
         const sc = programSchoolCounts(recs, "special_programs");
@@ -2510,9 +2512,9 @@ function programOverallCards(data, tabKey, sub) {
             return `<div class="card-box-sub"><h4>${esc(ttl)}</h4>${list.length ? areaTable(areas.map(a => areaRow(a, list.filter(r => r.learningArea === a))).join(""), "Discipline") : '<div class="empty-state" role="status" style="padding:10px 0;color:var(--text-muted);">No data for the selected filters.</div>'}</div>`; };
         return `<div class="card-box program-overall" data-program="special_programs"${sub ? ` data-sub="${sub}"` : ""}><div class="card-box-header"><h3>${esc(title)}</h3></div>
             <div class="kpi-grid">
-                <div class="kpi-card"><div class="kpi-title">${sub ? esc(sub) : "Special Programs"} MPS</div><div class="kpi-value">${pc(mean(recs, "mps"))}</div><div class="kpi-sub">${pl(mean(recs, "mps"))}</div></div>
+                <div class="kpi-card"><div class="kpi-title">${sub ? esc(sub) : SCP_LABEL} MPS</div><div class="kpi-value">${pc(mean(recs, "mps"))}</div><div class="kpi-sub">${pl(mean(recs, "mps"))}</div></div>
                 <div class="kpi-card"><div class="kpi-title">% Learners Achieving 75% and above</div><div class="kpi-value">${pc(mean(recs, "pct75"))}</div></div>
-                <div class="kpi-card"><div class="kpi-title">${sub ? `Schools with ${esc(sub)} data` : "Schools encoded / Special Programs schools"}</div><div class="kpi-value">${sub ? sc.encoded : `${sc.encoded} / ${sc.assigned}`}</div></div>
+                <div class="kpi-card"><div class="kpi-title">${sub ? `Schools with ${esc(sub)} data` : `Schools encoded / ${SCP_LABEL} schools`}</div><div class="kpi-value">${sub ? sc.encoded : `${sc.encoded} / ${sc.assigned}`}</div></div>
             </div>
             ${sub ? "" : areaTable(tracks.map(([name, prefix]) => areaRow(name, recs.filter(r => r.learningArea.startsWith(prefix)))).join(""), "Track")}
             ${tracks.map(disc).join("")}
@@ -3381,7 +3383,7 @@ document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape" && document.getElementById("record-modal").style.display === "flex") closeRecordModal();
 });
 
-/* SCHOOLS & ACCOUNTS (Supervisor and Admin). The school list and its Special Programs / IPED classification live in the
+/* SCHOOLS & ACCOUNTS (Supervisor and Admin). The school list and its Special Curricular Programs / IPED classification live in the
    database; every change goes through a function that checks the caller on the server. School accounts are created here
    and nowhere else. */
 const SV = { program: "ALL", district: "ALL", search: "", accounts: [] };
@@ -3400,7 +3402,7 @@ async function renderSchoolsView(container) {
             <div class="card-box-header">
                 <h3>Schools by Program</h3>
                 <div class="sv-tools">
-                    <select id="sv-program" aria-label="Program" onchange="SV.program = this.value; svDraw()"><option value="ALL">All programs</option><option value="mapeh">MAPEH</option><option value="special_programs">Special Programs</option><option value="iped">IPED</option><option value="none">No program</option></select>
+                    <select id="sv-program" aria-label="Program" onchange="SV.program = this.value; svDraw()"><option value="ALL">All programs</option><option value="mapeh">MAPEH</option><option value="special_programs">Special Curricular Programs</option><option value="iped">IPED</option><option value="none">No program</option></select>
                     <select id="sv-district" aria-label="District" onchange="SV.district = this.value; svDraw()"><option value="ALL">All districts</option>${DEFAULT_DISTRICTS.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join("")}</select>
                     <input type="search" id="sv-search" placeholder="Search school or username" aria-label="Search" oninput="SV.search = this.value.toLowerCase().trim(); svDraw()">
                     <button class="btn btn-primary btn-sm" onclick="openSchoolEditor(null)">Add school</button>
@@ -3410,7 +3412,7 @@ async function renderSchoolsView(container) {
             </div>
             <div class="table-scroll" id="sv-table"></div>
         </div>
-        <p class="comp-note">A school can belong to Special Programs, IPED, or both, and is listed once. Counts come from this list, not from fixed numbers. Only a Supervisor or Admin can create school accounts; each account is tied to one school and can see and enter only that school's records in its program. Import columns: <em>School Name</em>, <em>District</em>, <em>Program</em> (Special Programs, IPED or Both). Accounts are created one school at a time; nothing is created automatically.</p>
+        <p class="comp-note">A school can belong to Special Curricular Programs, IPED, or both, and is listed once. Counts come from this list, not from fixed numbers. Only a Supervisor or Admin can create school accounts; each account is tied to one school and can see and enter only that school's records in its program. Import columns: <em>School Name</em>, <em>District</em>, <em>Program</em> (Special Curricular Programs, IPED or Both). Accounts are created one school at a time; nothing is created automatically.</p>
     </div>`;
     await svReload();
 }
@@ -3431,7 +3433,7 @@ function svDraw() {
     const byId = {}; SV.accounts.forEach(a => { if (a.active || !byId[a.school_id]) byId[a.school_id] = a; });
     const sp = SCHOOLS.filter(x => x.programs.includes("special_programs")).length, ip = SCHOOLS.filter(x => x.programs.includes("iped")).length;
     const both = SCHOOLS.filter(x => x.programs.length === 2).length, withAcc = SCHOOLS.filter(x => SV.accounts.some(a => a.school_id === x.id && a.active)).length;
-    document.getElementById("sv-kpis").innerHTML = [["MAPEH schools", SCHOOLS.filter(x => x.programs.includes("mapeh")).length], ["Special Programs schools", sp], ["IPED schools", ip], ["With 2 or 3 programs", SCHOOLS.filter(x => x.programs.length >= 2).length], ["Schools in the list", SCHOOLS.length], ["With an active account", withAcc]]
+    document.getElementById("sv-kpis").innerHTML = [["MAPEH schools", SCHOOLS.filter(x => x.programs.includes("mapeh")).length], ["Special Curricular Programs schools", sp], ["IPED schools", ip], ["With 2 or 3 programs", SCHOOLS.filter(x => x.programs.length >= 2).length], ["Schools in the list", SCHOOLS.length], ["With an active account", withAcc]]
         .map(([l, n]) => `<div class="sv-kpi"><strong>${n}</strong><span>${l}</span></div>`).join("");
     let list = SCHOOLS.filter(x => (SV.program === "ALL" || (SV.program === "none" ? !x.programs.length : x.programs.includes(SV.program))) && (SV.district === "ALL" || x.district === SV.district));
     if (SV.search) list = list.filter(x => (x.name + " " + ((byId[x.id] || {}).username || "")).toLowerCase().includes(SV.search));
@@ -3460,7 +3462,7 @@ async function openSchoolEditor(id) {
             <div class="form-group" style="margin-top:10px;"><label for="sc-depedid">DepEd school ID (optional)</label><input type="number" id="sc-depedid" min="1" value="${x && x.depedId ? x.depedId : ""}"></div>
             <div class="form-group" style="margin-top:10px;"><label>Programs (a school can have one, two or all three)</label>
                 <label style="font-weight:500;"><input type="checkbox" id="sc-mapeh" style="width:auto;" ${(x ? x.programs.includes("mapeh") : true) ? "checked" : ""}> MAPEH</label>
-                <label style="font-weight:500;"><input type="checkbox" id="sc-sp" style="width:auto;" ${x && x.programs.includes("special_programs") ? "checked" : ""}> Special Programs (SPA, SPS, SPFL)</label>
+                <label style="font-weight:500;"><input type="checkbox" id="sc-sp" style="width:auto;" ${x && x.programs.includes("special_programs") ? "checked" : ""}> Special Curricular Programs (SPA, SPS, SPFL)</label>
                 <label style="font-weight:500;"><input type="checkbox" id="sc-iped" style="width:auto;" ${x && x.programs.includes("iped") ? "checked" : ""}> IPED</label></div>
             ${x ? `<label style="font-weight:500;margin-top:8px;"><input type="checkbox" id="sc-active" style="width:auto;" ${x.active ? "checked" : ""}> School is active</label>` : ""}
             ${x && linkable ? `<p class="comp-note">${linkable} existing record(s) carry this school's name as plain text but are not linked to it yet. <button type="button" class="btn btn-secondary btn-sm" onclick="linkSchoolRecords(${x.id}, ${linkable})">Link them to this school</button></p>` : ""}
@@ -3823,7 +3825,7 @@ async function renderDataInputView(container) {
                     ${currentUser && currentUser.isSchool ? "" : `<div class="form-group">
                         <label>Program</label>
                         <select id="m-program" onchange="refreshManualSubjects()">
-                            <option value="">All programs</option><option value="mapeh">MAPEH</option><option value="special_programs">Special Programs (SPA, SPS, SPFL)</option><option value="iped">IPED</option>
+                            <option value="">All programs</option><option value="mapeh">MAPEH</option><option value="special_programs">Special Curricular Programs (SPA, SPS, SPFL)</option><option value="iped">IPED</option>
                         </select>
                     </div>`}
                     <div class="form-group">
@@ -4984,7 +4986,7 @@ function updateSignatoriesUI() {
         document.getElementById("sig-p-pos").textContent = settings.sigPrepPos;
         {
             const dt = currentView === "division" ? divCat() : null;
-            document.getElementById("print-title").textContent = `DIVISION DISTRICT & TERM${levelTitleWord()} PROFICIENCY CONSOLIDATION REPORT` + (dt ? ` - ${dt.sub ? "SPECIAL PROGRAMS - " : ""}${dt.label.toUpperCase()}` : "");
+            document.getElementById("print-title").textContent = `DIVISION DISTRICT & TERM${levelTitleWord()} PROFICIENCY CONSOLIDATION REPORT` + (dt ? ` - ${dt.sub ? SCP_LABEL.toUpperCase() + " - " : ""}${dt.label.toUpperCase()}` : "");
         }
     }
     document.getElementById("sig-c-name").textContent = settings.sigCheckName;

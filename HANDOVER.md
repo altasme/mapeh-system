@@ -370,3 +370,7 @@ The revised document supersedes section 24 where they differ.
 - **Term availability** is in **Fast Data Entry** for the System Administrator (collapsible card at the top), no longer under Settings. Behaviour is unchanged (migration 0016, already described in section 24).
 - SPA / SPS / SPFL sub-tabs, terminology and School Progress were already done in section 24 and are unchanged.
 - No new database migration.
+
+## 26. Label: Special Curricular Programs
+
+Everywhere on screen (Division Summary tab, banner, section and KPI titles, printed title, filters, Fast Data Entry, schools list, admin panel) "Special Programs" now reads **Special Curricular Programs** (constant `SCP_LABEL` in `public/index.html`). Display only: the program code stays `special_programs`, SPA, SPS and SPFL work as before, and the official track names ("Special Program in the Arts") are unchanged. A few admin-only database error messages (migrations 0010 to 0014) still say "Special Programs". Verified at 1280, 768 and 360 px.
